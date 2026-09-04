@@ -1,4 +1,5 @@
 <!-- FVM_ADMIN_TAXONOMY_V2 -->
+<!-- FVM_ADMIN_FREEZE_FIX_V1 -->
 <!-- FVM_IMAGE_MANAGER_V2 -->
 <!-- FVM_PROCUREMENT_ADMIN_UI_V1 -->
 <!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FVMarket · Administración</title><style>
@@ -98,8 +99,9 @@ async function fvmRemoveSub(c,x){fvmTax.subcategories[c]=(fvmTax.subcategories[c
 function fvmEnhanceProductForm(){const category=document.getElementById('category');if(!category||document.getElementById('fvmOfferCreate'))return;const wrap=document.createElement('div');wrap.id='fvmOfferCreate';wrap.innerHTML=`<div class="row2"><div class="field"><label>Subcategoría</label><select id="subcategory"><option value="">Sin subcategoría</option></select></div><div class="field"><label>Referencia FVMarket</label><input id="refHint" placeholder="Se genera automáticamente: MPF-0001" readonly></div></div><div class="fvmOffer"><label><input id="onOffer" type="checkbox"> Incluir en Ofertas</label><div class="field" style="margin:0"><label>Descuento %</label><input id="discountPct" type="number" min="0" max="90" step="1" value="0"></div></div>`;category.closest('.row2')?.insertAdjacentElement('afterend',wrap)||category.parentElement.insertAdjacentElement('afterend',wrap);const fill=()=>{const arr=fvmTax.subcategories[category.value]||[];subcategory.innerHTML='<option value="">Sin subcategoría</option>'+arr.map(x=>`<option>${x}</option>`).join('')};category.addEventListener('change',fill);fill()}
 // Añade campos de catálogo al JSON de altas/ediciones sin alterar el resto del panel.
 const fvmOrigFetch=window.fetch;window.fetch=async function(input,init={}){try{const u=String(input);if(/\/api\/admin\/products(?:\/[^/]+)?$/.test(u)&&['POST','PUT'].includes(String(init.method||'GET').toUpperCase())&&init.body){const b=JSON.parse(init.body);const modal=document.querySelector('.editModal');const root=modal||document;b.subcategory=root.querySelector('#subcategory,[name=subcategory]')?.value||b.subcategory||'';b.onOffer=!!(root.querySelector('#onOffer,[name=onOffer]')?.checked??b.onOffer);b.discountPct=Number(root.querySelector('#discountPct,[name=discountPct]')?.value??b.discountPct??0);init={...init,body:JSON.stringify(b)}}}catch{}return fvmOrigFetch(input,init)};
-const fvmObserver=new MutationObserver(()=>{fvmRefreshCategorySelects();fvmEnhanceProductForm()});fvmObserver.observe(document.body,{childList:true,subtree:true});
-setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},500);
+// Evita un bucle de MutationObserver que podía bloquear el hilo principal y dejar /admin en blanco.
+setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
+// Refresca únicamente cuando se abre/edita un producto o cambia la taxonomía, no ante cada mutación del DOM.
 </script>
 
 </body></html>
