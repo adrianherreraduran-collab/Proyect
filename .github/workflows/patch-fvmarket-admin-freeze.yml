@@ -1,0 +1,38 @@
+name: Patch FVMarket admin freeze
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_admin_freeze.py
+      - .github/workflows/patch-fvmarket-admin-freeze.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply admin freeze fix
+        run: python patch_fvmarket_admin_freeze.py
+      - name: Validate server syntax
+        run: node --check appsrc/server.js
+      - name: Validate admin inline scripts syntax
+        run: |
+          python - <<'PY'
+          import re, pathlib
+          s=pathlib.Path('appsrc/public/admin.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          pathlib.Path('/tmp/admin.js').write_text('\n'.join(scripts),encoding='utf-8')
+          PY
+          node --check /tmp/admin.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit patched app and package
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/admin.html fvmarket-app.tgz.b64
+          git commit -m "Corregir bloqueo en blanco de administración FVMarket" || exit 0
+          git push
