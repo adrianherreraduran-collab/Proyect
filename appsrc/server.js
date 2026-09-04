@@ -21,7 +21,8 @@ const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
 const GOOGLE_CSE_API_KEY = String(process.env.GOOGLE_CSE_API_KEY || '');
 const GOOGLE_CSE_CX = String(process.env.GOOGLE_CSE_CX || '');
-// FVM_PROVIDER_GOOGLE_IMAGES_V2
+const BRAVE_SEARCH_API_KEY = String(process.env.BRAVE_SEARCH_API_KEY || '');
+// FVM_PROVIDER_BRAVE_IMAGES_V3
 app.use(express.json({limit:'2mb'}));
 const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024}});
 app.use(express.static(path.join(__dirname,'public')));
@@ -154,17 +155,34 @@ function imageCandidateScore(x={},query=''){
   for(const t of qcrit)score+=full.includes(t)?6:-4;
   return score;
 }
-async function searchGoogleImages(query='',limit=8){
-  if(!GOOGLE_CSE_API_KEY||!GOOGLE_CSE_CX)return [];
+async function searchBraveImages(query='',limit=8){
+  if(!BRAVE_SEARCH_API_KEY)return [];
   try{
-    const r=await axios.get('https://www.googleapis.com/customsearch/v1',{timeout:12000,params:{key:GOOGLE_CSE_API_KEY,cx:GOOGLE_CSE_CX,q:String(query).slice(0,180),searchType:'image',safe:'active',num:Math.min(Math.max(Number(limit)||8,1),10)}});
-    return (r.data?.items||[]).map(x=>({title:x.title||'',url:x.link||'',original:x.link||'',source:x.image?.contextLink||x.displayLink||'',license:'Comprobar derechos/licencia antes de publicar',author:'',origin:'google'})).filter(x=>x.url&&!isSpanishImageDomain(x.url)&&!isSpanishImageDomain(x.source));
-  }catch(e){console.warn('Google image search failed:',e.response?.status||e.message);return []}
+    const count=Math.min(Math.max(Number(limit)||8,1),100);
+    const r=await axios.get('https://api.search.brave.com/res/v1/images/search',{
+      timeout:12000,
+      headers:{'Accept':'application/json','Accept-Encoding':'gzip','X-Subscription-Token':BRAVE_SEARCH_API_KEY},
+      params:{q:String(query).slice(0,180),count,safesearch:'strict',search_lang:'es',country:'ALL'}
+    });
+    const rows=r.data?.results||[];
+    return rows.map(x=>({
+      title:x.title||'',
+      url:x.properties?.url||x.thumbnail?.src||'',
+      original:x.properties?.url||x.thumbnail?.src||'',
+      source:x.url||x.source||'',
+      license:'Comprobar derechos/licencia antes de publicar',
+      author:'',
+      origin:'brave'
+    })).filter(x=>x.url&&!isSpanishImageDomain(x.url)&&!isSpanishImageDomain(x.source));
+  }catch(e){
+    console.warn('Brave image search failed:',e.response?.status||e.message);
+    return [];
+  }
 }
 async function searchExternalImages(query='',limit=8){
   const target=Math.max(3,Math.min(Number(limit)||8,12));const seen=new Set(),pool=[];
   const add=items=>{for(const x of items||[]){const url=String(x.url||'');const src=String(x.source||'');if(!url||seen.has(url)||isSpanishImageDomain(url)||isSpanishImageDomain(src))continue;seen.add(url);pool.push({...x,origin:x.origin||'similar'})}};
-  add(await searchGoogleImages(query,Math.min(target+4,10)));
+  add(await searchBraveImages(query,Math.min(target+6,20)));
   add(await searchOpenverseImages(query,target+5));
   add((await searchCommonsImages(query,target+5)).map(x=>({...x,origin:'similar'})));
   const ranked=pool.map(x=>({...x,matchScore:imageCandidateScore(x,query)})).sort((a,b)=>b.matchScore-a.matchScore);
@@ -188,7 +206,7 @@ function extractProductFromHtml(html,url){const $=cheerio.load(html);const produ
 app.post('/api/admin/import-url',admin,async(req,res)=>{const url=String(req.body.url||'').trim();if(isUnsafeUrl(url))return res.status(400).json({error:'URL no permitida'});try{const r=await axios.get(url,{timeout:15000,maxRedirects:5,maxContentLength:3*1024*1024,headers:{'User-Agent':'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/126 Safari/537.36','Accept':'text/html,application/xhtml+xml','Accept-Language':'es-ES,es;q=0.9,en;q=0.7','Cache-Control':'no-cache'}});const p=extractProductFromHtml(r.data,url);if(!p.title||p.title==='Producto')return res.status(422).json({error:'La página no expone una ficha de producto legible.'});res.json(p)}catch(e){const status=e.response?.status;res.status(422).json({error:status?('La tienda respondió '+status+' y no permite leer esa ficha automáticamente. Puedes introducir el precio origen manualmente y usar la IA/imágenes.'):('No se pudo leer esa URL. Comprueba que sea una ficha pública de producto.')})}});
 
 
-app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,googleImages:!!(GOOGLE_CSE_API_KEY&&GOOGLE_CSE_CX),imageSearch:(GOOGLE_CSE_API_KEY&&GOOGLE_CSE_CX?'Google Images + Openverse + Wikimedia':'Openverse + Wikimedia (Google pendiente de credenciales)')+' · excluye dominios de España'}));
+app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,braveImages:!!BRAVE_SEARCH_API_KEY,imageSearch:(BRAVE_SEARCH_API_KEY?'Brave Images + Openverse + Wikimedia':'Openverse + Wikimedia (Brave pendiente de credencial)')+' · excluye dominios de España'}));
 app.post('/api/admin/ai-product',admin,async(req,res)=>{const item=req.body||{};const result=await aiAnalyzeItems([item]);const p=result.products?.[0]||fallbackProductAnalysis(item,0);const sourceImages=normalizeProductImages(item.sourceImages||[],item.sourceUrl?item.image:'').map(x=>({...x,origin:'source'}));const searchQuery=[item.title,p.title,p.imageQuery,item.sourceRef].filter(Boolean).join(' ');const alternativeImages=await searchExternalImages(searchQuery.slice(0,180),8);const images=alternativeImages.slice(0,8);const first=alternativeImages[0]||null;res.json({...p,aiMode:result.mode,warning:result.warning||'',sourceImages,alternativeImages,images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})});
 app.post('/api/admin/ai-catalog',admin,async(req,res)=>{const items=Array.isArray(req.body.products)?req.body.products.slice(0,30):[];if(!items.length)return res.status(400).json({error:'No hay productos para analizar'});const result=await aiAnalyzeItems(items);const products=[];for(const p of (result.products||[])){const images=await searchExternalImages((p.title+' '+(p.imageQuery||'')).slice(0,140),6);const first=images[0]||null;products.push({...p,images,alternativeImages:images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})}res.json({mode:result.mode,warning:result.warning||'',products})});
 
