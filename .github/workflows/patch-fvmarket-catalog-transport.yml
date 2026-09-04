@@ -1,0 +1,34 @@
+name: Patch FVMarket catalog and transport
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_catalog_transport_v1.py
+      - .github/workflows/patch-fvmarket-catalog-transport.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply FVMarket catalog and RutaFV patch
+        run: python patch_fvmarket_catalog_transport_v1.py
+      - name: Validate server syntax
+        run: node --check appsrc/server.js
+      - name: Validate patch markers
+        run: |
+          grep -q 'FVM_CATALOG_TRANSPORT_V1' appsrc/server.js
+          grep -q 'FVM_ADMIN_CATALOG_V1' appsrc/public/admin.html
+          grep -q 'FVM_STOREFRONT_OFFERS_RUTAFV_V1' appsrc/public/index.html
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit patched app and package
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/server.js appsrc/public/admin.html appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Aplicar categorías ofertas referencias y RutaFV" || exit 0
+          git push
