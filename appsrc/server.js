@@ -17,6 +17,8 @@ const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
 const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
 app.use(express.json({limit:'2mb'}));
 const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024}});
 app.use(express.static(path.join(__dirname,'public')));
