@@ -1,0 +1,55 @@
+name: Patch FVMarket admin and taxonomy v2
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_admin_taxonomy_v2.py
+      - .github/workflows/patch-fvmarket-admin-taxonomy-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply admin and taxonomy patch
+        run: python patch_fvmarket_admin_taxonomy_v2.py
+      - name: Validate server syntax
+        run: node --check appsrc/server.js
+      - name: Validate admin script syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('appsrc/public/admin.html').read_text(encoding='utf-8')
+          for n,script in enumerate(re.findall(r'<script>(.*?)</script>',h,re.S),1):
+              Path(f'/tmp/admin-script-{n}.js').write_text(script,encoding='utf-8')
+          PY
+          for f in /tmp/admin-script-*.js; do node --check "$f"; done
+      - name: Validate storefront script syntax
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          h=Path('appsrc/public/index.html').read_text(encoding='utf-8')
+          for n,script in enumerate(re.findall(r'<script>(.*?)</script>',h,re.S),1):
+              Path(f'/tmp/store-script-{n}.js').write_text(script,encoding='utf-8')
+          PY
+          for f in /tmp/store-script-*.js; do node --check "$f"; done
+      - name: Validate markers and category order
+        run: |
+          grep -q 'FVM_ADMIN_TAXONOMY_V2' appsrc/public/admin.html
+          grep -q 'FVM_TAXONOMY_V2' appsrc/server.js
+          grep -q 'FVM_STOREFRONT_TAXONOMY_V2' appsrc/public/index.html
+          grep -q "\['Construcción','Bricolaje','Herramientas','Reformas'\]" appsrc/server.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit patched app and package
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/server.js appsrc/public/admin.html appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Corregir administración y ordenar categorías FVMarket" || exit 0
+          git push
