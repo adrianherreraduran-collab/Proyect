@@ -1,0 +1,39 @@
+name: Fix FVMarket syntax and repack
+
+on:
+  push:
+    paths:
+      - fix_fvmarket_syntax.py
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fix and validate
+        run: |
+          python fix_fvmarket_syntax.py
+          node --check appsrc/server.js
+      - name: Repack
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile, io, base64
+          root=Path("appsrc")
+          buf=io.BytesIO()
+          with tarfile.open(fileobj=buf,mode="w:gz") as tar:
+              for p in sorted(root.rglob("*")):
+                  if p.is_file():
+                      tar.add(p,arcname=str(p.relative_to(root)))
+          Path("fvmarket-app.tgz.b64").write_text(base64.b64encode(buf.getvalue()).decode("ascii"),encoding="ascii")
+          PY
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/server.js fvmarket-app.tgz.b64
+          git commit -m "Corregir y validar FVMarket 1.3" || exit 0
+          git push
