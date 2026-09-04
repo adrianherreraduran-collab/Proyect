@@ -5,6 +5,7 @@ on:
     paths:
       - patch_fvmarket_brave_images.py
       - .github/workflows/patch-fvmarket-provider-google-images.yml
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,3 +28,4 @@ jobs:
           git add appsrc/server.js fvmarket-app.tgz.b64
           git commit -m "Conectar FVMarket con Brave Image Search" || exit 0
           git push
+# trigger: 2026-09-04T21:45Z
