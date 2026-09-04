@@ -6,6 +6,8 @@ on:
       - appsrc/server.js
       - appsrc/public/**
       - appsrc/package.json
+      - patch_images.py
+      - .github/workflows/repack-fvmarket.yml
 
 permissions:
   contents: write
@@ -15,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Apply FVMarket image-management patch
+        run: |
+          if [ -f patch_images.py ]; then python patch_images.py; fi
       - name: Check server syntax
         run: node --check appsrc/server.js
       - name: Repack application
@@ -30,10 +35,10 @@ jobs:
                       tar.add(p,arcname=str(p.relative_to(root)))
           Path("fvmarket-app.tgz.b64").write_text(base64.b64encode(buf.getvalue()).decode("ascii"),encoding="ascii")
           PY
-      - name: Commit package
+      - name: Commit application and package
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add fvmarket-app.tgz.b64
-          git commit -m "Reempaquetar FVMarket tras validación" || exit 0
+          git add appsrc/server.js appsrc/public/admin.html fvmarket-app.tgz.b64
+          git commit -m "Mejorar gestión de imágenes de FVMarket" || exit 0
           git push
