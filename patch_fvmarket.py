@@ -16,7 +16,7 @@ def rep_once(text, old, new, label):
     return text.replace(old, new, 1)
 
 def sub_once(text, pattern, repl, label, flags=re.S):
-    out, n = re.subn(pattern, repl, text, count=1, flags=flags)
+    out, n = re.subn(pattern, lambda _m: repl, text, count=1, flags=flags)
     if n != 1:
         raise SystemExit(f"NO REGEX MATCH {label}: {n}")
     return out
