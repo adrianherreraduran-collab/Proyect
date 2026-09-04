@@ -1,3 +1,4 @@
+// FVM_TAXONOMY_V2
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -40,7 +41,7 @@ const defaultProducts = [
   {id:'p4',title:'Inodoro completo salida dual',category:'Baño y cocina',ref:'FVM-WC-DUAL',price:189.00,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=700&q=80',published:true,featured:true},
   {id:'p5',title:'Carretilla de jardín 100 L rueda neumática',category:'Jardín',ref:'FVM-CAR-100',price:74.90,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1599685315640-68d303c222b9?auto=format&fit=crop&w=700&q=80',published:true,featured:true}
 ];
-function seed(){return {users:[],products:defaultProducts,orders:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Baño','Cocina','Bricolaje','Construcción','Herramientas','Fontanería','Electricidad','Otros'],subcategories:{'Baño':['Mamparas','Platos de ducha','Muebles de baño','Sanitarios','Grifería'],'Cocina':['Fregaderos','Grifería','Muebles de cocina','Encimeras'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
+function seed(){return {users:[],products:defaultProducts,orders:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2))}
 function ensureAdmin(d){
   if(!Array.isArray(d.users))d.users=[];
@@ -98,16 +99,24 @@ function providerFromUrl(raw=''){
 
 function ensureCatalogSettings(d){
   d.settings=d.settings||{};
-  if(!Array.isArray(d.settings.categories))d.settings.categories=['Baño','Cocina','Bricolaje','Construcción','Herramientas','Fontanería','Electricidad','Otros'];
-  d.settings.categories=d.settings.categories.filter(x=>!['Pintura','Jardín','Baño y cocina'].includes(x));
-  for(const c of ['Baño','Cocina','Bricolaje','Construcción','Herramientas'])if(!d.settings.categories.includes(c))d.settings.categories.push(c);
+  const main=['Construcción','Bricolaje','Herramientas','Reformas'];
+  d.settings.categories=main.slice();
   if(!d.settings.subcategories||typeof d.settings.subcategories!=='object')d.settings.subcategories={};
-  d.settings.subcategories['Baño']=d.settings.subcategories['Baño']||['Mamparas','Platos de ducha','Muebles de baño','Sanitarios','Grifería'];
-  d.settings.subcategories['Cocina']=d.settings.subcategories['Cocina']||['Fregaderos','Grifería','Muebles de cocina','Encimeras'];
-  d.settings.subcategories['Bricolaje']=d.settings.subcategories['Bricolaje']||['Adhesivos y selladores','Fijaciones','Organización','Reparación'];
+  const reforms=Array.isArray(d.settings.subcategories['Reformas'])?d.settings.subcategories['Reformas']:[];
+  d.settings.subcategories['Reformas']=[...new Set([...reforms,'Baño','Cocina','Fontanería','Electricidad'])];
+  d.settings.subcategories['Bricolaje']=Array.isArray(d.settings.subcategories['Bricolaje'])?d.settings.subcategories['Bricolaje']:['Adhesivos y selladores','Fijaciones','Organización','Reparación'];
   for(const p of d.products||[]){
-    if(p.category==='Baño y cocina')p.category=/fregader|cocina|encimera/i.test(p.title||'')?'Cocina':'Baño';
-    if(p.category==='Pintura'||p.category==='Jardín')p.category='Bricolaje';
+    const old=String(p.category||'');
+    const title=String(p.title||'');
+    if(['Baño','Cocina','Baño y cocina','Fontanería','Electricidad'].includes(old)){
+      p.category='Reformas';
+      if(!p.subcategory){
+        if(old==='Baño'||old==='Cocina'||old==='Fontanería'||old==='Electricidad')p.subcategory=old;
+        else p.subcategory=/fregader|cocina|encimera/i.test(title)?'Cocina':'Baño';
+      }
+    }else if(['Pintura','Jardín','Otros'].includes(old)){
+      p.category='Bricolaje';
+    }
     if(p.onOffer==null)p.onOffer=false;
     if(p.discountPct==null)p.discountPct=0;
     if(p.subcategory==null)p.subcategory='';
@@ -202,7 +211,7 @@ app.get('/api/admin/settings',admin,(req,res)=>res.json(read().settings));
 app.put('/api/admin/settings',admin,(req,res)=>{const d=read();d.settings={...d.settings,...req.body};save(d);res.json(d.settings)});
 
 
-function guessCategory(text=''){const x=String(text).toLowerCase();if(/cement|mortero|ladrill|bloque|yeso|hormig|azulej|cerám/.test(x))return'Construcción';if(/taladro|sierra|martillo|atornill|broca|herramient/.test(x))return'Herramientas';if(/grifo|tuber|válvula|fontan|fregadero/.test(x))return'Fontanería';if(/cable|enchufe|interruptor|led|lámpara|electric/.test(x))return'Electricidad';if(/pintura|esmalte|barniz|rodillo/.test(x))return'Pintura';if(/jardín|manguera|carretilla|poda/.test(x))return'Jardín';if(/inodoro|ducha|mampara|baño|lavabo|cocina/.test(x))return'Baño y cocina';return'Otros'}
+function guessCategory(text=''){const x=String(text).toLowerCase();if(/cement|mortero|ladrill|bloque|yeso|hormig|azulej|cerám/.test(x))return'Construcción';if(/taladro|sierra|martillo|atornill|broca|herramient/.test(x))return'Herramientas';if(/grifo|tuber|válvula|fontan|fregadero/.test(x))return'Reformas';if(/cable|enchufe|interruptor|led|lámpara|electric/.test(x))return'Reformas';if(/pintura|esmalte|barniz|rodillo/.test(x))return'Bricolaje';if(/jardín|manguera|carretilla|poda/.test(x))return'Bricolaje';if(/inodoro|ducha|mampara|baño|lavabo|cocina/.test(x))return'Reformas';return'Otros'}
 function categoryCode(category='Otros'){return ({'Construcción':'CON','Herramientas':'HER','Fontanería':'FON','Electricidad':'ELE','Pintura':'PIN','Jardín':'JAR','Baño y cocina':'BAN','Otros':'OTR'})[category]||'OTR'}
 function ownReference(title='',sourcePrice=0,category='Otros'){const key=String(title).toLowerCase().replace(/\s+/g,' ').trim()+'|'+Number(sourcePrice||0).toFixed(2);const h=crypto.createHash('sha1').update(key).digest('hex').slice(0,6).toUpperCase();return 'FVM-'+categoryCode(category)+'-'+h}
 function cleanProductTitle(title=''){return String(title).replace(/\s+/g,' ').replace(/[|•]+/g,' ').trim().slice(0,150)}
@@ -298,7 +307,7 @@ app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public','admin.htm
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
 app.get('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
-app.put('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);const cats=Array.isArray(req.body.categories)?req.body.categories.map(x=>String(x).trim()).filter(Boolean):d.settings.categories;d.settings.categories=[...new Set(cats.filter(x=>!['Pintura','Jardín','Baño y cocina','Ofertas'].includes(x)))];d.settings.subcategories=req.body.subcategories&&typeof req.body.subcategories==='object'?req.body.subcategories:d.settings.subcategories;save(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
+app.put('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);d.settings.categories=['Construcción','Bricolaje','Herramientas','Reformas'];d.settings.subcategories=req.body.subcategories&&typeof req.body.subcategories==='object'?req.body.subcategories:d.settings.subcategories;const r=Array.isArray(d.settings.subcategories['Reformas'])?d.settings.subcategories['Reformas']:[];d.settings.subcategories['Reformas']=[...new Set([...r,'Baño','Cocina'])];save(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
 app.post('/api/rutafv/quote',auth,async(req,res)=>{try{const d=read();const items=[];for(const x of req.body.items||[]){const p=d.products.find(y=>y.id===x.id);if(p)items.push({ref:p.ref,title:p.title,qty:Math.max(1,Number(x.qty)||1),weightKg:Number(p.weightKg||0),sourceProvider:p.sourceProvider||'',sourceUrl:p.sourceUrl||''})}const payload={clientCode:RUTAFV_CLIENT_CODE,customer:{name:req.user.name||'',email:req.user.email||'',phone:String(req.body.phone||'')},destination:String(req.body.address||''),items,orderSource:'FVMarket'};const q=await rutaFVRequest(RUTAFV_QUOTE_PATH,payload);res.json(q)}catch(e){res.status(503).json({error:e.message})}});
 app.post('/api/admin/orders/:id/create-rutafv-delivery',admin,async(req,res)=>{try{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});if(!o.transport?.requested)return res.status(400).json({error:'Este pedido no tiene transporte RutaFV'});const u=d.users.find(x=>x.id===o.userId)||{};const payload={clientCode:RUTAFV_CLIENT_CODE,externalOrderId:o.id,externalOrderNumber:o.number,customer:{name:u.name||'',email:u.email||'',phone:o.phone||''},destination:o.address,transportAmount:o.delivery,transportPaid:['pagado','paid','cobrado'].includes(String(o.status).toLowerCase()),items:o.items.map(x=>({ref:x.ref,title:x.title,qty:x.qty}))};const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');o.transport.status='creado_en_rutafv';o.transport.syncedAt=new Date().toISOString();save(d);res.json(o)}catch(e){res.status(503).json({error:e.message})}});
 
