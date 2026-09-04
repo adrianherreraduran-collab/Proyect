@@ -151,7 +151,36 @@ app.get('/api/me',auth,(req,res)=>{const u=read().users.find(x=>x.id===req.user.
 app.get('/api/my-orders',auth,(req,res)=>res.json(read().orders.filter(o=>o.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(publicOrder)));
 
 app.post('/api/orders',auth,(req,res)=>{const {items,address,phone,paymentMethod='transfer'}=req.body||{};if(!Array.isArray(items)||!items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const normalized=[];let subtotal=0;for(const item of items){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:offerPrice(p),regularUnitPrice:Number(p.price||0),discountPct:Number(p.discountPct||0),qty,lineTotal:+(offerPrice(p)*qty).toFixed(2),procurement:{provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0}});subtotal+=offerPrice(p)*qty}if(!normalized.length)return res.status(400).json({error:'No hay productos válidos'});const requestedTransport=!!req.body.useRutaFV;const q=req.body.rutaFVQuote||{};const delivery=requestedTransport?Math.max(0,Number(q.amount||q.total||0)):0;const total=+(subtotal+delivery).toFixed(2);const order={id:id('ord'),number:'FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,transport:{provider:requestedTransport?'RutaFV':'',requested:requestedTransport,amount:delivery,quoteId:String(q.id||q.quoteId||''),status:requestedTransport?'pendiente_crear_reparto':'sin_transporte'},total,address:String(address||''),phone:String(phone||''),paymentMethod,status:'pendiente_pago',createdAt:new Date().toISOString()};d.orders.push(order);save(d);res.json(order)});
-app.post('/api/checkout/stripe',auth,async(req,res)=>{if(!stripe)return res.status(503).json({error:'Pago con tarjeta pendiente de activación'});const {items}=req.body||{};const d=read();const line_items=[];for(const item of items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;line_items.push({quantity:Math.max(1,Number(item.qty)||1),price_data:{currency:'eur',unit_amount:Math.round(offerPrice(p)*100),product_data:{name:p.title,metadata:{ref:p.ref}}}})}if(!line_items.length)return res.status(400).json({error:'Carrito vacío'});const base=process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`;const session=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:`${base}/?payment=success`,cancel_url:`${base}/?payment=cancel`,customer_email:req.user.email});res.json({url:session.url})});
+app.post('/api/checkout/stripe',auth,async(req,res)=>{
+  // FVM_TRANSPORT_CHECKOUT_V2
+  if(!stripe)return res.status(503).json({error:'Pago con tarjeta pendiente de activación'});
+  const body=req.body||{};
+  const items=Array.isArray(body.items)?body.items:[];
+  const useRutaFV=!!body.useRutaFV;
+  const quote=body.rutaFVQuote||{};
+  const d=read();
+  const line_items=[];
+  for(const item of items){
+    const p=d.products.find(x=>x.id===item.id&&x.published);
+    if(!p)continue;
+    line_items.push({quantity:Math.max(1,Number(item.qty)||1),price_data:{currency:'eur',unit_amount:Math.round(offerPrice(p)*100),product_data:{name:p.title,metadata:{ref:p.ref}}}});
+  }
+  if(!line_items.length)return res.status(400).json({error:'Carrito vacío'});
+  const transportAmount=useRutaFV?Math.max(0,Number(quote.amount||quote.total||0)):0;
+  if(transportAmount>0){
+    line_items.push({quantity:1,price_data:{currency:'eur',unit_amount:Math.round(transportAmount*100),product_data:{name:'Transporte RutaFV',description:'Servicio de entrega asociado a la compra FVMarket'}}});
+  }
+  const base=process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`;
+  const session=await stripe.checkout.sessions.create({
+    mode:'payment',
+    line_items,
+    success_url:`${base}/?payment=success`,
+    cancel_url:`${base}/?payment=cancel`,
+    customer_email:req.user.email,
+    metadata:{source:'FVMarket',rutafv:String(useRutaFV),transport_amount:String(transportAmount),rutafv_quote_id:String(quote.id||quote.quoteId||''),delivery_address:String(body.address||'').slice(0,450),delivery_phone:String(body.phone||'').slice(0,100)}
+  });
+  res.json({url:session.url,transportAmount,totalIncludesTransport:transportAmount>0});
+});
 
 // FVM_IMAGE_MANAGER_V2
 function normalizeProductImages(value=[],fallback=''){
