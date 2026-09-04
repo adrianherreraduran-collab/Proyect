@@ -22,6 +22,12 @@ const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
 const GOOGLE_CSE_API_KEY = String(process.env.GOOGLE_CSE_API_KEY || '');
 const GOOGLE_CSE_CX = String(process.env.GOOGLE_CSE_CX || '');
 const BRAVE_SEARCH_API_KEY = String(process.env.BRAVE_SEARCH_API_KEY || '');
+const RUTAFV_API_URL = String(process.env.RUTAFV_API_URL || '').trim().replace(/\/$/,'');
+const RUTAFV_API_KEY = String(process.env.RUTAFV_API_KEY || '').trim();
+const RUTAFV_CLIENT_CODE = String(process.env.RUTAFV_CLIENT_CODE || 'FVMarket').trim();
+const RUTAFV_QUOTE_PATH = String(process.env.RUTAFV_QUOTE_PATH || '/api/integrations/fvmarket/quote').trim();
+const RUTAFV_DELIVERY_PATH = String(process.env.RUTAFV_DELIVERY_PATH || '/api/integrations/fvmarket/deliveries').trim();
+// FVM_CATALOG_TRANSPORT_V1
 // FVM_PROVIDER_BRAVE_IMAGES_V3
 app.use(express.json({limit:'2mb'}));
 const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024}});
@@ -34,10 +40,11 @@ const defaultProducts = [
   {id:'p4',title:'Inodoro completo salida dual',category:'Baño y cocina',ref:'FVM-WC-DUAL',price:189.00,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=700&q=80',published:true,featured:true},
   {id:'p5',title:'Carretilla de jardín 100 L rueda neumática',category:'Jardín',ref:'FVM-CAR-100',price:74.90,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1599685315640-68d303c222b9?auto=format&fit=crop&w=700&q=80',published:true,featured:true}
 ];
-function seed(){return {users:[],products:defaultProducts,orders:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket'}}}
+function seed(){return {users:[],products:defaultProducts,orders:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Baño','Cocina','Bricolaje','Construcción','Herramientas','Fontanería','Electricidad','Otros'],subcategories:{'Baño':['Mamparas','Platos de ducha','Muebles de baño','Sanitarios','Grifería'],'Cocina':['Fregaderos','Grifería','Muebles de cocina','Encimeras'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2))}
 function ensureAdmin(d){
   if(!Array.isArray(d.users))d.users=[];
+  for(const x of d.users){if(String(x.username||'').toLowerCase()!==ADMIN_USERNAME && x.role!=='customer')x.role='customer'}
   let changed=false;
   let u=d.users.find(x=>String(x.username||'').toLowerCase()===ADMIN_USERNAME);
   if(!u){
@@ -53,10 +60,10 @@ function ensureAdmin(d){
 function read(){
   try{
     const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));
-    if(ensureAdmin(d))save(d);
+    const changedAdmin=ensureAdmin(d);ensureCatalogSettings(d);if(changedAdmin)save(d);else save(d);
     return d;
   }catch(e){
-    const d=seed();ensureAdmin(d);save(d);return d;
+    const d=seed();ensureAdmin(d);ensureCatalogSettings(d);save(d);return d;
   }
 }
 function id(prefix){return prefix+'_'+crypto.randomBytes(7).toString('hex')}
@@ -69,7 +76,7 @@ function safeUser(u){return {id:u.id,name:u.name,email:u.email,username:u.userna
 function publicProduct(p={}){
   const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
-  return safe;
+  safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);return safe;
 }
 function publicOrder(o={}){
   return {...o,items:(o.items||[]).map(({procurement,...item})=>item)};
@@ -88,6 +95,54 @@ function providerFromUrl(raw=''){
   }catch{return ''}
 }
 
+
+function ensureCatalogSettings(d){
+  d.settings=d.settings||{};
+  if(!Array.isArray(d.settings.categories))d.settings.categories=['Baño','Cocina','Bricolaje','Construcción','Herramientas','Fontanería','Electricidad','Otros'];
+  d.settings.categories=d.settings.categories.filter(x=>!['Pintura','Jardín','Baño y cocina'].includes(x));
+  for(const c of ['Baño','Cocina','Bricolaje','Construcción','Herramientas'])if(!d.settings.categories.includes(c))d.settings.categories.push(c);
+  if(!d.settings.subcategories||typeof d.settings.subcategories!=='object')d.settings.subcategories={};
+  d.settings.subcategories['Baño']=d.settings.subcategories['Baño']||['Mamparas','Platos de ducha','Muebles de baño','Sanitarios','Grifería'];
+  d.settings.subcategories['Cocina']=d.settings.subcategories['Cocina']||['Fregaderos','Grifería','Muebles de cocina','Encimeras'];
+  d.settings.subcategories['Bricolaje']=d.settings.subcategories['Bricolaje']||['Adhesivos y selladores','Fijaciones','Organización','Reparación'];
+  for(const p of d.products||[]){
+    if(p.category==='Baño y cocina')p.category=/fregader|cocina|encimera/i.test(p.title||'')?'Cocina':'Baño';
+    if(p.category==='Pintura'||p.category==='Jardín')p.category='Bricolaje';
+    if(p.onOffer==null)p.onOffer=false;
+    if(p.discountPct==null)p.discountPct=0;
+    if(p.subcategory==null)p.subcategory='';
+  }
+}
+function refPrefix(title='',category=''){
+  const t=(title+' '+category).toLowerCase();
+  if(/mampara/.test(t)&&/panel|fij[oa]|walk.?in/.test(t))return 'MPF';
+  if(/mampara/.test(t)&&/cuadrad|circular|semicircular|curv/.test(t))return 'MCC';
+  if(/mampara/.test(t))return 'MAM';
+  if(/plato.*ducha/.test(t))return 'PDU';
+  if(/mueble.*bañ/.test(t))return 'MBA';
+  if(/inodoro|sanitario|wc/.test(t))return 'SAN';
+  if(/fregader/.test(t))return 'FRE';
+  if(/grifer/.test(t))return 'GRF';
+  if(/taladro/.test(t))return 'TAL';
+  if(/atornill/.test(t))return 'ATO';
+  if(/cement/.test(t))return 'CEM';
+  const words=String(title||category||'PRO').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean);
+  return (words.slice(0,3).map(x=>x[0]).join('')||'PRO').slice(0,4);
+}
+function nextProductRef(d,title,category){
+  const prefix=refPrefix(title,category);let max=0;
+  for(const p of d.products||[]){const m=String(p.ref||'').match(new RegExp('^'+prefix+'-(\\d{4})$'));if(m)max=Math.max(max,Number(m[1])||0)}
+  return `${prefix}-${String(max+1).padStart(4,'0')}`;
+}
+function offerPrice(p){const pct=Math.max(0,Math.min(90,Number(p.discountPct)||0));return p.onOffer&&pct?+(Number(p.price||0)*(1-pct/100)).toFixed(2):Number(p.price||0)}
+async function rutaFVRequest(pathname,payload){
+  if(!RUTAFV_API_URL)throw new Error('RutaFV no está configurado');
+  const headers={'Content-Type':'application/json'};if(RUTAFV_API_KEY)headers.Authorization='Bearer '+RUTAFV_API_KEY;
+  const r=await fetch(RUTAFV_API_URL+pathname,{method:'POST',headers,body:JSON.stringify(payload),signal:AbortSignal.timeout(15000)});
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok)throw new Error(data.error||data.detail||`RutaFV HTTP ${r.status}`);return data;
+}
+
 app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket'}));
 app.get('/api/products',(req,res)=>{const d=read();const q=(req.query.q||'').toLowerCase();const category=(req.query.category||'').toLowerCase();res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.ref}`.toLowerCase().includes(q)) && (!category || p.category.toLowerCase()===category)).map(publicProduct))});
 app.post('/api/auth/register',async(req,res)=>{const {name,email,password}=req.body||{};if(!name||!email||!password||password.length<6)return res.status(400).json({error:'Nombre, email y contraseña de al menos 6 caracteres son obligatorios'});const d=read();if(d.users.some(u=>String(u.email||'').toLowerCase()===String(email).toLowerCase()))return res.status(409).json({error:'Ese email ya está registrado'});const u={id:id('usr'),name:String(name).trim(),username:'',email:String(email).trim().toLowerCase(),password:await bcrypt.hash(password,12),role:'customer',createdAt:new Date().toISOString()};d.users.push(u);save(d);res.json({token:token(u),user:safeUser(u)});});
@@ -95,8 +150,8 @@ app.post('/api/auth/login',async(req,res)=>{const body=req.body||{};const identi
 app.get('/api/me',auth,(req,res)=>{const u=read().users.find(x=>x.id===req.user.id);res.json(u?safeUser(u):null)});
 app.get('/api/my-orders',auth,(req,res)=>res.json(read().orders.filter(o=>o.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(publicOrder)));
 
-app.post('/api/orders',auth,(req,res)=>{const {items,address,phone,paymentMethod='transfer'}=req.body||{};if(!Array.isArray(items)||!items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const normalized=[];let subtotal=0;for(const item of items){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:p.price,qty,lineTotal:+(p.price*qty).toFixed(2),procurement:{provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0}});subtotal+=p.price*qty}if(!normalized.length)return res.status(400).json({error:'No hay productos válidos'});const delivery=Number(d.settings.deliveryBase||0);const total=+(subtotal+delivery).toFixed(2);const order={id:id('ord'),number:'FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,total,address:String(address||''),phone:String(phone||''),paymentMethod,status:paymentMethod==='transfer'?'pendiente_pago':'pendiente_pago',createdAt:new Date().toISOString()};d.orders.push(order);save(d);res.json(order)});
-app.post('/api/checkout/stripe',auth,async(req,res)=>{if(!stripe)return res.status(503).json({error:'Pago con tarjeta pendiente de activación'});const {items}=req.body||{};const d=read();const line_items=[];for(const item of items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;line_items.push({quantity:Math.max(1,Number(item.qty)||1),price_data:{currency:'eur',unit_amount:Math.round(p.price*100),product_data:{name:p.title,metadata:{ref:p.ref}}}})}if(!line_items.length)return res.status(400).json({error:'Carrito vacío'});const base=process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`;const session=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:`${base}/?payment=success`,cancel_url:`${base}/?payment=cancel`,customer_email:req.user.email});res.json({url:session.url})});
+app.post('/api/orders',auth,(req,res)=>{const {items,address,phone,paymentMethod='transfer'}=req.body||{};if(!Array.isArray(items)||!items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const normalized=[];let subtotal=0;for(const item of items){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:offerPrice(p),regularUnitPrice:Number(p.price||0),discountPct:Number(p.discountPct||0),qty,lineTotal:+(offerPrice(p)*qty).toFixed(2),procurement:{provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0}});subtotal+=offerPrice(p)*qty}if(!normalized.length)return res.status(400).json({error:'No hay productos válidos'});const requestedTransport=!!req.body.useRutaFV;const q=req.body.rutaFVQuote||{};const delivery=requestedTransport?Math.max(0,Number(q.amount||q.total||0)):0;const total=+(subtotal+delivery).toFixed(2);const order={id:id('ord'),number:'FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,transport:{provider:requestedTransport?'RutaFV':'',requested:requestedTransport,amount:delivery,quoteId:String(q.id||q.quoteId||''),status:requestedTransport?'pendiente_crear_reparto':'sin_transporte'},total,address:String(address||''),phone:String(phone||''),paymentMethod,status:'pendiente_pago',createdAt:new Date().toISOString()};d.orders.push(order);save(d);res.json(order)});
+app.post('/api/checkout/stripe',auth,async(req,res)=>{if(!stripe)return res.status(503).json({error:'Pago con tarjeta pendiente de activación'});const {items}=req.body||{};const d=read();const line_items=[];for(const item of items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;line_items.push({quantity:Math.max(1,Number(item.qty)||1),price_data:{currency:'eur',unit_amount:Math.round(offerPrice(p)*100),product_data:{name:p.title,metadata:{ref:p.ref}}}})}if(!line_items.length)return res.status(400).json({error:'Carrito vacío'});const base=process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`;const session=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:`${base}/?payment=success`,cancel_url:`${base}/?payment=cancel`,customer_email:req.user.email});res.json({url:session.url})});
 
 // FVM_IMAGE_MANAGER_V2
 function normalizeProductImages(value=[],fallback=''){
@@ -108,7 +163,7 @@ function normalizeProductImages(value=[],fallback=''){
 function scoreSourceImage(url='',el=null){let s=0;const u=String(url).toLowerCase();const hint=String(el?.attr?.('class')||'')+' '+String(el?.attr?.('id')||'')+' '+String(el?.attr?.('alt')||'');if(/product|producto|gallery|galeria|zoom|main|principal|detail|detalle/i.test(hint))s+=5;if(/logo|icon|sprite|avatar|banner|payment|star|flag/i.test(u+' '+hint))s-=8;const w=Number(el?.attr?.('width')||0),h=Number(el?.attr?.('height')||0);if(w>=300||h>=300)s+=2;return s}
 function collectSourceImages($,prod,url){const found=[];const push=(v,score=0)=>{const abs=absoluteUrl(v,url);if(!abs||!/^https?:/i.test(abs))return;if(/logo|icon|sprite|favicon|payment|badge/i.test(abs))return;found.push({url:abs,score})};const j=Array.isArray(prod?.image)?prod.image:[prod?.image];j.filter(Boolean).forEach(v=>push(typeof v==='string'?v:(v?.url||v?.contentUrl||''),12));push($('meta[property="og:image"]').attr('content')||'',10);push($('link[rel="image_src"]').attr('href')||'',9);$('img').each((_,el)=>{const e=$(el);const src=e.attr('data-zoom-image')||e.attr('data-large')||e.attr('data-src')||e.attr('src')||'';push(src,scoreSourceImage(src,e))});const seen=new Set();return found.sort((a,b)=>b.score-a.score).filter(x=>{if(seen.has(x.url))return false;seen.add(x.url);return true}).slice(0,8).map(x=>({url:x.url,source:url,license:'Imagen de la ficha de origen: revisar permiso/licencia antes de publicar',author:'',origin:'source'}))}
 app.get('/api/admin/products',admin,(req,res)=>res.json(read().products));
-app.post('/api/admin/products',admin,(req,res)=>{const d=read();const title=String(req.body.title||'Producto sin título');const category=String(req.body.category||guessCategory(title));const sourcePrice=Number(req.body.sourcePrice)||0;const p={id:id('prd'),title,category,ref:String(req.body.ref||ownReference(title,sourcePrice,category)),price:Number(req.body.price)||0,stock:req.body.stock||'bajo_pedido',image:String(req.body.image||''),imageSource:String(req.body.imageSource||''),imageLicense:String(req.body.imageLicense||''),imageAuthor:String(req.body.imageAuthor||''),sourceUrl:String(req.body.sourceUrl||''),sourceProvider:String(req.body.sourceProvider||providerFromUrl(req.body.sourceUrl)||''),sourceRef:String(req.body.sourceRef||''),sourceEan:String(req.body.sourceEan||''),description:String(req.body.description||''),sourcePrice,addedValue:Number(req.body.addedValue)||Math.max(0,(Number(req.body.price)||0)-sourcePrice),margin:Number(req.body.margin)||0,published:!!req.body.published,featured:!!req.body.featured};p.images=normalizeProductImages(req.body.images,p.image);if(req.body.published&&p.images.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'});if(p.images[0]){p.image=p.images[0].url;p.imageSource=p.images[0].source||p.imageSource;p.imageLicense=p.images[0].license||p.imageLicense;p.imageAuthor=p.images[0].author||p.imageAuthor}d.products.unshift(p);save(d);res.json(p)});
+app.post('/api/admin/products',admin,(req,res)=>{const d=read();const title=String(req.body.title||'Producto sin título');const category=String(req.body.category||guessCategory(title));const sourcePrice=Number(req.body.sourcePrice)||0;const p={id:id('prd'),title,category,ref:String(req.body.ref&&!String(req.body.ref).startsWith('FVM-')?req.body.ref:nextProductRef(d,title,category)),price:Number(req.body.price)||0,stock:req.body.stock||'bajo_pedido',image:String(req.body.image||''),imageSource:String(req.body.imageSource||''),imageLicense:String(req.body.imageLicense||''),imageAuthor:String(req.body.imageAuthor||''),sourceUrl:String(req.body.sourceUrl||''),sourceProvider:String(req.body.sourceProvider||providerFromUrl(req.body.sourceUrl)||''),sourceRef:String(req.body.sourceRef||''),sourceEan:String(req.body.sourceEan||''),description:String(req.body.description||''),sourcePrice,addedValue:Number(req.body.addedValue)||Math.max(0,(Number(req.body.price)||0)-sourcePrice),margin:Number(req.body.margin)||0,published:!!req.body.published,featured:!!req.body.featured,subcategory:String(req.body.subcategory||''),onOffer:!!req.body.onOffer,discountPct:Math.max(0,Math.min(90,Number(req.body.discountPct)||0))};p.images=normalizeProductImages(req.body.images,p.image);if(req.body.published&&p.images.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'});if(p.images[0]){p.image=p.images[0].url;p.imageSource=p.images[0].source||p.imageSource;p.imageLicense=p.images[0].license||p.imageLicense;p.imageAuthor=p.images[0].author||p.imageAuthor}d.products.unshift(p);save(d);res.json(p)});
 app.put('/api/admin/products/:id',admin,(req,res)=>{const d=read();const i=d.products.findIndex(p=>p.id===req.params.id);if(i<0)return res.status(404).json({error:'Producto no encontrado'});const old=d.products[i];const next={...old,...req.body,id:old.id};for(const k of ['price','sourcePrice','margin','addedValue'])if(req.body[k]!=null)next[k]=Number(req.body[k])||0;for(const k of ['title','category','ref','stock','image','imageSource','imageLicense','imageAuthor','sourceUrl','sourceProvider','sourceRef','sourceEan','description'])if(req.body[k]!=null)next[k]=String(req.body[k]);if(req.body.published!=null){if(req.body.published){const checkImages=normalizeProductImages(req.body.images!=null?req.body.images:next.images,next.image);if(checkImages.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'})}next.published=!!req.body.published}if(req.body.featured!=null)next.featured=!!req.body.featured;if(req.body.images!=null)next.images=normalizeProductImages(req.body.images,next.image);else if(!Array.isArray(next.images))next.images=normalizeProductImages([],next.image);if(next.images.length){next.image=next.images[0].url;next.imageSource=next.images[0].source||'';next.imageLicense=next.images[0].license||'';next.imageAuthor=next.images[0].author||''}else if(req.body.images!=null){next.image='';next.imageSource='';next.imageLicense='';next.imageAuthor=''}d.products[i]=next;save(d);res.json(next)});
 app.delete('/api/admin/products/:id',admin,(req,res)=>{const d=read();d.products=d.products.filter(p=>p.id!==req.params.id);save(d);res.json({ok:true})});
 app.get('/api/admin/orders',admin,(req,res)=>res.json(read().orders.sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
@@ -212,4 +267,10 @@ app.post('/api/admin/ai-catalog',admin,async(req,res)=>{const items=Array.isArra
 
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+
+app.get('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
+app.put('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);const cats=Array.isArray(req.body.categories)?req.body.categories.map(x=>String(x).trim()).filter(Boolean):d.settings.categories;d.settings.categories=[...new Set(cats.filter(x=>!['Pintura','Jardín','Baño y cocina','Ofertas'].includes(x)))];d.settings.subcategories=req.body.subcategories&&typeof req.body.subcategories==='object'?req.body.subcategories:d.settings.subcategories;save(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
+app.post('/api/rutafv/quote',auth,async(req,res)=>{try{const d=read();const items=[];for(const x of req.body.items||[]){const p=d.products.find(y=>y.id===x.id);if(p)items.push({ref:p.ref,title:p.title,qty:Math.max(1,Number(x.qty)||1),weightKg:Number(p.weightKg||0),sourceProvider:p.sourceProvider||'',sourceUrl:p.sourceUrl||''})}const payload={clientCode:RUTAFV_CLIENT_CODE,customer:{name:req.user.name||'',email:req.user.email||'',phone:String(req.body.phone||'')},destination:String(req.body.address||''),items,orderSource:'FVMarket'};const q=await rutaFVRequest(RUTAFV_QUOTE_PATH,payload);res.json(q)}catch(e){res.status(503).json({error:e.message})}});
+app.post('/api/admin/orders/:id/create-rutafv-delivery',admin,async(req,res)=>{try{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});if(!o.transport?.requested)return res.status(400).json({error:'Este pedido no tiene transporte RutaFV'});const u=d.users.find(x=>x.id===o.userId)||{};const payload={clientCode:RUTAFV_CLIENT_CODE,externalOrderId:o.id,externalOrderNumber:o.number,customer:{name:u.name||'',email:u.email||'',phone:o.phone||''},destination:o.address,transportAmount:o.delivery,transportPaid:['pagado','paid','cobrado'].includes(String(o.status).toLowerCase()),items:o.items.map(x=>({ref:x.ref,title:x.title,qty:x.qty}))};const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');o.transport.status='creado_en_rutafv';o.transport.syncedAt=new Date().toISOString();save(d);res.json(o)}catch(e){res.status(503).json({error:e.message})}});
+
 app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`));
