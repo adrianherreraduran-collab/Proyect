@@ -1,0 +1,36 @@
+name: Patch FVMarket navigation tabs
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_nav_tabs.py
+      - .github/workflows/patch-fvmarket-nav-tabs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply navigation tabs patch
+        run: python patch_fvmarket_nav_tabs.py
+      - name: Validate storefront inline scripts syntax
+        run: |
+          python - <<'PY'
+          import re, pathlib
+          s=pathlib.Path('appsrc/public/index.html').read_text(encoding='utf-8')
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          pathlib.Path('/tmp/index.js').write_text('\n'.join(scripts),encoding='utf-8')
+          PY
+          node --check /tmp/index.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit patched storefront and package
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Unificar navegación de categorías FVMarket" || exit 0
+          git push
