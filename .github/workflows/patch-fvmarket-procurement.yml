@@ -18,10 +18,23 @@ jobs:
         run: python patch_fvmarket_procurement.py
       - name: Validate server syntax
         run: node --check appsrc/server.js
-      - name: Commit patched app
+      - name: Repack FVMarket
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile, io, base64
+          root=Path('appsrc')
+          buf=io.BytesIO()
+          with tarfile.open(fileobj=buf,mode='w:gz') as tar:
+              for p in sorted(root.rglob('*')):
+                  if p.is_file():
+                      tar.add(p,arcname=str(p.relative_to(root)))
+          Path('fvmarket-app.tgz.b64').write_text(base64.b64encode(buf.getvalue()).decode('ascii'),encoding='ascii')
+          PY
+      - name: Commit patched app and package
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add appsrc/server.js appsrc/public/admin.html
+          git add appsrc/server.js appsrc/public/admin.html fvmarket-app.tgz.b64
           git commit -m "Ocultar origen al cliente y guardar referencia real para admin" || exit 0
           git push
