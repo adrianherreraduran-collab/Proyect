@@ -1,0 +1,24 @@
+name: Patch FVMarket application
+
+on:
+  push:
+    paths:
+      - patch_fvmarket.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch and repack
+        run: python patch_fvmarket.py
+      - name: Commit updated application
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc fvmarket-app.tgz.b64
+          git commit -m "FVMarket 1.3: margen por producto y acceso admin PIN" || exit 0
+          git push
