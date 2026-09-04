@@ -19,6 +19,9 @@ const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim().toLo
 const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
+const GOOGLE_CSE_API_KEY = String(process.env.GOOGLE_CSE_API_KEY || '');
+const GOOGLE_CSE_CX = String(process.env.GOOGLE_CSE_CX || '');
+// FVM_PROVIDER_GOOGLE_IMAGES_V2
 app.use(express.json({limit:'2mb'}));
 const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024}});
 app.use(express.static(path.join(__dirname,'public')));
@@ -71,7 +74,17 @@ function publicOrder(o={}){
   return {...o,items:(o.items||[]).map(({procurement,...item})=>item)};
 }
 function providerFromUrl(raw=''){
-  try{const h=new URL(raw).hostname.toLowerCase().replace(/^www\./,'');return h.split('.')[0].replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase())}catch{return ''}
+  try{
+    const h=new URL(String(raw)).hostname.toLowerCase().replace(/^www\./,'');
+    const known={
+      'mibricolaje.com':'Mi Bricolaje','obramat.es':'Obramat','leroymerlin.es':'Leroy Merlin','bauhaus.es':'BAUHAUS',
+      'bricodepot.es':'Brico Depôt','manomano.es':'ManoMano','amazon.es':'Amazon','bigmat.es':'BigMat'
+    };
+    if(known[h])return known[h];
+    const parts=h.split('.');
+    const base=(parts.length>2&&['com','co','net','org'].includes(parts[parts.length-2]))?parts[parts.length-3]:parts[0];
+    return String(base||h).replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  }catch{return ''}
 }
 
 app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket'}));
@@ -125,13 +138,38 @@ async function searchOpenverseImages(query='',limit=8){
     return (r.data?.results||[]).map(x=>({title:x.title||'',url:x.thumbnail||x.url||'',original:x.url||'',source:x.foreign_landing_url||x.detail_url||'',license:[x.license,x.license_version].filter(Boolean).join(' ').toUpperCase(),author:x.creator||'',origin:'similar'})).filter(x=>x.url&&!isSpanishImageDomain(x.url)&&!isSpanishImageDomain(x.source));
   }catch(e){console.warn('Openverse image search failed:',e.response?.status||e.message);return []}
 }
+function searchTokens(text=''){
+  const stop=new Set(['para','con','una','uno','las','los','del','the','and','for','with','from','producto','product','hardware','similar','bathroom','kitchen','fixture']);
+  return String(text).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/[a-z0-9]+/g)?.filter(x=>x.length>2&&!stop.has(x))||[];
+}
+function imageCandidateScore(x={},query=''){
+  const q=searchTokens(query), hay=searchTokens([x.title,x.source,x.url].join(' '));
+  const hs=new Set(hay);let score=0;
+  for(const t of q)if(hs.has(t))score+=2;
+  const dims=String(query).match(/\b\d{2,4}\s*[x×]\s*\d{2,4}\b/ig)||[];
+  for(const d of dims)if([x.title,x.source,x.url].join(' ').toLowerCase().includes(d.toLowerCase().replace(/\s/g,'')))score+=5;
+  const critical=['mampara','cafetera','taladro','inodoro','lavabo','grifo','fregadero','carretilla','cemento','mortero','puerta','ventana','panel','ducha','coffee','moka','screen','shower','drill','toilet','sink','faucet','wheelbarrow'];
+  const qcrit=critical.filter(t=>String(query).toLowerCase().includes(t));
+  const full=[x.title,x.source,x.url].join(' ').toLowerCase();
+  for(const t of qcrit)score+=full.includes(t)?6:-4;
+  return score;
+}
+async function searchGoogleImages(query='',limit=8){
+  if(!GOOGLE_CSE_API_KEY||!GOOGLE_CSE_CX)return [];
+  try{
+    const r=await axios.get('https://www.googleapis.com/customsearch/v1',{timeout:12000,params:{key:GOOGLE_CSE_API_KEY,cx:GOOGLE_CSE_CX,q:String(query).slice(0,180),searchType:'image',safe:'active',num:Math.min(Math.max(Number(limit)||8,1),10)}});
+    return (r.data?.items||[]).map(x=>({title:x.title||'',url:x.link||'',original:x.link||'',source:x.image?.contextLink||x.displayLink||'',license:'Comprobar derechos/licencia antes de publicar',author:'',origin:'google'})).filter(x=>x.url&&!isSpanishImageDomain(x.url)&&!isSpanishImageDomain(x.source));
+  }catch(e){console.warn('Google image search failed:',e.response?.status||e.message);return []}
+}
 async function searchExternalImages(query='',limit=8){
-  const target=Math.max(3,Math.min(Number(limit)||8,12));const seen=new Set(),out=[];
-  const add=items=>{for(const x of items||[]){const url=String(x.url||'');const src=String(x.source||'');if(!url||seen.has(url)||isSpanishImageDomain(url)||isSpanishImageDomain(src))continue;seen.add(url);out.push({...x,origin:'similar'});if(out.length>=target)break}};
-  add(await searchOpenverseImages(query,target+4));
-  if(out.length<target)add((await searchCommonsImages(query,target+4)).map(x=>({...x,origin:'similar'})));
-  if(out.length<target){const short=String(query).split(/\s+/).slice(0,4).join(' ');if(short&&short!==query)add(await searchOpenverseImages(short,target+4))}
-  return out.slice(0,target);
+  const target=Math.max(3,Math.min(Number(limit)||8,12));const seen=new Set(),pool=[];
+  const add=items=>{for(const x of items||[]){const url=String(x.url||'');const src=String(x.source||'');if(!url||seen.has(url)||isSpanishImageDomain(url)||isSpanishImageDomain(src))continue;seen.add(url);pool.push({...x,origin:x.origin||'similar'})}};
+  add(await searchGoogleImages(query,Math.min(target+4,10)));
+  add(await searchOpenverseImages(query,target+5));
+  add((await searchCommonsImages(query,target+5)).map(x=>({...x,origin:'similar'})));
+  const ranked=pool.map(x=>({...x,matchScore:imageCandidateScore(x,query)})).sort((a,b)=>b.matchScore-a.matchScore);
+  const good=ranked.filter(x=>x.matchScore>=4);
+  return (good.length>=3?good:ranked.filter(x=>x.matchScore>=1)).slice(0,target);
 }
 
 function catalogCandidatesFromText(text){const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);const out=[];const seen=new Set();const priceRx=/(?:€\s*)?(\d{1,5}[.,]\d{2})(?:\s*€)?/g;for(let i=0;i<lines.length;i++){const line=lines[i];let m;while((m=priceRx.exec(line))){const sourcePrice=Number(m[1].replace(',','.'));if(!sourcePrice||sourcePrice>50000)continue;let title=(line.slice(0,m.index)+' '+line.slice(m.index+m[0].length)).replace(/\b(?:PVP|PRECIO|OFERTA|IVA|IGIC)\b[:\s-]*/gi,' ').replace(/\s+/g,' ').trim();if(title.length<5){for(let j=i-1;j>=Math.max(0,i-3);j--){const prev=lines[j].replace(/\d{1,5}[.,]\d{2}\s*€?/g,'').trim();if(prev.length>=6&&!/^\d+$/.test(prev)){title=prev;break}}}title=title.replace(/^[-–—•·\s]+|[-–—•·\s]+$/g,'').slice(0,170);if(title.length<5)continue;const key=(title.toLowerCase()+'|'+sourcePrice.toFixed(2));if(seen.has(key))continue;seen.add(key);const category=guessCategory(title);out.push({title,sourcePrice,margin:0,price:+sourcePrice.toFixed(2),category,ref:ownReference(title,sourcePrice,category),stock:'bajo_pedido',description:'',image:'',imageSource:'',imageLicense:'',imageAuthor:'',published:false,featured:false});if(out.length>=100)return out}}return out}
@@ -150,8 +188,8 @@ function extractProductFromHtml(html,url){const $=cheerio.load(html);const produ
 app.post('/api/admin/import-url',admin,async(req,res)=>{const url=String(req.body.url||'').trim();if(isUnsafeUrl(url))return res.status(400).json({error:'URL no permitida'});try{const r=await axios.get(url,{timeout:15000,maxRedirects:5,maxContentLength:3*1024*1024,headers:{'User-Agent':'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/126 Safari/537.36','Accept':'text/html,application/xhtml+xml','Accept-Language':'es-ES,es;q=0.9,en;q=0.7','Cache-Control':'no-cache'}});const p=extractProductFromHtml(r.data,url);if(!p.title||p.title==='Producto')return res.status(422).json({error:'La página no expone una ficha de producto legible.'});res.json(p)}catch(e){const status=e.response?.status;res.status(422).json({error:status?('La tienda respondió '+status+' y no permite leer esa ficha automáticamente. Puedes introducir el precio origen manualmente y usar la IA/imágenes.'):('No se pudo leer esa URL. Comprueba que sea una ficha pública de producto.')})}});
 
 
-app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,imageSearch:'Openverse + Wikimedia · excluye dominios de España'}));
-app.post('/api/admin/ai-product',admin,async(req,res)=>{const item=req.body||{};const result=await aiAnalyzeItems([item]);const p=result.products?.[0]||fallbackProductAnalysis(item,0);const sourceImages=normalizeProductImages(item.sourceImages||[],item.sourceUrl?item.image:'').map(x=>({...x,origin:'source'}));const alternativeImages=await searchExternalImages((p.title+' '+(p.imageQuery||'')).slice(0,140),8);const images=alternativeImages.slice(0,8);const first=alternativeImages[0]||null;res.json({...p,aiMode:result.mode,warning:result.warning||'',sourceImages,alternativeImages,images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})});
+app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,googleImages:!!(GOOGLE_CSE_API_KEY&&GOOGLE_CSE_CX),imageSearch:(GOOGLE_CSE_API_KEY&&GOOGLE_CSE_CX?'Google Images + Openverse + Wikimedia':'Openverse + Wikimedia (Google pendiente de credenciales)')+' · excluye dominios de España'}));
+app.post('/api/admin/ai-product',admin,async(req,res)=>{const item=req.body||{};const result=await aiAnalyzeItems([item]);const p=result.products?.[0]||fallbackProductAnalysis(item,0);const sourceImages=normalizeProductImages(item.sourceImages||[],item.sourceUrl?item.image:'').map(x=>({...x,origin:'source'}));const searchQuery=[item.title,p.title,p.imageQuery,item.sourceRef].filter(Boolean).join(' ');const alternativeImages=await searchExternalImages(searchQuery.slice(0,180),8);const images=alternativeImages.slice(0,8);const first=alternativeImages[0]||null;res.json({...p,aiMode:result.mode,warning:result.warning||'',sourceImages,alternativeImages,images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})});
 app.post('/api/admin/ai-catalog',admin,async(req,res)=>{const items=Array.isArray(req.body.products)?req.body.products.slice(0,30):[];if(!items.length)return res.status(400).json({error:'No hay productos para analizar'});const result=await aiAnalyzeItems(items);const products=[];for(const p of (result.products||[])){const images=await searchExternalImages((p.title+' '+(p.imageQuery||'')).slice(0,140),6);const first=images[0]||null;products.push({...p,images,alternativeImages:images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})}res.json({mode:result.mode,warning:result.warning||'',products})});
 
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
