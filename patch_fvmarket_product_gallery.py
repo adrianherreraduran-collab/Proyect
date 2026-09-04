@@ -1,6 +1,7 @@
 from pathlib import Path
 import re
 
+# trigger v1.7 gallery patch
 ROOT=Path('appsrc')
 server_path=ROOT/'server.js'
 index_path=ROOT/'public'/'index.html'
@@ -33,7 +34,6 @@ async function searchExternalImages(query='',limit=8){
     if marker not in server: raise SystemExit('server marker not found')
     server=server.replace(marker,helper+'\n'+marker,1)
 
-# IA: solo propuestas externas/no España como foto de anuncio; conservar origen separado solo como referencia administrativa.
 server=re.sub(
     r"app\.get\('/api/admin/ai-status'.*?\napp\.post\('/api/admin/ai-catalog'.*?\n",
     """app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,imageSearch:'Openverse + Wikimedia · excluye dominios de España'}));
@@ -42,7 +42,6 @@ app.post('/api/admin/ai-catalog',admin,async(req,res)=>{const items=Array.isArra
 """,
     server,count=1,flags=re.S)
 
-# Exigir 3 fotos para publicar desde creación/edición.
 server=server.replace("p.images=normalizeProductImages(req.body.images,p.image);if(p.images[0])", "p.images=normalizeProductImages(req.body.images,p.image);if(req.body.published&&p.images.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'});if(p.images[0])",1)
 server=server.replace("if(req.body.published!=null)next.published=!!req.body.published;if(req.body.featured!=null)", "if(req.body.published!=null){if(req.body.published){const checkImages=normalizeProductImages(req.body.images!=null?req.body.images:next.images,next.image);if(checkImages.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'})}next.published=!!req.body.published}if(req.body.featured!=null)",1)
 
