@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FVMarket · Materiales para tu proyecto</title>
+<meta name="description" content="FVMarket: materiales, herramientas y entrega profesional con RutaFV en Fuerteventura.">
+<style>
+:root{--navy:#071d38;--blue:#0c4f88;--orange:#f28a00;--bg:#f5f7fa;--text:#18202a;--muted:#687383;--line:#e3e8ef;--green:#178b52}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.top{background:var(--navy);color:#fff}.topbar{max-width:1240px;margin:auto;padding:17px 22px;display:grid;grid-template-columns:210px 1fr auto;gap:24px;align-items:center}
+.brand{font-size:30px;font-weight:900;letter-spacing:-1px}.brand span{color:var(--orange)}.search{display:flex;background:#fff;border-radius:7px;overflow:hidden;height:46px}
+.search input{border:0;outline:0;flex:1;padding:0 16px;font-size:15px}.search button{border:0;background:var(--orange);color:#fff;width:54px;font-size:20px;cursor:pointer}
+.actions{display:flex;gap:20px;align-items:center;font-size:14px;font-weight:700}.cart{background:#fff;color:var(--navy);padding:9px 12px;border-radius:7px}
+.nav{background:#fff;border-bottom:1px solid var(--line)}.navin{max-width:1240px;margin:auto;padding:0 22px;display:flex;gap:28px;align-items:center;overflow:auto;white-space:nowrap}
+.nav a{color:#293547;text-decoration:none;padding:16px 0;font-weight:700;font-size:14px}.nav a:first-child{color:#fff;background:var(--blue);padding:16px 20px;margin-left:-20px}
+.delivery{background:#dff2ff;border-bottom:1px solid #cbe7f8}.deliveryin{max-width:1240px;margin:auto;padding:10px 22px;display:flex;justify-content:center;gap:10px;font-size:14px}
+.delivery strong{color:#074b81}
+.hero{max-width:1240px;margin:24px auto 0;padding:0 22px}.heroBox{min-height:390px;border-radius:15px;overflow:hidden;position:relative;background:
+linear-gradient(90deg,rgba(6,28,54,.94) 0%,rgba(6,28,54,.78) 43%,rgba(6,28,54,.12) 73%),
+url('https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=1800&q=85') center/cover}
+.heroContent{position:absolute;left:55px;top:50%;transform:translateY(-50%);max-width:560px;color:#fff}.eyebrow{font-size:13px;font-weight:900;letter-spacing:2px;color:#ffb74c}.hero h1{font-size:48px;line-height:1.04;margin:10px 0 16px;letter-spacing:-1.5px}.hero p{font-size:18px;line-height:1.55;color:#eaf1f8;margin:0 0 25px}.cta{display:inline-flex;padding:13px 22px;border-radius:7px;background:var(--orange);color:#fff;text-decoration:none;font-weight:900}
+.benefits{max-width:1240px;margin:18px auto;padding:0 22px;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.benefit{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;gap:13px;align-items:flex-start}.ico{font-size:27px}.benefit b{display:block;margin-bottom:5px}.benefit small{color:var(--muted);line-height:1.45}
+.section{max-width:1240px;margin:35px auto;padding:0 22px}.sectionHead{display:flex;justify-content:space-between;gap:15px;align-items:end;margin-bottom:17px}.section h2{font-size:26px;margin:0}.sectionHead a{color:var(--blue);font-weight:800;text-decoration:none;font-size:14px}
+.cats{display:grid;grid-template-columns:repeat(7,1fr);gap:12px}.cat{background:#fff;border:1px solid var(--line);border-radius:10px;padding:18px 9px;text-align:center;cursor:pointer;transition:.18s}.cat:hover{transform:translateY(-2px);box-shadow:0 8px 22px #0d284018}.cat .emoji{font-size:34px;display:block;margin-bottom:10px}.cat b{font-size:13px}
+.products{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.card{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}.pic{height:205px;background:#eef1f4 center/cover no-repeat}.p1{background-image:url('https://images.unsplash.com/photo-1581094794329-c8112a89af12?auto=format&fit=crop&w=700&q=80')}.p2{background-image:url('https://images.unsplash.com/photo-1504148455328-c376907d081c?auto=format&fit=crop&w=700&q=80')}.p3{background-image:url('https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=700&q=80')}.p4{background-image:url('https://images.unsplash.com/photo-1584622781564-1d987f7333c1?auto=format&fit=crop&w=700&q=80')}
+.cardBody{padding:16px;display:flex;flex-direction:column;gap:8px;flex:1}.tag{font-size:11px;font-weight:900;color:var(--blue);letter-spacing:.7px}.card h3{font-size:16px;line-height:1.35;margin:0}.ref{font-size:12px;color:var(--muted)}.stock{font-size:12px;color:var(--green);font-weight:800}.route{font-size:12px;color:var(--muted)}.row{display:flex;justify-content:space-between;align-items:center;margin-top:auto;padding-top:7px}.price{font-size:22px;font-weight:900}.add{border:0;background:var(--navy);color:#fff;width:37px;height:37px;border-radius:7px;font-size:20px;cursor:pointer}
+.banner{max-width:1196px;margin:35px auto 45px;background:linear-gradient(100deg,#0a2a4d,#0c5d9a);border-radius:14px;color:#fff;padding:30px 35px;display:flex;justify-content:space-between;align-items:center;gap:25px}.banner h3{font-size:26px;margin:0 0 7px}.banner p{margin:0;color:#dceaf6}.banner .cta{white-space:nowrap}
+footer{background:var(--navy);color:#c7d2df;text-align:center;padding:25px;font-size:13px}
+.notice{position:fixed;right:20px;bottom:20px;background:#fff;border:1px solid var(--line);box-shadow:0 12px 35px #05192c2b;border-radius:10px;padding:14px 18px;display:none;z-index:5;font-weight:800}
+@media(max-width:950px){.topbar{grid-template-columns:1fr auto}.search{grid-column:1/-1;grid-row:2}.cats{grid-template-columns:repeat(4,1fr)}.products{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:39px}.benefits{grid-template-columns:1fr}.actions .account{display:none}}
+@media(max-width:600px){.topbar{padding:13px 16px;gap:12px}.brand{font-size:25px}.navin{padding:0 16px}.hero{padding:0 12px;margin-top:12px}.heroBox{min-height:430px}.heroContent{left:24px;right:24px}.hero h1{font-size:35px}.hero p{font-size:16px}.benefits,.section{padding:0 12px}.cats{grid-template-columns:repeat(2,1fr)}.products{grid-template-columns:1fr}.banner{margin:28px 12px 35px;padding:25px;display:block}.banner .cta{margin-top:18px}.deliveryin{text-align:center}.pic{height:235px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="topbar">
+<div class="brand">FV<span>Market</span></div>
+<div class="search"><input id="q" placeholder="Buscar productos, categorías o referencias..."><button onclick="searchProducts()">⌕</button></div>
+<div class="actions"><span class="account">👤 Mi cuenta</span><span class="cart">🛒 <span id="count">0</span></span></div>
+</div></header>
+<nav class="nav"><div class="navin"><a href="#categorias">☰ Categorías</a><a href="#productos">Construcción</a><a href="#productos">Herramientas</a><a href="#productos">Fontanería</a><a href="#productos">Electricidad</a><a href="#productos">Pintura</a><a href="#productos">Jardín</a><a href="#productos">Baño y cocina</a></div></nav>
+<div class="delivery"><div class="deliveryin">🚚 <strong>Entrega profesional con RutaFV en toda Fuerteventura</strong> · Compra online y recibe donde lo necesitas</div></div>
+
+<main>
+<section class="hero"><div class="heroBox"><div class="heroContent">
+<div class="eyebrow">TODO PARA TU PROYECTO</div>
+<h1>Materiales que llegan hasta tu obra.</h1>
+<p>Compra desde Fuerteventura y recibe tus materiales con planificación, seguimiento y entrega profesional.</p>
+<a class="cta" href="#productos">Ver productos</a>
+</div></div></section>
+
+<section class="benefits">
+<div class="benefit"><div class="ico">🚚</div><div><b>Entrega en toda Fuerteventura</b><small>Desde Puerto del Rosario hasta Morro Jable, con reparto gestionado por RutaFV.</small></div></div>
+<div class="benefit"><div class="ico">📦</div><div><b>Disponible bajo pedido</b><small>Seleccionamos referencias para tu proyecto y coordinamos la preparación.</small></div></div>
+<div class="benefit"><div class="ico">📍</div><div><b>Seguimiento del reparto</b><small>Sabrás cuándo está tu pedido preparado y cuándo va en camino.</small></div></div>
+</section>
+
+<section class="section" id="categorias"><div class="sectionHead"><h2>Compra por categoría</h2><a href="#productos">Ver catálogo →</a></div>
+<div class="cats">
+<div class="cat" data-cat="Construcción"><span class="emoji">🧱</span><b>Construcción</b></div>
+<div class="cat" data-cat="Herramientas"><span class="emoji">🛠️</span><b>Herramientas</b></div>
+<div class="cat" data-cat="Fontanería"><span class="emoji">🚿</span><b>Fontanería</b></div>
+<div class="cat" data-cat="Electricidad"><span class="emoji">💡</span><b>Electricidad</b></div>
+<div class="cat" data-cat="Pintura"><span class="emoji">🎨</span><b>Pintura</b></div>
+<div class="cat" data-cat="Jardín"><span class="emoji">🌿</span><b>Jardín</b></div>
+<div class="cat" data-cat="Baño y cocina"><span class="emoji">🚰</span><b>Baño y cocina</b></div>
+</div></section>
+
+<section class="section" id="productos"><div class="sectionHead"><h2>Productos destacados</h2><a href="#productos">Ver catálogo completo →</a></div>
+<div class="products" id="productGrid">
+<article class="card" data-search="construcción mortero cola flexible c2te 25 kg fvf-100245"><div class="pic p1"></div><div class="cardBody"><div class="tag">CONSTRUCCIÓN</div><h3>Mortero cola flexible C2TE 25 kg</h3><div class="ref">Ref. FVM-100245</div><div class="stock">● Disponible bajo pedido</div><div class="route">🚚 Entrega con RutaFV</div><div class="row"><span class="price">18,06 €</span><button class="add" onclick="addCart()">+</button></div></div></article>
+<article class="card" data-search="herramientas taladro percutor 18 v batería fvf-211008"><div class="pic p2"></div><div class="cardBody"><div class="tag">HERRAMIENTAS</div><h3>Taladro percutor 18 V con batería</h3><div class="ref">Ref. FVM-211008</div><div class="stock">● Disponible bajo pedido</div><div class="route">🚚 Entrega con RutaFV</div><div class="row"><span class="price">125,93 €</span><button class="add" onclick="addCart()">+</button></div></div></article>
+<article class="card" data-search="pintura plástica blanca mate 15 l fvf-318620"><div class="pic p3"></div><div class="cardBody"><div class="tag">PINTURA</div><h3>Pintura plástica blanca mate 15 L</h3><div class="ref">Ref. FVM-318620</div><div class="stock">● Disponible bajo pedido</div><div class="route">🚚 Entrega con RutaFV</div><div class="row"><span class="price">48,30 €</span><button class="add" onclick="addCart()">+</button></div></div></article>
+<article class="card" data-search="fontanería grifo monomando lavabo cromo fvf-429116"><div class="pic p4"></div><div class="cardBody"><div class="tag">FONTANERÍA</div><h3>Grifo monomando lavabo cromo</h3><div class="ref">Ref. FVM-429116</div><div class="stock">● Disponible bajo pedido</div><div class="route">🚚 Entrega con RutaFV</div><div class="row"><span class="price">69,86 €</span><button class="add" onclick="addCart()">+</button></div></div></article>
+</div></section>
+
+<section class="banner"><div><h3>Tu pedido, directo a donde lo necesitas.</h3><p>Selecciona tus productos y RutaFV organiza la entrega en Fuerteventura.</p></div><a class="cta" href="#productos">Empezar pedido</a></section>
+</main>
+<footer>© 2026 FVMarket · Materiales, herramientas y entrega profesional en Fuerteventura</footer>
+<div class="notice" id="notice">Producto añadido al carrito ✓</div>
+<script>
+let cart=0;
+function addCart(){cart++;document.getElementById('count').textContent=cart;const n=document.getElementById('notice');n.style.display='block';clearTimeout(window.nt);window.nt=setTimeout(()=>n.style.display='none',1600)}
+function searchProducts(){const q=document.getElementById('q').value.trim().toLowerCase();document.querySelectorAll('.card').forEach(c=>c.style.display=!q||c.dataset.search.includes(q)?'flex':'none');document.getElementById('productos').scrollIntoView({behavior:'smooth'})}
+document.getElementById('q').addEventListener('keydown',e=>{if(e.key==='Enter')searchProducts()});
+document.querySelectorAll('.cat').forEach(c=>c.addEventListener('click',()=>{document.getElementById('q').value=c.dataset.cat;searchProducts()}));
+</script>
+</body>
+</html>
