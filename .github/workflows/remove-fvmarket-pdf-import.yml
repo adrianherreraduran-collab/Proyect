@@ -1,0 +1,27 @@
+name: Remove FVMarket PDF importer
+
+on:
+  push:
+    paths:
+      - patch_remove_pdf_import.py
+      - .github/workflows/remove-fvmarket-pdf-import.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove PDF import section
+        run: python patch_remove_pdf_import.py
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit patched app
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/admin.html fvmarket-app.tgz.b64
+          git commit -m "Quitar importación PDF de administración FVMarket" || exit 0
+          git push
