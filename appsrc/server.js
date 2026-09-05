@@ -30,7 +30,7 @@ const RUTAFV_QUOTE_PATH = String(process.env.RUTAFV_QUOTE_PATH || '/api/integrat
 const RUTAFV_DELIVERY_PATH = String(process.env.RUTAFV_DELIVERY_PATH || '/api/integrations/fvmarket/deliveries').trim();
 // FVM_CATALOG_TRANSPORT_V1
 // FVM_PROVIDER_BRAVE_IMAGES_V3
-app.use(express.json({limit:'2mb'}));
+app.use(express.json({limit:'12mb'}));
 const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024}});
 app.use(express.static(path.join(__dirname,'public')));
 
@@ -148,6 +148,14 @@ async function rutaFVRequest(pathname,payload){
   if(!RUTAFV_API_URL)throw new Error('RutaFV no está configurado');
   const headers={'Content-Type':'application/json'};if(RUTAFV_API_KEY)headers.Authorization='Bearer '+RUTAFV_API_KEY;
   const r=await fetch(RUTAFV_API_URL+pathname,{method:'POST',headers,body:JSON.stringify(payload),signal:AbortSignal.timeout(30000)});
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok)throw new Error(data.error||data.detail||`RutaFV HTTP ${r.status}`);return data;
+}
+async function rutaFVGet(pathname,params={}){
+  if(!RUTAFV_API_URL)throw new Error('RutaFV no está configurado');
+  const headers={};if(RUTAFV_API_KEY)headers.Authorization='Bearer '+RUTAFV_API_KEY;
+  const qs=new URLSearchParams(params).toString();
+  const r=await fetch(RUTAFV_API_URL+pathname+(qs?'?'+qs:''),{headers,signal:AbortSignal.timeout(15000)});
   let data={};try{data=await r.json()}catch{}
   if(!r.ok)throw new Error(data.error||data.detail||`RutaFV HTTP ${r.status}`);return data;
 }
@@ -309,6 +317,7 @@ app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')))
 app.get('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
 app.put('/api/admin/catalog-taxonomy',admin,(req,res)=>{const d=read();ensureCatalogSettings(d);d.settings.categories=['Construcción','Bricolaje','Herramientas','Reformas'];d.settings.subcategories=req.body.subcategories&&typeof req.body.subcategories==='object'?req.body.subcategories:d.settings.subcategories;const r=Array.isArray(d.settings.subcategories['Reformas'])?d.settings.subcategories['Reformas']:[];d.settings.subcategories['Reformas']=[...new Set([...r,'Baño','Cocina'])];save(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
 app.post('/api/rutafv/quote',auth,async(req,res)=>{try{const d=read();const u=d.users.find(x=>x.id===req.user.id)||{};const c=req.body.customer||{};const customer={name:String(c.name||u.name||''),email:String(c.email||u.email||req.user.email||''),phone:String(c.phone||req.body.phone||'')};const destination={address:String(c.address||req.body.address||''),city:String(c.city||req.body.city||''),postalCode:String(c.postalCode||req.body.postalCode||''),notes:String(c.notes||req.body.notes||'')};if(!customer.name||!customer.email||!customer.phone||!destination.address||!destination.city||!destination.postalCode)return res.status(400).json({error:'Faltan datos del cliente o de entrega'});const items=[];for(const x of req.body.items||[]){const p=d.products.find(y=>y.id===x.id);if(p)items.push({ref:p.ref,title:p.title,qty:Math.max(1,Number(x.qty)||1),weightKg:Number(p.weightKg||0),sourceProvider:p.sourceProvider||'',sourceUrl:p.sourceUrl||''})}const payload={clientCode:RUTAFV_CLIENT_CODE,customer,destination,destinationText:[destination.address,destination.city,destination.postalCode].filter(Boolean).join(', '),items,orderSource:'FVMarket'};const q=await rutaFVRequest(RUTAFV_QUOTE_PATH,payload);res.json(q)}catch(e){res.status(503).json({error:e.name==='TimeoutError'?'RutaFV no respondió dentro del tiempo esperado':e.message})}});
+app.get('/api/rutafv/address-search',auth,async(req,res)=>{try{const q=String(req.query.q||'').trim();if(q.length<3)return res.json({results:[]});const data=await rutaFVGet('/api/integrations/fvmarket/address-search',{q,limit:'5'});res.json(data)}catch(e){res.status(503).json({error:e.message})}});
 app.post('/api/admin/orders/:id/create-rutafv-delivery',admin,async(req,res)=>{try{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});if(!o.transport?.requested)return res.status(400).json({error:'Este pedido no tiene transporte RutaFV'});const u=d.users.find(x=>x.id===o.userId)||{};const payload={clientCode:RUTAFV_CLIENT_CODE,externalOrderId:o.id,externalOrderNumber:o.number,customer:{name:o.customer?.name||u.name||'',email:o.customer?.email||u.email||'',phone:o.customer?.phone||o.phone||''},destination:{address:o.customer?.address||o.address||'',city:o.customer?.city||o.city||'',postalCode:o.customer?.postalCode||o.postalCode||'',notes:o.customer?.notes||o.notes||''},destinationText:[o.customer?.address||o.address,o.customer?.city||o.city,o.customer?.postalCode||o.postalCode].filter(Boolean).join(', '),transportAmount:o.delivery,transportPaid:['pagado','paid','cobrado'].includes(String(o.status).toLowerCase()),items:o.items.map(x=>({ref:x.ref,title:x.title,qty:x.qty}))};const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');o.transport.status='creado_en_rutafv';o.transport.syncedAt=new Date().toISOString();save(d);res.json(o)}catch(e){res.status(503).json({error:e.message})}});
 
 app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`));
