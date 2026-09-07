@@ -1,0 +1,29 @@
+name: Apply FVMarket reference template
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_reference_template.py
+      - .github/workflows/patch-fvmarket-reference-template.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply approved reference layout
+        run: python patch_fvmarket_reference_template.py
+      - name: Validate server syntax
+        run: node --check appsrc/server.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit approved template
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Aplicar plantilla visual aprobada FVMarket" || exit 0
+          git push
