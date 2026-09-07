@@ -1,0 +1,29 @@
+name: Patch FVMarket template v5 refine
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_template_v5_refine.py
+      - .github/workflows/patch-fvmarket-template-v5-refine.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply storefront refinements
+        run: python patch_fvmarket_template_v5_refine.py
+      - name: Validate server syntax
+        run: node --check appsrc/server.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit refined storefront
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Refinar plantilla FVMarket y acceso al cálculo RutaFV" || exit 0
+          git push
