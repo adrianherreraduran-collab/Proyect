@@ -1,0 +1,29 @@
+name: Patch FVMarket hardware hero
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_hardware_hero.py
+      - .github/workflows/patch-fvmarket-hardware-hero.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply hardware hero
+        run: python patch_fvmarket_hardware_hero.py
+      - name: Validate server syntax
+        run: node --check appsrc/server.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit storefront
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Aplicar banner de construcción ferretería y bricolaje FVMarket" || exit 0
+          git push
