@@ -1,3 +1,4 @@
+<!-- FVM_ASSISTED_URL_V1 -->
 <!-- FVM_ADMIN_TAXONOMY_V2 -->
 <!-- FVM_ADMIN_FREEZE_FIX_V1 -->
 <!-- FVM_IMAGE_MULTISELECT_V3 -->
@@ -58,7 +59,42 @@ async function manualSingleImageFiles(input){const files=[...(input.files||[])].
 async function addEditImageFiles(input){const files=[...(input.files||[])].slice(0,8);editDraft.images=Array.isArray(editDraft.images)?editDraft.images:[];for(const f of files){try{const url=await compressImageFile(f);editDraft.images.push({url,origin:'manual-upload',source:'Subida por administración'})}catch{}}input.value='';renderEditImages()}
 
 async function enrichSingleAI(silent=false){const current={...draft,title:$('title').value||draft.title,category:$('category').value||draft.category,description:$('description').value||draft.description,sourcePrice:Number($('sourcePrice').value)||Number(draft.sourcePrice)||0,margin:Number($('margin').value)||0,addedValue:Number($('addedValue').value)||0,price:Number($('price').value)||0,image:$('image').value||''};if(!current.title){if(!silent)importMsg.textContent='Primero analiza una URL o escribe el nombre del producto.';return}if(!silent)importMsg.textContent='Buscando por nombre exacto y características del artículo, y ordenando las imágenes por coincidencia...';try{const p=await api('/api/admin/ai-product',{method:'POST',body:JSON.stringify(current)});draft={...current,...p,sourceImages:p.sourceImages||current.sourceImages||[],alternativeImages:p.alternativeImages||[],sourcePrice:current.sourcePrice,margin:current.margin,addedValue:current.addedValue,price:current.price};$('title').value=draft.title||current.title;$('category').value=draft.category||current.category||'Otros';$('ref').value=draft.ref||'';$('description').value=draft.description||current.description||'';$('image').value=draft.image||'';renderSingleImages();if(!silent)importMsg.textContent=(draft.images?.length?draft.images.length+' imágenes similares encontradas. ':'No se encontró imagen libre similar. ')+(p.aiMode==='openai'?'Texto mejorado con IA.':'Referencia y clasificación aplicadas con el asistente local.')}catch(e){if(!silent)importMsg.textContent='No se pudo mejorar/buscar imagen: '+e.message}}
-async function importUrl(){const u=$('url').value.trim();if(!u){importMsg.textContent='Introduce una URL de producto.';return}importMsg.textContent='Leyendo ficha y precio real...';try{draft=await api('/api/admin/import-url',{method:'POST',body:JSON.stringify({url:u})});$('title').value=draft.title||'';$('category').value=draft.category||'Otros';$('ref').value=draft.ref||'';if($('sourceProvider'))$('sourceProvider').value=draft.sourceProvider||'';if($('sourceRef'))$('sourceRef').value=draft.sourceRef||'';if($('sourceEan'))$('sourceEan').value=draft.sourceEan||'';if($('sourceUrl'))$('sourceUrl').value=draft.sourceUrl||u;$('sourcePrice').value=Number(draft.sourcePrice||0).toFixed(2);$('margin').value='0.00';$('addedValue').value='0.00';$('price').value=Number(draft.sourcePrice||draft.price||0).toFixed(2);$('image').value=draft.image||'';$('description').value=draft.description||'';draft.images=[];draft.alternativeImages=[];renderSingleImages();importMsg.textContent=draft.sourcePrice>0?'Precio real detectado: '+Number(draft.sourcePrice).toFixed(2)+' €. Introduce el margen o el valor agregado para calcular el PVP.':'Ficha leída, pero no se pudo detectar un precio fiable. Puedes escribir el precio origen manualmente.';try{await enrichSingleAI(true)}catch{}}catch(e){importMsg.textContent=e.message}}
+async function importUrl(){
+  const u=$('url').value.trim();
+  if(!u){importMsg.textContent='Introduce una URL de producto.';return}
+  importMsg.textContent='Leyendo ficha y precio real...';
+  try{
+    draft=await api('/api/admin/import-url',{method:'POST',body:JSON.stringify({url:u})});
+    $('title').value=draft.title||'';$('category').value=draft.category||'Otros';$('ref').value=draft.ref||'';
+    if($('sourceProvider'))$('sourceProvider').value=draft.sourceProvider||'';
+    if($('sourceRef'))$('sourceRef').value=draft.sourceRef||'';
+    if($('sourceEan'))$('sourceEan').value=draft.sourceEan||'';
+    if($('sourceUrl'))$('sourceUrl').value=draft.sourceUrl||u;
+    $('sourcePrice').value=Number(draft.sourcePrice||0).toFixed(2);$('margin').value='0.00';$('addedValue').value='0.00';$('price').value=Number(draft.sourcePrice||draft.price||0).toFixed(2);
+    $('image').value=draft.image||'';$('description').value=draft.description||'';draft.images=[];draft.alternativeImages=[];renderSingleImages();
+    importMsg.textContent=draft.sourcePrice>0?'Precio real detectado: '+Number(draft.sourcePrice).toFixed(2)+' €. Introduce el margen o el valor agregado para calcular el PVP.':'Ficha leída, pero no se pudo detectar un precio fiable. Puedes escribir el precio origen manualmente.';
+    try{await enrichSingleAI(true)}catch{}
+  }catch(e){
+    let parsed=null;try{parsed=new URL(u)}catch{}
+    const slug=decodeURIComponent((parsed?.pathname||'').split('/').filter(Boolean).pop()||'producto').replace(/[-_]+/g,' ').replace(/\b\d{5,}\b/g,' ').replace(/\s+/g,' ').trim();
+    const titleGuess=slug.replace(/\b\w/g,c=>c.toUpperCase())||'Producto';
+    const host=(parsed?.hostname||'').replace(/^www\./,'');
+    const providers={'leroymerlin.es':'Leroy Merlin','obramat.es':'Obramat','mibricolaje.com':'Mi Bricolaje','bauhaus.es':'BAUHAUS','bricodepot.es':'Brico Depôt','manomano.es':'ManoMano'};
+    const provider=providers[host]||host;
+    draft={title:titleGuess,category:guessCat(titleGuess),description:'',sourceUrl:u,sourceProvider:provider,sourcePrice:0,price:0,margin:0,addedValue:0,images:[],sourceImages:[],alternativeImages:[],assistedImport:true};
+    $('title').value=draft.title;$('category').value=draft.category;$('ref').value='';
+    if($('sourceProvider'))$('sourceProvider').value=provider;if($('sourceRef'))$('sourceRef').value='';if($('sourceEan'))$('sourceEan').value='';if($('sourceUrl'))$('sourceUrl').value=u;
+    $('sourcePrice').value='0.00';$('margin').value='0.00';$('addedValue').value='0.00';$('price').value='0.00';$('image').value='';$('description').value='';renderSingleImages();
+    importMsg.textContent='La tienda bloquea la lectura directa. Activando modo asistido: buscando información e imágenes públicas relacionadas. Revisa título, características y escribe el precio real de origen antes de publicar.';
+    try{
+      await enrichSingleAI(true);
+      if($('sourceUrl'))$('sourceUrl').value=u;if($('sourceProvider'))$('sourceProvider').value=provider;
+      importMsg.textContent='Modo asistido activo. Se han propuesto datos e imágenes a partir de información pública accesible. Revisa todo y escribe el precio real de origen antes de guardar.';
+    }catch(aiErr){
+      importMsg.textContent='Modo asistido activo. No se pudo completar la búsqueda automáticamente; puedes editar los datos, introducir el precio y añadir tus propias imágenes.';
+    }
+  }
+}
 async function createProduct(){try{const body={...draft,title:$('title').value,category:$('category').value,ref:$('ref').value,price:Number($('price').value)||0,sourcePrice:Number($('sourcePrice').value)||0,sourceProvider:$('sourceProvider')?.value||draft.sourceProvider||'',sourceRef:$('sourceRef')?.value||draft.sourceRef||'',sourceEan:$('sourceEan')?.value||draft.sourceEan||'',sourceUrl:$('sourceUrl')?.value||draft.sourceUrl||$('url').value.trim()||'',margin:Number($('margin').value)||0,addedValue:Number($('addedValue').value)||0,image:$('image').value,description:$('description').value,images:draft.images||[],featured:$('featured').checked,published:$('published').checked};if(!body.title.trim())throw Error('El producto necesita un título.');if((body.images||[]).length<3)throw Error('Selecciona al menos 3 imágenes haciendo clic sobre ellas antes de guardar.');if(!body.ref)await enrichSingleAI(true);body.ref=$('ref').value||draft.ref||'';await api('/api/admin/products',{method:'POST',body:JSON.stringify(body)});productMsg.textContent='Producto guardado correctamente';await loadProducts()}catch(e){productMsg.textContent=e.message}}
 async function loadAIStatus(){try{const x=await api('/api/admin/ai-status');if(x.openai){aiState.className='aiState ok';aiState.textContent='✨ IA generativa activa · '+x.model+' · imágenes: '+x.imageSearch}else{aiState.className='aiState';aiState.textContent='⚙ ✓ Referencias automáticas · ✓ Búsqueda inteligente de imágenes · ✓ Catálogo asistido'}}catch(e){aiState.textContent='Asistente inteligente no disponible'}}
 
