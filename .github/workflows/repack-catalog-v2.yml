@@ -1,0 +1,35 @@
+name: Apply FVMarket catalog workflow v2
+
+on:
+  push:
+    paths:
+      - appsrc/apply_catalog_v2.js
+      - .github/workflows/repack-catalog-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync latest main
+        run: git pull --rebase origin main
+      - name: Apply catalog workflow v2
+        run: node appsrc/apply_catalog_v2.js
+      - name: Validate backend syntax
+        run: node --check appsrc/server.js
+      - name: Verify catalog UI and parser markers
+        run: |
+          grep -q "FVM_CATALOG_PARSER_V2" appsrc/server.js
+          grep -q "FVM_CATALOG_WORKFLOW_UI_V2" appsrc/public/admin.html
+      - name: Repack FVMarket application
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit updated application
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/server.js appsrc/public/admin.html appsrc/package.json appsrc/apply_catalog_v2.js fvmarket-app.tgz.b64
+          git commit -m "Aplicar selector de catálogo y flujo de revisión FVMarket" || exit 0
+          git push
