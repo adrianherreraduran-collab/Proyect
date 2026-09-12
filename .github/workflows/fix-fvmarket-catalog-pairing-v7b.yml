@@ -1,0 +1,28 @@
+name: Fix FVMarket catalog pairing v7b
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-fvmarket-catalog-pairing-v7b.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply patch
+        run: python scripts/patch_fvmarket_catalog_v7.py
+      - name: Validate backend syntax
+        run: node --check appsrc/server.js
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/public/admin.html fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Corregir asociación de precios y referencias del catálogo v7'
+          git push
