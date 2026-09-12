@@ -1,0 +1,29 @@
+name: Fix FVMarket catalog reference parser v3
+
+on:
+  push:
+    paths:
+      - patch_fvmarket_catalog_reference_v3.py
+      - .github/workflows/patch-fvmarket-catalog-reference-v3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply exact-reference catalog parser
+        run: python patch_fvmarket_catalog_reference_v3.py
+      - name: Validate backend syntax
+        run: node --check appsrc/server.js
+      - name: Repack FVMarket
+        run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
+      - name: Commit updated application
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appsrc/public/admin.html fvmarket-app.tgz.b64
+          git commit -m "Corregir importación de catálogo por referencia exacta" || exit 0
+          git push
