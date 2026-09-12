@@ -16,6 +16,10 @@ const PORT = process.env.PORT || 10000;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.createHash('sha256').update('fvmarket-dev-' + (process.env.RENDER_SERVICE_ID || 'local')).digest('hex');
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+// FVM_CUSTOMER_ACCOUNTS_V2
+const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
+const EMAIL_FROM = String(process.env.EMAIL_FROM || '').trim();
+const PUBLIC_URL = String(process.env.PUBLIC_URL || '').trim().replace(/\/$/,'');
 const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
 const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
@@ -41,7 +45,7 @@ const defaultProducts = [
   {id:'p4',title:'Inodoro completo salida dual',category:'Baño y cocina',ref:'FVM-WC-DUAL',price:189.00,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=700&q=80',published:true,featured:true},
   {id:'p5',title:'Carretilla de jardín 100 L rueda neumática',category:'Jardín',ref:'FVM-CAR-100',price:74.90,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1599685315640-68d303c222b9?auto=format&fit=crop&w=700&q=80',published:true,featured:true}
 ];
-function seed(){return {users:[],products:defaultProducts,orders:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
+function seed(){return {users:[],products:defaultProducts,orders:[],quotes:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2))}
 function ensureAdmin(d){
   if(!Array.isArray(d.users))d.users=[];
@@ -49,7 +53,7 @@ function ensureAdmin(d){
   let changed=false;
   let u=d.users.find(x=>String(x.username||'').toLowerCase()===ADMIN_USERNAME);
   if(!u){
-    u={id:id('usr'),name:'Administrador FVMarket',username:ADMIN_USERNAME,email:ADMIN_USERNAME+'@fvmarket.local',password:ADMIN_PIN?bcrypt.hashSync(ADMIN_PIN,12):'',role:'admin',createdAt:new Date().toISOString()};
+    u={id:id('usr'),name:'Administrador FVMarket',username:ADMIN_USERNAME,email:ADMIN_USERNAME+'@fvmarket.local',password:ADMIN_PIN?bcrypt.hashSync(ADMIN_PIN,12):'',role:'admin',emailVerified:true,createdAt:new Date().toISOString()};
     d.users.unshift(u);changed=true;
   }else{
     if(u.role!=='admin'){u.role='admin';changed=true}
@@ -61,17 +65,58 @@ function ensureAdmin(d){
 function read(){
   try{
     const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));
-    const changedAdmin=ensureAdmin(d);ensureCatalogSettings(d);if(changedAdmin)save(d);else save(d);
+    const changedAdmin=ensureAdmin(d);ensureCustomerData(d);ensureCatalogSettings(d);if(changedAdmin)save(d);else save(d);
     return d;
   }catch(e){
-    const d=seed();ensureAdmin(d);ensureCatalogSettings(d);save(d);return d;
+    const d=seed();ensureAdmin(d);ensureCustomerData(d);ensureCatalogSettings(d);save(d);return d;
   }
 }
 function id(prefix){return prefix+'_'+crypto.randomBytes(7).toString('hex')}
 function token(u){return jwt.sign({id:u.id,email:u.email,username:u.username||'',role:u.role},JWT_SECRET,{expiresIn:'7d'})}
 function auth(req,res,next){const h=req.headers.authorization||'';const t=h.startsWith('Bearer ')?h.slice(7):'';try{req.user=jwt.verify(t,JWT_SECRET);next()}catch(e){res.status(401).json({error:'Sesión no válida'})}}
 function admin(req,res,next){auth(req,res,()=>req.user.role==='admin'?next():res.status(403).json({error:'Acceso de administrador requerido'}))}
-function safeUser(u){return {id:u.id,name:u.name,email:u.email,username:u.username||'',role:u.role,createdAt:u.createdAt}}
+function ensureCustomerData(d){
+  if(!Array.isArray(d.quotes))d.quotes=[];
+  if(!Array.isArray(d.users))d.users=[];
+  for(const u of d.users){
+    if(u.role==='admin'){u.emailVerified=true;continue}
+    if(u.emailVerified==null)u.emailVerified=true;
+    if(!u.deliveryAddress||typeof u.deliveryAddress!=='object')u.deliveryAddress={};
+    if(u.firstName==null)u.firstName='';if(u.lastName==null)u.lastName='';if(u.nifNie==null)u.nifNie='';if(u.phone==null)u.phone='';if(u.billingAddress==null)u.billingAddress='';
+  }
+}
+function cleanNifNie(v=''){return String(v).toUpperCase().replace(/[\s-]/g,'')}
+function validNifNie(v=''){
+  const x=cleanNifNie(v);const letters='TRWAGMYFPDXBNJZSQVHLCKE';
+  let digits='',letter='';
+  if(/^\d{8}[A-Z]$/.test(x)){digits=x.slice(0,8);letter=x.slice(8)}
+  else if(/^[XYZ]\d{7}[A-Z]$/.test(x)){digits=({X:'0',Y:'1',Z:'2'})[x[0]]+x.slice(1,8);letter=x.slice(8)}
+  else return false;
+  return letters[Number(digits)%23]===letter;
+}
+function customerProfileComplete(u={}){
+  if(u.role==='admin')return true;
+  const a=u.deliveryAddress||{};
+  return !!(u.emailVerified&&String(u.firstName||'').trim()&&String(u.lastName||'').trim()&&validNifNie(u.nifNie)&&String(u.billingAddress||'').trim()&&String(a.address||'').trim()&&a.validated===true);
+}
+function safeUser(u){return {id:u.id,name:String(u.name||[u.firstName,u.lastName].filter(Boolean).join(' ')).trim(),firstName:u.firstName||'',lastName:u.lastName||'',nifNie:u.nifNie||'',phone:u.phone||'',billingAddress:u.billingAddress||'',deliveryAddress:u.deliveryAddress||{},email:u.email,username:u.username||'',role:u.role,emailVerified:!!u.emailVerified,profileComplete:customerProfileComplete(u),createdAt:u.createdAt}}
+function verificationHash(v=''){return crypto.createHash('sha256').update(String(v)).digest('hex')}
+function newVerificationToken(){return crypto.randomBytes(32).toString('hex')}
+function baseUrl(req){return PUBLIC_URL||`${req.protocol}://${req.get('host')}`}
+async function sendVerificationEmail(req,u,rawToken){
+  if(!RESEND_API_KEY||!EMAIL_FROM)return {sent:false,reason:'email_not_configured'};
+  const verifyUrl=`${baseUrl(req)}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:EMAIL_FROM,to:[u.email],subject:'Verifica tu cuenta FVMarket',html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#06345f">Verifica tu cuenta FVMarket</h2><p>Confirma tu correo electrónico para activar tu cuenta.</p><p><a href="${verifyUrl}" style="display:inline-block;background:#35a33a;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Verificar correo</a></p><p style="font-size:12px;color:#64748b">El enlace caduca en 24 horas.</p></div>`})});
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok)throw new Error(data.message||'No se pudo enviar el correo de verificación');return {sent:true,id:data.id||''};
+}
+function requireCustomerReady(req,res,next){
+  const u=read().users.find(x=>x.id===req.user.id);if(!u)return res.status(401).json({error:'Cuenta no encontrada'});
+  if(u.role==='admin')return next();
+  if(!u.emailVerified)return res.status(403).json({error:'Debes verificar tu correo electrónico antes de continuar'});
+  if(!customerProfileComplete(u))return res.status(409).json({error:'Completa tu perfil: nombre, apellidos, NIF/NIE, dirección de facturación y dirección de entrega validada'});
+  req.customer=u;next();
+}
 
 // FVM_PRIVATE_PROCUREMENT_V1
 function publicProduct(p={}){
@@ -162,13 +207,57 @@ async function rutaFVGet(pathname,params={}){
 
 app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket'}));
 app.get('/api/products',(req,res)=>{const d=read();const q=(req.query.q||'').toLowerCase();const category=(req.query.category||'').toLowerCase();res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.ref}`.toLowerCase().includes(q)) && (!category || p.category.toLowerCase()===category)).map(publicProduct))});
-app.post('/api/auth/register',async(req,res)=>{const {name,email,password}=req.body||{};if(!name||!email||!password||password.length<6)return res.status(400).json({error:'Nombre, email y contraseña de al menos 6 caracteres son obligatorios'});const d=read();if(d.users.some(u=>String(u.email||'').toLowerCase()===String(email).toLowerCase()))return res.status(409).json({error:'Ese email ya está registrado'});const u={id:id('usr'),name:String(name).trim(),username:'',email:String(email).trim().toLowerCase(),password:await bcrypt.hash(password,12),role:'customer',createdAt:new Date().toISOString()};d.users.push(u);save(d);res.json({token:token(u),user:safeUser(u)});});
-app.post('/api/auth/login',async(req,res)=>{const body=req.body||{};const identifier=String(body.user||body.username||body.email||'').trim().toLowerCase();const secret=String(body.pin??body.password??'');const d=read();const u=d.users.find(x=>String(x.username||'').toLowerCase()===identifier||String(x.email||'').toLowerCase()===identifier);if(!u||!u.password||!(await bcrypt.compare(secret,u.password)))return res.status(401).json({error:'Usuario/email o PIN/contraseña incorrectos'});res.json({token:token(u),user:safeUser(u)});});
+app.post('/api/auth/register',async(req,res)=>{
+  const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<8)return res.status(400).json({error:'Introduce un correo válido y una contraseña de al menos 8 caracteres'});
+  const d=read();if(d.users.some(u=>String(u.email||'').toLowerCase()===email))return res.status(409).json({error:'Ese correo ya está registrado'});
+  const rawToken=newVerificationToken();
+  const u={id:id('usr'),name:'',firstName:'',lastName:'',nifNie:'',phone:'',billingAddress:'',deliveryAddress:{},username:'',email,password:await bcrypt.hash(password,12),role:'customer',emailVerified:false,verificationTokenHash:verificationHash(rawToken),verificationExpiresAt:Date.now()+24*60*60*1000,createdAt:new Date().toISOString()};
+  d.users.push(u);save(d);
+  try{const mail=await sendVerificationEmail(req,u,rawToken);return res.status(201).json({verificationRequired:true,emailSent:mail.sent,message:mail.sent?'Te hemos enviado un correo de verificación. Ábrelo para activar tu cuenta.':'Cuenta creada. El servicio de correo de verificación todavía no está configurado.'})}catch(e){return res.status(201).json({verificationRequired:true,emailSent:false,message:'Cuenta creada, pero no se pudo enviar el correo de verificación. Puedes solicitar un nuevo envío.',mailError:e.message})}
+});
+app.post('/api/auth/resend-verification',async(req,res)=>{
+  const email=String(req.body?.email||'').trim().toLowerCase();const d=read();const u=d.users.find(x=>String(x.email||'').toLowerCase()===email&&x.role==='customer');
+  if(!u||u.emailVerified)return res.json({ok:true,message:'Si la cuenta existe y está pendiente, recibirás un correo de verificación.'});
+  const rawToken=newVerificationToken();u.verificationTokenHash=verificationHash(rawToken);u.verificationExpiresAt=Date.now()+24*60*60*1000;save(d);
+  try{const mail=await sendVerificationEmail(req,u,rawToken);if(!mail.sent)return res.status(503).json({error:'El servicio de correo de verificación no está configurado'});res.json({ok:true,message:'Correo de verificación reenviado'})}catch(e){res.status(502).json({error:e.message})}
+});
+app.get('/api/auth/verify-email',(req,res)=>{
+  const raw=String(req.query.token||'');if(!raw)return res.redirect('/?verified=invalid');const d=read();const h=verificationHash(raw);const u=d.users.find(x=>x.verificationTokenHash===h&&x.role==='customer');
+  if(!u||Number(u.verificationExpiresAt||0)<Date.now())return res.redirect('/?verified=expired');u.emailVerified=true;u.verificationTokenHash='';u.verificationExpiresAt=0;save(d);res.redirect('/?verified=1');
+});
+app.post('/api/auth/login',async(req,res)=>{
+  const body=req.body||{};const identifier=String(body.email||body.user||body.username||'').trim().toLowerCase();const secret=String(body.password??body.pin??'');const d=read();
+  const u=d.users.find(x=>String(x.email||'').toLowerCase()===identifier||(x.role==='admin'&&String(x.username||'').toLowerCase()===identifier));
+  if(!u||!u.password||!(await bcrypt.compare(secret,u.password)))return res.status(401).json({error:'Correo o contraseña incorrectos'});
+  if(u.role==='customer'&&!u.emailVerified)return res.status(403).json({error:'Confirma tu correo electrónico antes de iniciar sesión'});
+  res.json({token:token(u),user:safeUser(u)});
+});
 app.get('/api/me',auth,(req,res)=>{const u=read().users.find(x=>x.id===req.user.id);res.json(u?safeUser(u):null)});
+app.put('/api/me/profile',auth,async(req,res)=>{
+  const d=read();const u=d.users.find(x=>x.id===req.user.id);if(!u)return res.status(404).json({error:'Cuenta no encontrada'});if(u.role==='customer'&&!u.emailVerified)return res.status(403).json({error:'Verifica primero tu correo electrónico'});
+  const firstName=String(req.body?.firstName||'').trim(),lastName=String(req.body?.lastName||'').trim(),nifNie=cleanNifNie(req.body?.nifNie||''),billingAddress=String(req.body?.billingAddress||'').trim(),phone=String(req.body?.phone||'').trim();const dv=req.body?.deliveryAddress||{};
+  if(!firstName||!lastName||!validNifNie(nifNie)||!billingAddress)return res.status(400).json({error:'Completa nombre, apellidos, un NIF/NIE válido y la dirección de facturación'});
+  const query=[dv.address,dv.city,dv.postalCode].filter(Boolean).join(', ').trim();if(!query)return res.status(400).json({error:'Selecciona una dirección de entrega válida'});
+  try{
+    const found=await rutaFVGet('/api/integrations/fvmarket/address-search',{q:query,limit:'5'});const rows=Array.isArray(found?.results)?found.results:[];
+    const wanted=String(dv.placeId||'');const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+    const match=rows.find(r=>wanted&&String(r.placeId||r.place_id||'')===wanted)||rows.find(r=>norm(r.address||r.label).includes(norm(dv.address))||norm(dv.address).includes(norm(r.address||r.label)));
+    if(!match)return res.status(400).json({error:'La dirección de entrega no pudo validarse. Selecciónala desde las sugerencias de Google.'});
+    u.firstName=firstName;u.lastName=lastName;u.name=(firstName+' '+lastName).trim();u.nifNie=nifNie;u.billingAddress=billingAddress;u.phone=phone;u.deliveryAddress={address:String(match.address||match.label||dv.address),city:String(match.city||dv.city||''),postalCode:String(match.postalCode||match.postal_code||dv.postalCode||''),municipality:String(match.municipality||''),placeId:String(match.placeId||match.place_id||dv.placeId||''),lat:match.lat??match.latitude??dv.lat??null,lng:match.lng??match.longitude??dv.lng??null,validated:true,source:'google'};save(d);res.json({user:safeUser(u)});
+  }catch(e){res.status(503).json({error:'No se pudo validar la dirección con Google/RutaFV: '+e.message})}
+});
 app.get('/api/my-orders',auth,(req,res)=>res.json(read().orders.filter(o=>o.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(publicOrder)));
+app.get('/api/my-quotes',auth,(req,res)=>res.json((read().quotes||[]).filter(q=>q.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
+app.post('/api/quotes',auth,requireCustomerReady,async(req,res)=>{
+  const d=read();const normalized=[];let subtotal=0;for(const item of req.body?.items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));const unit=offerPrice(p);normalized.push({productId:p.id,title:p.title,ref:p.ref,qty,unitPrice:unit,lineTotal:+(unit*qty).toFixed(2)});subtotal+=unit*qty}
+  if(!normalized.length)return res.status(400).json({error:'El carrito está vacío'});let delivery=0,transport=null;
+  if(req.body?.useRutaFV){try{const u=req.customer||{};const a=u.deliveryAddress||{};const payload={clientCode:RUTAFV_CLIENT_CODE,customer:{name:u.name,email:u.email,phone:u.phone||''},destination:{address:a.address||'',city:a.city||'',postalCode:a.postalCode||''},destinationText:[a.address,a.city,a.postalCode].filter(Boolean).join(', '),items:normalized.map(x=>({ref:x.ref,title:x.title,qty:x.qty})),orderSource:'FVMarket',requestType:'quote'};const r=await rutaFVRequest(RUTAFV_QUOTE_PATH,payload);delivery=Math.max(0,Number(r.amount||r.total||0));transport={provider:'RutaFV',amount:delivery,quoteId:String(r.id||r.quoteId||'')}}catch(e){return res.status(503).json({error:'No se pudo calcular el transporte: '+e.message})}}
+  const now=new Date(),until=new Date(now.getTime()+15*24*60*60*1000);const total=+(subtotal+delivery).toFixed(2);const q={id:id('quo'),number:'PRE-FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,total,transport,status:'emitido',validUntil:until.toISOString(),customer:{name:req.customer.name,email:req.customer.email,nifNie:req.customer.nifNie,billingAddress:req.customer.billingAddress,deliveryAddress:req.customer.deliveryAddress},createdAt:now.toISOString()};d.quotes.push(q);save(d);res.status(201).json(q);
+});
 
-app.post('/api/orders',auth,(req,res)=>{const {items,address,phone,paymentMethod='transfer'}=req.body||{};const customer=req.body.customer||{};if(!Array.isArray(items)||!items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const normalized=[];let subtotal=0;for(const item of items){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:offerPrice(p),regularUnitPrice:Number(p.price||0),discountPct:Number(p.discountPct||0),qty,lineTotal:+(offerPrice(p)*qty).toFixed(2),procurement:{provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0}});subtotal+=offerPrice(p)*qty}if(!normalized.length)return res.status(400).json({error:'No hay productos válidos'});const requestedTransport=!!req.body.useRutaFV;const q=req.body.rutaFVQuote||{};const delivery=requestedTransport?Math.max(0,Number(q.amount||q.total||0)):0;const total=+(subtotal+delivery).toFixed(2);const order={id:id('ord'),number:'FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,transport:{provider:requestedTransport?'RutaFV':'',requested:requestedTransport,amount:delivery,quoteId:String(q.id||q.quoteId||''),status:requestedTransport?'pendiente_crear_reparto':'sin_transporte'},total,customer:{name:String(customer.name||''),email:String(customer.email||req.user.email||''),phone:String(customer.phone||phone||''),address:String(customer.address||address||''),city:String(customer.city||req.body.city||''),postalCode:String(customer.postalCode||req.body.postalCode||''),notes:String(customer.notes||req.body.notes||'')},address:String(customer.address||address||''),city:String(customer.city||req.body.city||''),postalCode:String(customer.postalCode||req.body.postalCode||''),notes:String(customer.notes||req.body.notes||''),phone:String(customer.phone||phone||''),paymentMethod,status:'pendiente_pago',createdAt:new Date().toISOString()};d.orders.push(order);save(d);res.json(order)});
-app.post('/api/checkout/stripe',auth,async(req,res)=>{
+app.post('/api/orders',auth,requireCustomerReady,(req,res)=>{const {items,address,phone,paymentMethod='transfer'}=req.body||{};const customer=req.body.customer||{};if(!Array.isArray(items)||!items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const normalized=[];let subtotal=0;for(const item of items){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:offerPrice(p),regularUnitPrice:Number(p.price||0),discountPct:Number(p.discountPct||0),qty,lineTotal:+(offerPrice(p)*qty).toFixed(2),procurement:{provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0}});subtotal+=offerPrice(p)*qty}if(!normalized.length)return res.status(400).json({error:'No hay productos válidos'});const requestedTransport=!!req.body.useRutaFV;const q=req.body.rutaFVQuote||{};const delivery=requestedTransport?Math.max(0,Number(q.amount||q.total||0)):0;const total=+(subtotal+delivery).toFixed(2);const order={id:id('ord'),number:'FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,transport:{provider:requestedTransport?'RutaFV':'',requested:requestedTransport,amount:delivery,quoteId:String(q.id||q.quoteId||''),status:requestedTransport?'pendiente_crear_reparto':'sin_transporte'},total,customer:{name:String(customer.name||''),email:String(customer.email||req.user.email||''),phone:String(customer.phone||phone||''),address:String(customer.address||address||''),city:String(customer.city||req.body.city||''),postalCode:String(customer.postalCode||req.body.postalCode||''),notes:String(customer.notes||req.body.notes||'')},address:String(customer.address||address||''),city:String(customer.city||req.body.city||''),postalCode:String(customer.postalCode||req.body.postalCode||''),notes:String(customer.notes||req.body.notes||''),phone:String(customer.phone||phone||''),paymentMethod,status:'pendiente_pago',createdAt:new Date().toISOString()};d.orders.push(order);save(d);res.json(order)});
+app.post('/api/checkout/stripe',auth,requireCustomerReady,async(req,res)=>{
   // FVM_TRANSPORT_CHECKOUT_V2
   if(!stripe)return res.status(503).json({error:'Pago con tarjeta pendiente de activación'});
   const body=req.body||{};
