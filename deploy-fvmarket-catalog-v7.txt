@@ -1,0 +1,2 @@
+FVMarket catalog pairing v7 deployment marker
+Includes deterministic PDF reference-price pairing and cell-scoped product text.
