@@ -619,10 +619,15 @@ setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
     return '';
   }
   function pageText4(tc,viewport,pdfjs){
-    const records=[],pieces=[];
+    const records=[],pieces=[];let seq4=0;
     for(const it of tc.items||[]){
       const r=recFromItem(it,viewport,pdfjs);
-      if(r){records.push(r);pieces.push(...piecesFromRec(r))}
+      if(r){
+        r._seq=seq4*100;
+        const ps=piecesFromRec(r);
+        ps.forEach((x,k)=>x._seq=seq4*100+k);
+        records.push(r);pieces.push(...ps);seq4++;
+      }
     }
 
     const refs=[];
@@ -731,7 +736,7 @@ setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
     return true;
   }
   function textFor4(ref,allRefs,records,pieces,W,pageNo){
-    const c=colInfo4(ref,allRefs,W),allRows=rows4(records);
+    const c=colInfo4(ref,allRefs,W),cellRecords=records.filter(r=>r.cx>=c.x0-4&&r.cx<=c.x1+4),allRows=rows4(cellRecords);
     const pool=allRows.filter(r=>r.cy<ref.cy-3&&ref.cy-r.cy<360&&Math.max(0,Math.min(r.x1,c.x1)-Math.max(r.x0,c.x0))>14&&headingOk4(r.text));
     let seed=pool.sort((a,b)=>((ref.cy-a.cy)-a.h*5)-((ref.cy-b.cy)-b.h*5))[0]||null;
     let title='Producto '+ref.ref,titleY=Math.max(0,ref.cy-220);
@@ -763,12 +768,66 @@ setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
     if(!pool.length)return null;
     return pool.sort((a,b)=>{const da=(a.cx<cellX0?cellX0-a.cx:a.cx>cellX1?a.cx-cellX1:0)+Math.max(0,ref.cy-a.y1)*.7+Math.abs(a.cx-ref.cx)*.12;const db=(b.cx<cellX0?cellX0-b.cx:b.cx>cellX1?b.cx-cellX1:0)+Math.max(0,ref.cy-b.y1)*.7+Math.abs(b.cx-ref.cx)*.12;return da-db})[0];
   }
+  /* FVM_CATALOG_PAIRING_V7 */
+  function pairPrices7(refs,prices){
+    const result=new Map(),used=new Set();
+    const rlist=[...refs].sort((a,b)=>(a._seq??0)-(b._seq??0));
+    const plist=[...prices].sort((a,b)=>(a._seq??0)-(b._seq??0));
+    const markers=[...rlist.map(x=>({type:'r',x,seq:x._seq??0})),...plist.map(x=>({type:'p',x,seq:x._seq??0}))].sort((a,b)=>a.seq-b.seq);
+    const runs=[];
+    for(const m of markers){
+      const last=runs[runs.length-1];
+      if(last&&last.type===m.type&&m.seq-last.items[last.items.length-1].seq<700)last.items.push(m);
+      else runs.push({type:m.type,items:[m]});
+    }
+    const nearGroup=(a,b)=>{
+      const aa=a.map(z=>z.x),bb=b.map(z=>z.x);
+      const ax=aa.reduce((q,z)=>q+(z.cx||0),0)/Math.max(1,aa.length),ay=aa.reduce((q,z)=>q+(z.cy||0),0)/Math.max(1,aa.length);
+      const bx=bb.reduce((q,z)=>q+(z.cx||0),0)/Math.max(1,bb.length),by=bb.reduce((q,z)=>q+(z.cy||0),0)/Math.max(1,bb.length);
+      return Math.abs(ax-bx)<520&&Math.abs(ay-by)<240;
+    };
+    for(let i=0;i<runs.length-1;i++){
+      const a=runs[i],b=runs[i+1];
+      if(!nearGroup(a.items,b.items))continue;
+      if(a.type==='p'&&b.type==='r'&&a.items.length===b.items.length&&a.items.length>1){
+        a.items.forEach((m,k)=>{result.set(b.items[k].x,m.x);used.add(m.x)});
+      }else if(a.type==='r'&&b.type==='p'&&a.items.length===b.items.length&&a.items.length>1){
+        a.items.forEach((m,k)=>{result.set(m.x,b.items[k].x);used.add(b.items[k].x)});
+      }else if(a.type==='r'&&b.type==='p'&&a.items.length>1&&b.items.length===1){
+        a.items.forEach(m=>result.set(m.x,b.items[0].x));used.add(b.items[0].x);
+      }else if(a.type==='p'&&b.type==='r'&&a.items.length===1&&b.items.length>1){
+        b.items.forEach(m=>result.set(m.x,a.items[0].x));used.add(a.items[0].x);
+      }
+    }
+    for(let i=0;i<rlist.length;i++){
+      const r=rlist[i];if(result.has(r))continue;
+      const prevSeq=i?(rlist[i-1]._seq??-Infinity):-Infinity;
+      const cand=plist.filter(p=>!used.has(p)&&(p._seq??0)<(r._seq??0)&&(p._seq??0)>prevSeq);
+      if(cand.length){
+        const p=[...cand].sort((a,b)=>(b._seq??0)-(a._seq??0))[0];
+        const dx=Math.abs((p.cx||0)-(r.cx||0)),dy=Math.abs((p.cy||0)-(r.cy||0));
+        if(dx<190&&dy<125){result.set(r,p);used.add(p);continue}
+      }
+    }
+    const edges=[];
+    for(const r of rlist){
+      if(result.has(r))continue;
+      for(const p of plist){
+        if(used.has(p))continue;
+        const dx=Math.abs((p.cx||0)-(r.cx||0)),dy=Math.abs((p.cy||0)-(r.cy||0));
+        if(dx<190&&dy<150)edges.push([dx*1.35+dy,r,p]);
+      }
+    }
+    edges.sort((a,b)=>a[0]-b[0]);
+    for(const [,r,p] of edges){if(result.has(r)||used.has(p))continue;result.set(r,p);used.add(p)}
+    return result;
+  }
   async function parse4(file){
     const pdfjs=await getPdfJs4(),buf=await file.arrayBuffer();pdfDoc4=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;pageCache4.clear();const out=[],seen=new Set();
     for(let n=1;n<=pdfDoc4.numPages;n++){
       if(window.catalogMsg)catalogMsg.textContent='Leyendo página '+n+' de '+pdfDoc4.numPages+' por referencia y celda…';
-      const page=await pdfDoc4.getPage(n),viewport=page.getViewport({scale:1.25}),tc=await page.getTextContent({normalizeWhitespace:true}),t=pageText4(tc,viewport,pdfjs),boxes=await imageBoxes4(page,viewport,pdfjs),sec=section4(t.records,n);
-      for(const ref of t.refs){if(seen.has(ref.ref))continue;const pr=priceFor4(ref,t.prices,t.refs,viewport.width);if(!pr)continue;const tx=textFor4(ref,t.refs,t.records,t.pieces,viewport.width,n);seen.add(ref.ref);const sp=Number(pr.price)||0,margin=40,added=+(sp*.4).toFixed(2);out.push({title:tx.title,description:tx.description,sourceRef:ref.ref,sourcePrice:sp,margin,addedValue:added,price:+(sp+added).toFixed(2),sourceProvider:'Catálogo Mi Bricolaje',sourceUrl:'',ref:'',published:false,featured:false,selected:false,category:cat4(sec,tx.title),catalogPage:n,catalogSection:sec,_r4:ref,_b4:tx.bounds,_img4:imageFor4(ref,boxes,tx.bounds,viewport)})}
+      const page=await pdfDoc4.getPage(n),viewport=page.getViewport({scale:1.25}),tc=await page.getTextContent({normalizeWhitespace:true}),t=pageText4(tc,viewport,pdfjs),boxes=await imageBoxes4(page,viewport,pdfjs),sec=section4(t.records,n),priceMap7=pairPrices7(t.refs,t.prices);
+      for(const ref of t.refs){if(seen.has(ref.ref))continue;const pr=priceMap7.get(ref)||priceFor4(ref,t.prices,t.refs,viewport.width);if(!pr)continue;const tx=textFor4(ref,t.refs,t.records,t.pieces,viewport.width,n);seen.add(ref.ref);const sp=Number(pr.price)||0,margin=40,added=+(sp*.4).toFixed(2);out.push({title:tx.title,description:tx.description,sourceRef:ref.ref,sourcePrice:sp,margin,addedValue:added,price:+(sp+added).toFixed(2),sourceProvider:'Catálogo Mi Bricolaje',sourceUrl:'',ref:'',published:false,featured:false,selected:false,category:cat4(sec,tx.title),catalogPage:n,catalogSection:sec,_r4:ref,_b4:tx.bounds,_img4:imageFor4(ref,boxes,tx.bounds,viewport)})}
     }
     return {pages:pdfDoc4.numPages,catalog:{name:file.name,defaultMargin:40},candidates:out};
   }
