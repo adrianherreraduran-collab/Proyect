@@ -1,0 +1,37 @@
+name: Fix FVMarket catalog regex v6
+on:
+  push:
+    paths:
+      - 'scripts/fix_fvmarket_catalog_regex_v6.py'
+      - '.github/workflows/fix-fvmarket-catalog-regex-v6.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply catalog regex fix v6
+        run: python scripts/fix_fvmarket_catalog_regex_v6.py
+      - name: Validate tokenization regex
+        run: |
+          grep -F 'FVM_CATALOG_REGEX_FIX_V6' appsrc/public/admin.html
+          grep -F 'const rx=/\S+/g;' appsrc/public/admin.html
+      - name: Validate backend syntax
+        run: node --check appsrc/server.js
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated FVMarket application
+        run: |
+          git config user.name 'adrianherreraduran-collab'
+          git config user.email 'adrianherreraduran@gmail.com'
+          git add appsrc/public/admin.html fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then
+            echo 'No changes to commit'
+          else
+            git commit -m 'Corregir parser PDF FVMarket: regex de referencias'
+            git push
+          fi
