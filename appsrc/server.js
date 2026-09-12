@@ -380,14 +380,216 @@ async function searchExternalImages(query='',limit=8){
   return (good.length>=3?good:ranked.filter(x=>x.matchScore>=1)).slice(0,target);
 }
 
-function catalogCandidatesFromText(text){const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);const out=[];const seen=new Set();const priceRx=/(?:€\s*)?(\d{1,5}[.,]\d{2})(?:\s*€)?/g;for(let i=0;i<lines.length;i++){const line=lines[i];let m;while((m=priceRx.exec(line))){const sourcePrice=Number(m[1].replace(',','.'));if(!sourcePrice||sourcePrice>50000)continue;let title=(line.slice(0,m.index)+' '+line.slice(m.index+m[0].length)).replace(/\b(?:PVP|PRECIO|OFERTA|IVA|IGIC)\b[:\s-]*/gi,' ').replace(/\s+/g,' ').trim();if(title.length<5){for(let j=i-1;j>=Math.max(0,i-3);j--){const prev=lines[j].replace(/\d{1,5}[.,]\d{2}\s*€?/g,'').trim();if(prev.length>=6&&!/^\d+$/.test(prev)){title=prev;break}}}title=title.replace(/^[-–—•·\s]+|[-–—•·\s]+$/g,'').slice(0,170);if(title.length<5)continue;const key=(title.toLowerCase()+'|'+sourcePrice.toFixed(2));if(seen.has(key))continue;seen.add(key);const category=guessCategory(title);out.push({title,sourcePrice,margin:0,price:+sourcePrice.toFixed(2),category,ref:ownReference(title,sourcePrice,category),stock:'bajo_pedido',description:'',image:'',imageSource:'',imageLicense:'',imageAuthor:'',published:false,featured:false});if(out.length>=100)return out}}return out}
-async function parseCatalogBuffer(buffer){const data=await pdfParse(buffer);return {pages:data.numpages||0,candidates:catalogCandidatesFromText(data.text)}}
+// FVM_CATALOG_PARSER_V2
+const FVM_CATALOG_DEFAULT_MARGIN = 40;
+const FVM_CATALOG_REF_RX = /\b(?:FT|BT|LH|AT|DG|AM|AC|TK|PM|SW|VL|PACK)\s*\d{2,8}\b/gi;
+const FVM_CATALOG_PRICE_RX = /\b(?:\d{1,3}(?:\.\d{3})+(?:,\d{2})?|\d{1,5}(?:[.,]\d{2})?)\s*€/g;
+
+function catalogPriceNumber(raw=''){
+  let s=String(raw).replace(/€/g,'').replace(/\s/g,'').trim();
+  if(!s)return 0;
+  if(/^\d{1,3}(?:\.\d{3})+(?:,\d{2})?$/.test(s)){
+    s=s.replace(/\./g,'').replace(',','.');
+  }else if(s.includes(',')&&s.includes('.')){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.'))s=s.replace(/\./g,'').replace(',','.');
+    else s=s.replace(/,/g,'');
+  }else if(s.includes(',')){
+    s=s.replace(',','.');
+  }else if(/^\d+\.\d{3}$/.test(s)){
+    s=s.replace('.','');
+  }
+  const n=Number(s);
+  return Number.isFinite(n)&&n>0&&n<=50000?n:0;
+}
+function catalogRefs(line=''){
+  return [...String(line).matchAll(new RegExp(FVM_CATALOG_REF_RX.source,'gi'))]
+    .map(m=>String(m[0]).replace(/\s/g,'').toUpperCase());
+}
+function catalogPrices(line=''){
+  return [...String(line).matchAll(new RegExp(FVM_CATALOG_PRICE_RX.source,'g'))]
+    .map(m=>catalogPriceNumber(m[0])).filter(Boolean);
+}
+function cleanCatalogLine(line=''){
+  return String(line).replace(/\s+/g,' ').replace(/\u0000/g,'').trim();
+}
+function catalogSection(lines=[],page=1){
+  const joined=lines.slice(0,18).join(' · ');
+  const sections=[
+    'Herramienta eléctrica · Maquinaria','Jardín · Ordenación','Baños · Ocio y deporte',
+    'Bricolaje · Soldadura','Electrodoméstico industrial','Pequeño electrodoméstico',
+    'Herramienta eléctrica','Automoción','Agricultura','Ventilación','Camping','Baños','Jardín'
+  ];
+  const found=sections.find(x=>joined.toLowerCase().includes(x.toLowerCase()));
+  return found||(page===1?'Destacados':'Otros');
+}
+function catalogCategory(section='',text=''){
+  const s=String(section).toLowerCase(),t=String(text).toLowerCase();
+  if(/herramient|maquinaria|soldadura|automoci/.test(s)||/taladro|sierra|martillo|gato hidrául|compresor|soldador/.test(t))return 'Herramientas';
+  if(/baño/.test(s)||/mampara|ducha|lavabo|inodoro|grifo|fregadero/.test(t))return 'Reformas';
+  if(/electrodoméstico|ventilación/.test(s)||/ventilador|cocina|horno|frigor|congelador|freidora/.test(t))return 'Reformas';
+  if(/jardín|camping|agricultura|ocio|ordenación/.test(s)||/barbacoa|carpa|sombrilla|estanter|sulfat|césped/.test(t))return 'Bricolaje';
+  return guessCategory(text);
+}
+function catalogVariantTokens(line=''){
+  const s=String(line);
+  const rx=/\(?\d+(?:[.,]\d+)?(?:\s*(?:x|×|\+|-)\s*\d+(?:[.,]\d+)?){1,2}\s*(?:cm|mm|m)?\)?/gi;
+  return [...s.matchAll(rx)].map(m=>cleanCatalogLine(m[0])).filter(Boolean);
+}
+function catalogLineLooksLikeTitle(line=''){
+  const s=cleanCatalogLine(line);
+  if(!s||s.length<4||s.length>100)return false;
+  if(/Julio\s*·?\s*Agosto|mibricolaje|NOVE\s*DAD|PRECIO|REF\b/i.test(s))return false;
+  if(catalogRefs(s).length||catalogPrices(s).length)return false;
+  if(/^(Medidas?|Alto|Altura|Ancho|Largo|Peso|Potencia|Velocidad|Capacidad|Color|Colores|Diámetro|Ø|Serie)\b/i.test(s))return false;
+  if(/^\d+(?:[.,]\d+)?\s*(?:kg|g|cm|mm|m|W|V|Hp|litros?|piezas?|toneladas?)\b/i.test(s))return false;
+  if(/[:;]/.test(s)&&s.split(/\s+/).length>10)return false;
+  const letters=(s.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]/g)||[]).length;
+  return letters>=4;
+}
+function catalogBaseTitle(lines=[],idx=0,section=''){
+  let fallback='';
+  for(let j=idx-1;j>=Math.max(0,idx-14);j--){
+    const s=cleanCatalogLine(lines[j]);
+    if(!s)continue;
+    if(!fallback&&catalogLineLooksLikeTitle(s))fallback=s;
+    if(catalogLineLooksLikeTitle(s)&&!/^(Serie|Color|Medidas?)/i.test(s)){
+      const words=s.split(/\s+/).length;
+      if(words<=12)return s;
+    }
+  }
+  return fallback||section||'Producto';
+}
+function catalogNearbyDescription(lines=[],idx=0){
+  const parts=[];
+  for(let j=Math.max(0,idx-5);j<=Math.min(lines.length-1,idx+3);j++){
+    const s=cleanCatalogLine(lines[j]);
+    if(!s||catalogRefs(s).length||catalogPrices(s).length)continue;
+    if(/Julio\s*·?\s*Agosto|NOVE\s*DAD|mibricolaje/i.test(s))continue;
+    if(s.length>=12&&s.length<=210)parts.push(s);
+  }
+  return [...new Set(parts)].join(' · ').slice(0,650);
+}
+async function catalogPageRender(pageData){
+  const content=await pageData.getTextContent({normalizeWhitespace:true,disableCombineTextItems:false});
+  const rows=[];
+  for(const item of content.items||[]){
+    const text=cleanCatalogLine(item.str||'');
+    if(!text)continue;
+    const tr=item.transform||[];const x=Number(tr[4]||0),y=Number(tr[5]||0);
+    let row=rows.find(r=>Math.abs(r.y-y)<2.4);
+    if(!row){row={y,parts:[]};rows.push(row)}
+    row.parts.push({x,text});
+  }
+  rows.sort((a,b)=>b.y-a.y);
+  return rows.map(r=>r.parts.sort((a,b)=>a.x-b.x).map(p=>p.text).join(' ')).join('\n');
+}
+function catalogCandidatesFromPages(pages=[]){
+  const out=[],seen=new Set();
+  for(const pg of pages){
+    const lines=(pg.lines||[]).map(cleanCatalogLine).filter(Boolean);
+    const section=catalogSection(lines,pg.page);
+    for(let i=0;i<lines.length;i++){
+      const refs=catalogRefs(lines[i]);
+      if(!refs.length)continue;
+      let priceLine=i,prices=catalogPrices(lines[i]);
+      if(!prices.length){
+        for(let j=i-1;j>=Math.max(0,i-4);j--){
+          const p=catalogPrices(lines[j]);
+          if(p.length){priceLine=j;prices=p;break}
+        }
+      }
+      if(!prices.length)continue;
+      let variants=[];
+      for(let j=priceLine-1;j>=Math.max(0,priceLine-3);j--){
+        const v=catalogVariantTokens(lines[j]);
+        if(v.length){variants=v;break}
+      }
+      const baseTitle=catalogBaseTitle(lines,Math.min(i,priceLine),section);
+      refs.forEach((sourceRef,k)=>{
+        if(seen.has(sourceRef))return;
+        const sourcePrice=prices.length===refs.length?prices[k]:(prices[k]||prices[prices.length-1]||0);
+        if(!sourcePrice)return;
+        const variant=(variants.length===refs.length?variants[k]:(variants.length===1?variants[0]:''))||'';
+        let title=cleanProductTitle([baseTitle,variant].filter(Boolean).join(' · '));
+        title=title.replace(/\s*·\s*·\s*/g,' · ').slice(0,150);
+        if(!title||/^producto$/i.test(title))title='Producto '+sourceRef;
+        const category=catalogCategory(section,title);
+        const margin=FVM_CATALOG_DEFAULT_MARGIN;
+        const addedValue=+(sourcePrice*margin/100).toFixed(2);
+        const price=+(sourcePrice+addedValue).toFixed(2);
+        out.push({
+          title,sourcePrice,margin,addedValue,price,category,
+          sourceRef,sourceProvider:'Mi Bricolaje',sourceUrl:'',sourceEan:'',
+          catalogPage:pg.page,catalogSection:section,catalogVariant:variant,
+          description:catalogNearbyDescription(lines,Math.min(i,priceLine)),
+          ref:'',stock:'bajo_pedido',image:'',images:[],
+          imageSource:'',imageLicense:'',imageAuthor:'',
+          published:false,featured:false,reviewStatus:'borrador'
+        });
+        seen.add(sourceRef);
+      });
+      if(out.length>=450)break;
+    }
+  }
+  return out;
+}
+async function parseCatalogBuffer(buffer,name='catalogo.pdf'){
+  let pageNo=0;
+  const data=await pdfParse(buffer,{pagerender:async pageData=>{
+    pageNo+=1;
+    return '[[FVM_PAGE:'+pageNo+']]\n'+await catalogPageRender(pageData);
+  }});
+  const chunks=String(data.text||'').split(/\[\[FVM_PAGE:(\d+)\]\]/);
+  const pages=[];
+  for(let i=1;i<chunks.length;i+=2){
+    const page=Number(chunks[i])||pages.length+1;
+    pages.push({page,lines:String(chunks[i+1]||'').split(/\r?\n/)});
+  }
+  if(!pages.length){
+    pages.push({page:1,lines:String(data.text||'').split(/\r?\n/)});
+  }
+  const candidates=catalogCandidatesFromPages(pages);
+  const sections=[...new Set(candidates.map(x=>x.catalogSection).filter(Boolean))];
+  return {
+    catalog:{name:String(name||'catalogo.pdf'),provider:'Mi Bricolaje',pages:data.numpages||pages.length,defaultMargin:FVM_CATALOG_DEFAULT_MARGIN},
+    pages:data.numpages||pages.length,sections,candidates
+  };
+}
+
 
 function isUnsafeUrl(raw){try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return true;const h=u.hostname.toLowerCase();return h==='localhost'||h==='127.0.0.1'||h==='::1'||/^10\./.test(h)||/^192\.168\./.test(h)||/^172\.(1[6-9]|2\d|3[01])\./.test(h)||h.endsWith('.local')}catch(e){return true}}
 
-app.post('/api/admin/import-catalog',admin,upload.single('catalog'),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:'Selecciona un archivo PDF'});if(!/pdf/i.test(req.file.mimetype||'')&&!/\.pdf$/i.test(req.file.originalname||''))return res.status(400).json({error:'El archivo debe ser PDF'});const result=await parseCatalogBuffer(req.file.buffer);res.json(result)}catch(e){res.status(422).json({error:'No se pudo analizar el catálogo PDF. Si es un PDF escaneado necesitaremos procesarlo como imágenes.'})}});
-app.post('/api/admin/import-catalog-url',admin,async(req,res)=>{const url=String(req.body.url||'').trim();if(isUnsafeUrl(url))return res.status(400).json({error:'URL no permitida'});try{const r=await axios.get(url,{responseType:'arraybuffer',timeout:15000,maxContentLength:25*1024*1024,headers:{'User-Agent':'FVMarket/1.2'}});const result=await parseCatalogBuffer(Buffer.from(r.data));res.json(result)}catch(e){res.status(422).json({error:'No se pudo descargar o leer ese catálogo PDF'})}});
-app.post('/api/admin/import-catalog-products',admin,(req,res)=>{const items=Array.isArray(req.body.products)?req.body.products.slice(0,100):[];if(!items.length)return res.status(400).json({error:'No hay productos seleccionados'});const d=read();let created=0;for(const item of items){const title=String(item.title||'').trim();if(!title)continue;const category=String(item.category||guessCategory(title));const p={id:id('prd'),title,category,ref:String(item.ref||ownReference(title,Number(item.sourcePrice)||0,category)),price:Number(item.price)||0,stock:'bajo_pedido',image:String(item.image||''),imageSource:String(item.imageSource||''),imageLicense:String(item.imageLicense||''),imageAuthor:String(item.imageAuthor||''),sourceUrl:String(item.sourceUrl||''),sourceProvider:String(item.sourceProvider||providerFromUrl(item.sourceUrl)||''),sourceRef:String(item.sourceRef||''),sourceEan:String(item.sourceEan||''),description:String(item.description||''),published:req.body.published===true||item.published===true,featured:!!item.featured,sourcePrice:Number(item.sourcePrice)||0,addedValue:Number(item.addedValue)||Math.max(0,(Number(item.price)||0)-(Number(item.sourcePrice)||0)),margin:Number(item.margin)||0};p.images=normalizeProductImages(item.images,p.image);if(p.images[0])p.image=p.images[0].url;d.products.unshift(p);created++}save(d);res.json({created})});
+app.post('/api/admin/import-catalog',admin,upload.single('catalog'),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:'Selecciona un archivo PDF'});if(!/pdf/i.test(req.file.mimetype||'')&&!/\.pdf$/i.test(req.file.originalname||''))return res.status(400).json({error:'El archivo debe ser PDF'});const result=await parseCatalogBuffer(req.file.buffer,req.file.originalname);res.json(result)}catch(e){res.status(422).json({error:'No se pudo analizar el catálogo PDF. Si es un PDF escaneado necesitaremos procesarlo como imágenes.'})}});
+app.post('/api/admin/import-catalog-url',admin,async(req,res)=>{const url=String(req.body.url||'').trim();if(isUnsafeUrl(url))return res.status(400).json({error:'URL no permitida'});try{const r=await axios.get(url,{responseType:'arraybuffer',timeout:15000,maxContentLength:25*1024*1024,headers:{'User-Agent':'FVMarket/1.2'}});const result=await parseCatalogBuffer(Buffer.from(r.data),String(url).split('/').pop()||'catalogo.pdf');res.json(result)}catch(e){res.status(422).json({error:'No se pudo descargar o leer ese catálogo PDF'})}});
+app.post('/api/admin/import-catalog-products',admin,(req,res)=>{
+  const items=Array.isArray(req.body.products)?req.body.products.slice(0,450):[];
+  if(!items.length)return res.status(400).json({error:'No hay productos seleccionados'});
+  const d=read();let created=0,skipped=0;
+  for(const item of items){
+    const title=String(item.title||'').trim();if(!title)continue;
+    const sourceRef=String(item.sourceRef||'').trim().toUpperCase();
+    if(sourceRef&&d.products.some(p=>String(p.sourceRef||'').trim().toUpperCase()===sourceRef)){skipped++;continue}
+    const category=String(item.category||guessCategory(title));
+    const sourcePrice=Number(item.sourcePrice)||0;
+    const margin=Math.max(0,Number(item.margin)||0);
+    const addedValue=item.addedValue!=null?Math.max(0,Number(item.addedValue)||0):+(sourcePrice*margin/100).toFixed(2);
+    const price=Number(item.price)||+(sourcePrice+addedValue).toFixed(2);
+    const p={
+      id:id('prd'),title,category,ref:nextProductRef(d,title,category),price,stock:'bajo_pedido',
+      image:String(item.image||''),imageSource:String(item.imageSource||''),imageLicense:String(item.imageLicense||''),imageAuthor:String(item.imageAuthor||''),
+      sourceUrl:String(item.sourceUrl||''),sourceProvider:String(item.sourceProvider||'Mi Bricolaje'),sourceRef,sourceEan:String(item.sourceEan||''),
+      description:String(item.description||''),published:false,featured:!!item.featured,
+      sourcePrice,addedValue,margin,
+      catalogPage:Number(item.catalogPage)||0,catalogSection:String(item.catalogSection||''),catalogVariant:String(item.catalogVariant||''),
+      catalogName:String(item.catalogName||req.body.catalogName||''),reviewStatus:'borrador',
+      importedAt:new Date().toISOString()
+    };
+    p.images=normalizeProductImages(item.images,p.image);
+    if(p.images[0])p.image=p.images[0].url;
+    d.products.unshift(p);created++;
+  }
+  save(d);res.json({created,skipped});
+});
 
 function numberPrice(v){if(v==null)return 0;let x=String(v).trim().replace(/\s/g,'').replace(/[^0-9,.-]/g,'');if(!x)return 0;if(x.includes(',')&&x.includes('.')){if(x.lastIndexOf(',')>x.lastIndexOf('.'))x=x.replace(/\./g,'').replace(',','.');else x=x.replace(/,/g,'')}else if(x.includes(','))x=x.replace(',','.');const n=Number(x);return Number.isFinite(n)&&n>0?n:0}
 function absoluteUrl(value,base){try{return value?new URL(value,base).href:''}catch{return ''}}
