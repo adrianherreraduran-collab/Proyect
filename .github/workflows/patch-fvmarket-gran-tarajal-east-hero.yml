@@ -1,4 +1,4 @@
-name: Patch FVMarket Gran Tarajal east hero
+name: Patch FVMarket customer accounts and hero
 
 on:
   push:
@@ -14,16 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply Gran Tarajal east hero
+      - name: Apply FVMarket patch
         run: python patch_fvmarket_gran_tarajal_east_hero.py
       - name: Validate server syntax
         run: node --check appsrc/server.js
       - name: Repack FVMarket
         run: tar -czf - -C appsrc . | base64 -w 0 > fvmarket-app.tgz.b64
-      - name: Commit updated storefront
+      - name: Commit updated application
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add appsrc/public/index.html fvmarket-app.tgz.b64
-          git commit -m "Cambiar cabecera FVMarket a vista este de Gran Tarajal" || exit 0
+          git add appsrc/server.js appsrc/public/index.html fvmarket-app.tgz.b64
+          git commit -m "Aplicar cuentas verificadas y perfil cliente FVMarket" || exit 0
           git push
