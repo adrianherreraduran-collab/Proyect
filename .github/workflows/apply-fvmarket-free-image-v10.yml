@@ -1,0 +1,31 @@
+name: Apply FVMarket v10 free image preparation
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-free-image-v10.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply FVMarket v10 patch
+        run: python scripts/patch_fvmarket_free_image_prep_v10.py
+      - name: Validate JavaScript
+        run: |
+          node --check appsrc/server.js
+          node --check appsrc/free_image_prep.js
+          node --check appsrc/public/fvmarket-admin-v10.js
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated FVMarket application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/server.js appsrc/free_image_prep.js appsrc/package.json appsrc/public/admin.html appsrc/public/fvmarket-admin-v10.js fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Aplicar preparación gratuita de imágenes en FVMarket'
+          git push
