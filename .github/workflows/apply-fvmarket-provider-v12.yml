@@ -1,0 +1,37 @@
+name: Apply FVMarket provider importers v12
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-provider-v12.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply FVMarket v12 patch
+        run: python scripts/patch_fvmarket_provider_v12.py
+      - name: Validate JavaScript
+        run: |
+          node --check appsrc/server.js
+          node --check appsrc/provider_sources_v12.js
+          node --check appsrc/public/fvmarket-admin-v12.js
+          node - <<'NODE'
+          const t=require('./appsrc/provider_sources_v12')._test;
+          const tests=[['119.00€',119],['17,99 €',17.99],['95 € IVA / Unidad',95],['449,00 €',449]];
+          for(const [s,want] of tests){const got=t.priceFromText(s);if(Math.abs(got-want)>0.001)throw new Error(`${s}: ${got} != ${want}`)}
+          console.log('provider price parsing ok');
+          NODE
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated FVMarket application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/server.js appsrc/provider_sources_v12.js appsrc/public/admin.html appsrc/public/fvmarket-admin-v12.js fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Aplicar importadores corregidos y recorte FVMarket v12'
+          git push
