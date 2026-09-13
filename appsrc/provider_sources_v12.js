@@ -4,6 +4,7 @@ const cheerio=require('cheerio');
 const GOOGLE_CSE_API_KEY=String(process.env.GOOGLE_CSE_API_KEY||'').trim();
 const GOOGLE_CSE_CX=String(process.env.GOOGLE_CSE_CX||'').trim();
 const BRAVE_SEARCH_API_KEY=String(process.env.BRAVE_SEARCH_API_KEY||'').trim();
+console.log('[provider-v12] search fallback: '+((GOOGLE_CSE_API_KEY&&GOOGLE_CSE_CX)?'google-cse':(BRAVE_SEARCH_API_KEY?'brave':'none')));
 
 const PROVIDERS={
   mibricolaje:{key:'mibricolaje',name:'MiBricolaje',base:'https://mibricolaje.com',domain:'mibricolaje.com',hosts:['mibricolaje.com','www.mibricolaje.com'],search:q=>[
@@ -34,7 +35,7 @@ function compact(s=''){return String(s).replace(/\s+/g,' ').trim()}
 function cleanRef(v=''){return compact(v).toUpperCase().replace(/\s+/g,'').replace(/[^A-Z0-9._-]/g,'').slice(0,40)}
 function validRef(v=''){return /^[A-Z0-9][A-Z0-9._-]{2,39}$/i.test(cleanRef(v))}
 function money(v){if(v==null)return 0;let s=String(v).replace(/[^0-9,.-]/g,'').trim();if(!s)return 0;if(s.includes(',')&&s.includes('.')){if(s.lastIndexOf(',')>s.lastIndexOf('.'))s=s.replace(/\./g,'').replace(',','.');else s=s.replace(/,/g,'')}else if(s.includes(','))s=s.replace(',','.');const n=Number(s);return Number.isFinite(n)&&n>0?n:0}
-function priceFromText(text=''){const s=compact(text);const patterns=[/(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|EUR)\b/i,/(?:€|EUR)\s*(\d{1,5}(?:[.,]\d{1,2})?)/i];for(const rx of patterns){const m=s.match(rx);if(m){const n=money(m[1]);if(n)return n}}return 0}
+function priceFromText(text=''){const s=compact(text);const patterns=[/(\d{1,5}(?:[.,]\d{1,2})?)\s*(?:€|EUR)/i,/(?:€|EUR)\s*(\d{1,5}(?:[.,]\d{1,2})?)/i];for(const rx of patterns){const m=s.match(rx);if(m){const n=money(m[1]);if(n)return n}}return 0}
 function walkProduct(v){if(!v)return null;if(Array.isArray(v)){for(const x of v){const r=walkProduct(x);if(r)return r}return null}if(typeof v!=='object')return null;const t=v['@type'];if((Array.isArray(t)?t:[t]).filter(Boolean).some(x=>String(x).toLowerCase()==='product'))return v;for(const k of ['@graph','mainEntity','itemListElement']){const r=walkProduct(v[k]);if(r)return r}return null}
 function productLd($){let out=null;$('script[type="application/ld+json"]').each((_,el)=>{if(out)return;try{out=walkProduct(JSON.parse($(el).html()||'null'))}catch{}});return out||{}}
 function collectImages($,prod,url){const arr=[];const push=v=>{const u=abs(typeof v==='string'?v:(v?.url||v?.contentUrl||''),url);if(!u||!/^https?:/i.test(u)||/logo|icon|sprite|favicon|payment|badge/i.test(u))return;if(!arr.includes(u))arr.push(u)};const imgs=Array.isArray(prod?.image)?prod.image:[prod?.image];imgs.filter(Boolean).forEach(push);push($('meta[property="og:image"]').attr('content'));push($('link[rel="image_src"]').attr('href'));$('img').each((_,el)=>{const e=$(el);push(e.attr('data-zoom-image')||e.attr('data-large')||e.attr('data-src')||e.attr('src'))});return arr.slice(0,8)}

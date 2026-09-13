@@ -11,7 +11,7 @@ const Stripe = require('stripe');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
-const {registerProviderSourceRoutes} = require('./provider_sources_v11');
+const {registerProviderSourceRoutes} = require('./provider_sources_v12');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
