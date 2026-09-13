@@ -30,10 +30,12 @@ jobs:
           for(const [ok,name] of checks)if(!ok)throw new Error('Failed: '+name);
           console.log('supplier capture v13 validation ok');
           NODE
-      - name: Verify integration markers
+      - name: Verify integration markers and commercial categories
         run: |
           grep -q "require('./supplier_capture_v13')" appsrc/server.js
           grep -q "limit:'30mb'" appsrc/server.js
+          grep -q "'Fontanería','Electricidad','Pintura','Jardín','Baño y cocina'" appsrc/server.js
+          if grep -q "\['Pintura','Jardín','Otros'\].*p.category='Bricolaje'" appsrc/server.js; then exit 1; fi
           grep -q '/fvmarket-admin-v13.js?v=13' appsrc/public/admin.html
           grep -q '/fvmarket-home-v13.js?v=13' appsrc/public/index.html
       - name: Repack FVMarket
@@ -46,5 +48,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add appsrc/server.js appsrc/supplier_capture_v13.js appsrc/public/admin.html appsrc/public/fvmarket-admin-v13.js appsrc/public/index.html appsrc/public/fvmarket-home-v13.js fvmarket-app.tgz.b64
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'Aplicar proveedores por captura e interfaz FVMarket v13'
+          git commit -m 'Corregir categorías comerciales FVMarket v13'
           git push
