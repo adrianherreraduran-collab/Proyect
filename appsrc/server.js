@@ -11,6 +11,7 @@ const Stripe = require('stripe');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
+const {registerProviderSourceRoutes} = require('./provider_sources_v11');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -122,7 +123,7 @@ function requireCustomerReady(req,res,next){
 
 // FVM_PRIVATE_PROCUREMENT_V1
 function publicProduct(p={}){
-  const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,...safe}=p;
+  const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,sourceStore,sourceSeller,providerKey,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
   safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);return safe;
 }
@@ -169,26 +170,17 @@ function ensureCatalogSettings(d){
     if(p.subcategory==null)p.subcategory='';
   }
 }
-function refPrefix(title='',category=''){
-  const t=(title+' '+category).toLowerCase();
-  if(/mampara/.test(t)&&/panel|fij[oa]|walk.?in/.test(t))return 'MPF';
-  if(/mampara/.test(t)&&/cuadrad|circular|semicircular|curv/.test(t))return 'MCC';
-  if(/mampara/.test(t))return 'MAM';
-  if(/plato.*ducha/.test(t))return 'PDU';
-  if(/mueble.*bañ/.test(t))return 'MBA';
-  if(/inodoro|sanitario|wc/.test(t))return 'SAN';
-  if(/fregader/.test(t))return 'FRE';
-  if(/grifer/.test(t))return 'GRF';
-  if(/taladro/.test(t))return 'TAL';
-  if(/atornill/.test(t))return 'ATO';
-  if(/cement/.test(t))return 'CEM';
-  const words=String(title||category||'PRO').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean);
-  return (words.slice(0,3).map(x=>x[0]).join('')||'PRO').slice(0,4);
+function refPrefix(title=''){
+  const stop=new Set(['DE','DEL','LA','LAS','EL','LOS','Y','E','CON','PARA','POR','EN','UN','UNA','UNO','KIT','PACK']);
+  const words=String(title||'PRODUCTO').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]/g,' ').split(/\s+/).filter(Boolean).filter(x=>!stop.has(x)&&/[A-Z]/.test(x));
+  if(words.length>=2)return (words[0][0]+words[1][0]).slice(0,2);
+  if(words.length===1)return (words[0].replace(/[^A-Z]/g,'')+'X').slice(0,2);
+  return 'PR';
 }
 function nextProductRef(d,title,category){
-  const prefix=refPrefix(title,category);let max=0;
-  for(const p of d.products||[]){const m=String(p.ref||'').match(new RegExp('^'+prefix+'-(\\d{4})$'));if(m)max=Math.max(max,Number(m[1])||0)}
-  return `${prefix}-${String(max+1).padStart(4,'0')}`;
+  const prefix=refPrefix(title);let max=0;
+  for(const p of d.products||[]){const m=String(p.ref||'').toUpperCase().match(new RegExp('^'+prefix+'(\\d{4})$'));if(m)max=Math.max(max,Number(m[1])||0)}
+  return `${prefix}${String(max+1).padStart(4,'0')}`;
 }
 function offerPrice(p){const pct=Math.max(0,Math.min(90,Number(p.discountPct)||0));return p.onOffer&&pct?+(Number(p.price||0)*(1-pct/100)).toFixed(2):Number(p.price||0)}
 async function rutaFVRequest(pathname,payload){
@@ -300,8 +292,8 @@ function normalizeProductImages(value=[],fallback=''){
 function scoreSourceImage(url='',el=null){let s=0;const u=String(url).toLowerCase();const hint=String(el?.attr?.('class')||'')+' '+String(el?.attr?.('id')||'')+' '+String(el?.attr?.('alt')||'');if(/product|producto|gallery|galeria|zoom|main|principal|detail|detalle/i.test(hint))s+=5;if(/logo|icon|sprite|avatar|banner|payment|star|flag/i.test(u+' '+hint))s-=8;const w=Number(el?.attr?.('width')||0),h=Number(el?.attr?.('height')||0);if(w>=300||h>=300)s+=2;return s}
 function collectSourceImages($,prod,url){const found=[];const push=(v,score=0)=>{const abs=absoluteUrl(v,url);if(!abs||!/^https?:/i.test(abs))return;if(/logo|icon|sprite|favicon|payment|badge/i.test(abs))return;found.push({url:abs,score})};const j=Array.isArray(prod?.image)?prod.image:[prod?.image];j.filter(Boolean).forEach(v=>push(typeof v==='string'?v:(v?.url||v?.contentUrl||''),12));push($('meta[property="og:image"]').attr('content')||'',10);push($('link[rel="image_src"]').attr('href')||'',9);$('img').each((_,el)=>{const e=$(el);const src=e.attr('data-zoom-image')||e.attr('data-large')||e.attr('data-src')||e.attr('src')||'';push(src,scoreSourceImage(src,e))});const seen=new Set();return found.sort((a,b)=>b.score-a.score).filter(x=>{if(seen.has(x.url))return false;seen.add(x.url);return true}).slice(0,8).map(x=>({url:x.url,source:url,license:'Imagen de la ficha de origen: revisar permiso/licencia antes de publicar',author:'',origin:'source'}))}
 app.get('/api/admin/products',admin,(req,res)=>res.json(read().products));
-app.post('/api/admin/products',admin,(req,res)=>{const d=read();const title=String(req.body.title||'Producto sin título');const category=String(req.body.category||guessCategory(title));const sourcePrice=Number(req.body.sourcePrice)||0;const p={id:id('prd'),title,category,ref:String(req.body.ref&&!String(req.body.ref).startsWith('FVM-')?req.body.ref:nextProductRef(d,title,category)),price:Number(req.body.price)||0,stock:req.body.stock||'bajo_pedido',image:String(req.body.image||''),imageSource:String(req.body.imageSource||''),imageLicense:String(req.body.imageLicense||''),imageAuthor:String(req.body.imageAuthor||''),sourceUrl:String(req.body.sourceUrl||''),sourceProvider:String(req.body.sourceProvider||providerFromUrl(req.body.sourceUrl)||''),sourceRef:String(req.body.sourceRef||''),sourceEan:String(req.body.sourceEan||''),description:String(req.body.description||''),sourcePrice,addedValue:Number(req.body.addedValue)||Math.max(0,(Number(req.body.price)||0)-sourcePrice),margin:Number(req.body.margin)||0,published:!!req.body.published,featured:!!req.body.featured,subcategory:String(req.body.subcategory||''),onOffer:!!req.body.onOffer,discountPct:Math.max(0,Math.min(90,Number(req.body.discountPct)||0))};p.images=normalizeProductImages(req.body.images,p.image);if(req.body.published&&p.images.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'});if(p.images[0]){p.image=p.images[0].url;p.imageSource=p.images[0].source||p.imageSource;p.imageLicense=p.images[0].license||p.imageLicense;p.imageAuthor=p.images[0].author||p.imageAuthor}d.products.unshift(p);save(d);res.json(p)});
-app.put('/api/admin/products/:id',admin,(req,res)=>{const d=read();const i=d.products.findIndex(p=>p.id===req.params.id);if(i<0)return res.status(404).json({error:'Producto no encontrado'});const old=d.products[i];const next={...old,...req.body,id:old.id};for(const k of ['price','sourcePrice','margin','addedValue'])if(req.body[k]!=null)next[k]=Number(req.body[k])||0;for(const k of ['title','category','ref','stock','image','imageSource','imageLicense','imageAuthor','sourceUrl','sourceProvider','sourceRef','sourceEan','description'])if(req.body[k]!=null)next[k]=String(req.body[k]);if(req.body.published!=null){if(req.body.published){const checkImages=normalizeProductImages(req.body.images!=null?req.body.images:next.images,next.image);if(checkImages.length<3)return res.status(400).json({error:'Para publicar un anuncio se requieren al menos 3 imágenes.'})}next.published=!!req.body.published}if(req.body.featured!=null)next.featured=!!req.body.featured;if(req.body.images!=null)next.images=normalizeProductImages(req.body.images,next.image);else if(!Array.isArray(next.images))next.images=normalizeProductImages([],next.image);if(next.images.length){next.image=next.images[0].url;next.imageSource=next.images[0].source||'';next.imageLicense=next.images[0].license||'';next.imageAuthor=next.images[0].author||''}else if(req.body.images!=null){next.image='';next.imageSource='';next.imageLicense='';next.imageAuthor=''}d.products[i]=next;save(d);res.json(next)});
+app.post('/api/admin/products',admin,(req,res)=>{const d=read();const title=String(req.body.title||'Producto sin título');const category=String(req.body.category||guessCategory(title));const sourcePrice=Number(req.body.sourcePrice)||0;const p={id:id('prd'),title,category,ref:String(req.body.ref&&!String(req.body.ref).startsWith('FVM-')?req.body.ref:nextProductRef(d,title,category)),price:Number(req.body.price)||0,stock:req.body.stock||'bajo_pedido',image:String(req.body.image||''),imageSource:String(req.body.imageSource||''),imageLicense:String(req.body.imageLicense||''),imageAuthor:String(req.body.imageAuthor||''),sourceUrl:String(req.body.sourceUrl||''),sourceProvider:String(req.body.sourceProvider||providerFromUrl(req.body.sourceUrl)||''),sourceRef:String(req.body.sourceRef||''),sourceEan:String(req.body.sourceEan||''),description:String(req.body.description||''),sourcePrice,addedValue:Number(req.body.addedValue)||Math.max(0,(Number(req.body.price)||0)-sourcePrice),margin:Number(req.body.margin)||0,published:!!req.body.published,featured:!!req.body.featured,subcategory:String(req.body.subcategory||''),onOffer:!!req.body.onOffer,discountPct:Math.max(0,Math.min(90,Number(req.body.discountPct)||0))};p.images=normalizeProductImages(req.body.images,p.image);if(req.body.published&&p.images.length<1)return res.status(400).json({error:'Para publicar un producto se requiere al menos 1 imagen.'});if(p.images[0]){p.image=p.images[0].url;p.imageSource=p.images[0].source||p.imageSource;p.imageLicense=p.images[0].license||p.imageLicense;p.imageAuthor=p.images[0].author||p.imageAuthor}d.products.unshift(p);save(d);res.json(p)});
+app.put('/api/admin/products/:id',admin,(req,res)=>{const d=read();const i=d.products.findIndex(p=>p.id===req.params.id);if(i<0)return res.status(404).json({error:'Producto no encontrado'});const old=d.products[i];const next={...old,...req.body,id:old.id};for(const k of ['price','sourcePrice','margin','addedValue'])if(req.body[k]!=null)next[k]=Number(req.body[k])||0;for(const k of ['title','category','ref','stock','image','imageSource','imageLicense','imageAuthor','sourceUrl','sourceProvider','sourceRef','sourceEan','description'])if(req.body[k]!=null)next[k]=String(req.body[k]);if(req.body.published!=null){if(req.body.published){const checkImages=normalizeProductImages(req.body.images!=null?req.body.images:next.images,next.image);if(checkImages.length<1)return res.status(400).json({error:'Para publicar un producto se requiere al menos 1 imagen.'})}next.published=!!req.body.published}if(req.body.featured!=null)next.featured=!!req.body.featured;if(req.body.images!=null)next.images=normalizeProductImages(req.body.images,next.image);else if(!Array.isArray(next.images))next.images=normalizeProductImages([],next.image);if(next.images.length){next.image=next.images[0].url;next.imageSource=next.images[0].source||'';next.imageLicense=next.images[0].license||'';next.imageAuthor=next.images[0].author||''}else if(req.body.images!=null){next.image='';next.imageSource='';next.imageLicense='';next.imageAuthor=''}d.products[i]=next;save(d);res.json(next)});
 app.delete('/api/admin/products/:id',admin,(req,res)=>{const d=read();d.products=d.products.filter(p=>p.id!==req.params.id);save(d);res.json({ok:true})});
 app.get('/api/admin/orders',admin,(req,res)=>res.json(read().orders.sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
 app.put('/api/admin/orders/:id',admin,(req,res)=>{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});o.status=String(req.body.status||o.status);save(d);res.json(o)});
@@ -673,7 +665,7 @@ async function mbCandidate(input,margin=40){
   let own=mbFallbackCopy(f);const ai=await aiAnalyzeItems([{title:f.sourceTitle,description:f.sourceDescription,sourcePrice:f.sourcePrice,sourceRef:f.sourceRef}]);
   if(ai.mode==='openai'&&ai.products?.[0]){const p=ai.products[0];own={title:cleanProductTitle(p.title||own.title),category:p.category||own.category,description:String(p.description||own.description).replace(/\s+/g,' ').trim().slice(0,700)}}
   const m=Math.max(0,Math.min(300,Number(margin)||40));const addedValue=+(f.sourcePrice*m/100).toFixed(2);const price=+(f.sourcePrice+addedValue).toFixed(2);
-  return {...own,ref:ownReference(own.title,f.sourcePrice,own.category),sourceProvider:'Mi Bricolaje',sourceRef:f.sourceRef,sourceEan:f.sourceEan,sourceBrand:f.sourceBrand,sourceAvailability:f.sourceAvailability,sourceTaxNote:f.sourceTaxNote,sourceUrl:f.sourceUrl,sourceImages:f.sourceImages||[],sourcePrice:f.sourcePrice,margin:m,addedValue,price,stock:'bajo_pedido',published:false,featured:false,image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',reviewStatus:'borrador',aiMode:ai.mode||'local'}
+  return {...own,ref:nextProductRef(read(),own.title,own.category),sourceProvider:'Mi Bricolaje',sourceRef:f.sourceRef,sourceEan:f.sourceEan,sourceBrand:f.sourceBrand,sourceAvailability:f.sourceAvailability,sourceTaxNote:f.sourceTaxNote,sourceUrl:f.sourceUrl,sourceImages:f.sourceImages||[],sourcePrice:f.sourcePrice,margin:m,addedValue,price,stock:'bajo_pedido',published:false,featured:false,image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',reviewStatus:'borrador',aiMode:ai.mode||'local'}
 }
 app.post('/api/admin/mibricolaje/analyze',admin,async(req,res)=>{
   const raw=Array.isArray(req.body.inputs)?req.body.inputs:[req.body.input];const inputs=raw.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20);if(!inputs.length)return res.status(400).json({error:'Introduce al menos una referencia o URL'});
@@ -747,4 +739,7 @@ app.post('/api/admin/orders/:id/create-rutafv-delivery',admin,async(req,res)=>{t
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
 
+
+// FVM_PROVIDER_BLOCKS_V11
+registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeItems,guessCategory,cleanProductTitle,normalizeProductImages});
 app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`));
