@@ -24,6 +24,7 @@ const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim().toLo
 const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
+const OPENAI_IMAGE_MODEL = String(process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2');
 const GOOGLE_CSE_API_KEY = String(process.env.GOOGLE_CSE_API_KEY || '');
 const GOOGLE_CSE_CX = String(process.env.GOOGLE_CSE_CX || '');
 const BRAVE_SEARCH_API_KEY = String(process.env.BRAVE_SEARCH_API_KEY || '');
@@ -657,7 +658,8 @@ function mbFactsFromHtml(html,url){
   const sourceTaxNote=/impuestos?\s+excluidos?/i.test(bodyText)?'Impuestos excluidos':(/impuestos?\s+incluidos?/i.test(bodyText)?'Impuestos incluidos':'');
   if(!sourcePrice)throw new Error('No se pudo leer el precio de origen');
   if(!sourceRef||!MB_ALLOWED_PREFIXES.test(sourceRef))throw new Error('La ficha no contiene una referencia válida de las familias configuradas');
-  return {sourceTitle,sourceDescription,sourcePrice,sourceRef,sourceEan,sourceBrand,sourceAvailability,sourceTaxNote,sourceUrl:url};
+  const sourceImages=collectSourceImages($,prod,url).map(x=>x.url).filter(Boolean).slice(0,6);
+  return {sourceTitle,sourceDescription,sourcePrice,sourceRef,sourceEan,sourceBrand,sourceAvailability,sourceTaxNote,sourceUrl:url,sourceImages};
 }
 function mbFallbackCopy(f={}){
   const category=guessCategory((f.sourceTitle||'')+' '+(f.sourceDescription||''));
@@ -670,7 +672,7 @@ async function mbCandidate(input,margin=40){
   let own=mbFallbackCopy(f);const ai=await aiAnalyzeItems([{title:f.sourceTitle,description:f.sourceDescription,sourcePrice:f.sourcePrice,sourceRef:f.sourceRef}]);
   if(ai.mode==='openai'&&ai.products?.[0]){const p=ai.products[0];own={title:cleanProductTitle(p.title||own.title),category:p.category||own.category,description:String(p.description||own.description).replace(/\s+/g,' ').trim().slice(0,700)}}
   const m=Math.max(0,Math.min(300,Number(margin)||40));const addedValue=+(f.sourcePrice*m/100).toFixed(2);const price=+(f.sourcePrice+addedValue).toFixed(2);
-  return {...own,ref:ownReference(own.title,f.sourcePrice,own.category),sourceProvider:'Mi Bricolaje',sourceRef:f.sourceRef,sourceEan:f.sourceEan,sourceBrand:f.sourceBrand,sourceAvailability:f.sourceAvailability,sourceTaxNote:f.sourceTaxNote,sourceUrl:f.sourceUrl,sourcePrice:f.sourcePrice,margin:m,addedValue,price,stock:'bajo_pedido',published:false,featured:false,image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',reviewStatus:'borrador',aiMode:ai.mode||'local'}
+  return {...own,ref:ownReference(own.title,f.sourcePrice,own.category),sourceProvider:'Mi Bricolaje',sourceRef:f.sourceRef,sourceEan:f.sourceEan,sourceBrand:f.sourceBrand,sourceAvailability:f.sourceAvailability,sourceTaxNote:f.sourceTaxNote,sourceUrl:f.sourceUrl,sourceImages:f.sourceImages||[],sourcePrice:f.sourcePrice,margin:m,addedValue,price,stock:'bajo_pedido',published:false,featured:false,image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',reviewStatus:'borrador',aiMode:ai.mode||'local'}
 }
 app.post('/api/admin/mibricolaje/analyze',admin,async(req,res)=>{
   const raw=Array.isArray(req.body.inputs)?req.body.inputs:[req.body.input];const inputs=raw.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20);if(!inputs.length)return res.status(400).json({error:'Introduce al menos una referencia o URL'});
@@ -683,9 +685,40 @@ app.post('/api/admin/mibricolaje/import',admin,(req,res)=>{
   const d=read();let created=0,skipped=0;const products=[];
   for(const x of items){const sourceRef=String(x.sourceRef||'').toUpperCase().trim();if(!MB_ALLOWED_PREFIXES.test(sourceRef)){skipped++;continue}if(d.products.some(p=>String(p.sourceProvider||'')==='Mi Bricolaje'&&String(p.sourceRef||'').toUpperCase()===sourceRef)){skipped++;continue}
     const title=cleanProductTitle(x.title||('Producto '+sourceRef));const category=String(x.category||guessCategory(title));const sourcePrice=Number(x.sourcePrice)||0;if(!sourcePrice){skipped++;continue}const margin=Math.max(0,Math.min(300,Number(x.margin)||40));const addedValue=+(sourcePrice*margin/100).toFixed(2);const price=+(sourcePrice+addedValue).toFixed(2);
-    const p={id:id('prd'),title,category,subcategory:String(x.subcategory||''),ref:nextProductRef(d,title,category),price,stock:'bajo_pedido',image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',description:String(x.description||'').slice(0,900),published:false,featured:false,onOffer:false,discountPct:0,sourceProvider:'Mi Bricolaje',sourceRef,sourceEan:String(x.sourceEan||''),sourceBrand:String(x.sourceBrand||''),sourceAvailability:String(x.sourceAvailability||''),sourceTaxNote:String(x.sourceTaxNote||''),sourceUrl:String(x.sourceUrl||''),sourcePrice,margin,addedValue,sourceCheckedAt:new Date().toISOString(),sourceSync:'mibricolaje_v8',reviewStatus:'borrador',importedAt:new Date().toISOString()};d.products.unshift(p);products.push(p);created++}
+    const aiImages=normalizeProductImages(Array.isArray(x.images)?x.images:[]).filter(im=>String(im.origin||'')==='ai-render'||/^data:image\//i.test(String(im.url||''))).slice(0,6);const mainImage=aiImages[0]?.url||'';const requestedRef=String(x.ref||'').toUpperCase().trim();const ownRef=(requestedRef.startsWith('FVM-')&&!d.products.some(q=>String(q.ref||'').toUpperCase()===requestedRef))?requestedRef:nextProductRef(d,title,category);
+    const p={id:id('prd'),title,category,subcategory:String(x.subcategory||''),ref:ownRef,price,stock:'bajo_pedido',image:mainImage,images:aiImages,imageSource:'IA FVMarket',imageLicense:'',imageAuthor:'',description:String(x.description||'').slice(0,900),published:false,featured:false,onOffer:false,discountPct:0,sourceProvider:'Mi Bricolaje',sourceRef,sourceEan:String(x.sourceEan||''),sourceBrand:String(x.sourceBrand||''),sourceAvailability:String(x.sourceAvailability||''),sourceTaxNote:String(x.sourceTaxNote||''),sourceUrl:String(x.sourceUrl||''),sourceImages:Array.isArray(x.sourceImages)?x.sourceImages.slice(0,6):[],sourcePrice,margin,addedValue,sourceCheckedAt:new Date().toISOString(),sourceSync:'mibricolaje_v8',reviewStatus:'borrador',importedAt:new Date().toISOString()};d.products.unshift(p);products.push(p);created++}
   save(d);res.json({created,skipped,products})
 });
+
+// FVM_MIBRICOLAJE_IMAGES_V9
+async function mbImageDataUrl(raw=''){
+  const url=String(raw||'').trim();if(!url||isUnsafeUrl(url))throw new Error('Imagen origen no válida');
+  const r=await axios.get(url,{responseType:'arraybuffer',timeout:18000,maxRedirects:4,maxContentLength:6*1024*1024,headers:{...mbHeaders(),Accept:'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
+  const ct=String(r.headers?.['content-type']||'image/jpeg').split(';')[0].trim().toLowerCase();if(!/^image\//.test(ct))throw new Error('El origen no devolvió una imagen');
+  return `data:${ct};base64,${Buffer.from(r.data).toString('base64')}`
+}
+async function mbGenerateImageVariant({title='',sourceRef='',inputImages=[],variant=0}={}){
+  if(!OPENAI_API_KEY)throw new Error('OPENAI_API_KEY no configurada');
+  const looks=['foto de catálogo limpia, vista tres cuartos, fondo blanco suave','vista frontal de comercio electrónico, fondo gris muy claro','ángulo ligeramente elevado, estudio neutro y sombra natural'];
+  const prompt=`Genera una fotografía NUEVA y original para la ficha de FVMarket del producto ${title||sourceRef}. Usa las imágenes aportadas únicamente como referencia visual del artículo. Conserva el tipo de producto, forma, proporciones, color y características visibles importantes. Cambia composición, iluminación y fondo para que no sea una copia de la fotografía origen. ${looks[variant%looks.length]}. No añadas accesorios que no estén presentes. No añadas logos de tiendas, marcas de agua, carteles, precios ni texto. Si existe una marca de fabricante integrada físicamente en el producto, no inventes ni modifiques su contenido. Producto centrado, realista y completo, sin personas.`;
+  const content=[{type:'input_text',text:prompt},...inputImages.slice(0,2).map(image_url=>({type:'input_image',image_url,detail:'high'}))];
+  const body={model:OPENAI_MODEL,input:[{role:'user',content}],tools:[{type:'image_generation',action:'edit',model:OPENAI_IMAGE_MODEL,size:'1024x1024',quality:'medium',output_format:'jpeg',output_compression:84}],tool_choice:{type:'image_generation'}};
+  const r=await axios.post('https://api.openai.com/v1/responses',body,{timeout:120000,headers:{Authorization:'Bearer '+OPENAI_API_KEY,'Content-Type':'application/json'}});
+  const out=(r.data?.output||[]).find(x=>x?.type==='image_generation_call'&&x?.result);if(!out?.result)throw new Error('La IA no devolvió una imagen');
+  return {url:'data:image/jpeg;base64,'+out.result,source:'IA FVMarket',license:'',author:'',origin:'ai-render',model:OPENAI_IMAGE_MODEL}
+}
+app.post('/api/admin/mibricolaje/render-images',admin,async(req,res)=>{
+  if(!OPENAI_API_KEY)return res.status(503).json({error:'La generación de imágenes requiere OPENAI_API_KEY en Render'});
+  const src=(Array.isArray(req.body.sourceImages)?req.body.sourceImages:[]).map(x=>typeof x==='string'?x:x?.url).filter(Boolean).slice(0,2);if(!src.length)return res.status(400).json({error:'No hay imágenes del artículo para usar como referencia visual'});
+  try{
+    const inputImages=[];for(const u of src){try{inputImages.push(await mbImageDataUrl(u))}catch{}}
+    if(!inputImages.length)return res.status(422).json({error:'No se pudieron leer las imágenes del artículo origen'});
+    const count=Math.max(1,Math.min(3,Number(req.body.count)||3));const jobs=[];for(let i=0;i<count;i++)jobs.push(mbGenerateImageVariant({title:String(req.body.title||''),sourceRef:String(req.body.sourceRef||''),inputImages,variant:i}));
+    const settled=await Promise.allSettled(jobs);const images=settled.filter(x=>x.status==='fulfilled').map(x=>x.value);if(!images.length){const err=settled.find(x=>x.status==='rejected');throw new Error(err?.reason?.response?.data?.error?.message||err?.reason?.message||'No se pudieron generar imágenes')}
+    res.json({images,model:OPENAI_IMAGE_MODEL,count:images.length})
+  }catch(e){res.status(422).json({error:e.response?.data?.error?.message||String(e.message||'No se pudieron generar imágenes IA')})}
+});
+
 app.post('/api/admin/mibricolaje/refresh/:id',admin,async(req,res)=>{
   const d=read();const p=d.products.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Producto no encontrado'});if(p.sourceProvider!=='Mi Bricolaje'||!isMiBricolajeUrl(p.sourceUrl))return res.status(400).json({error:'El producto no está asociado a MiBricolaje'});
   try{const r=await mbGet(p.sourceUrl);const f=mbFactsFromHtml(r.data,p.sourceUrl);const oldSourcePrice=Number(p.sourcePrice)||0;p.sourcePrice=f.sourcePrice;p.sourceAvailability=f.sourceAvailability;p.sourceTaxNote=f.sourceTaxNote;p.sourceCheckedAt=new Date().toISOString();p.addedValue=+(f.sourcePrice*(Number(p.margin)||0)/100).toFixed(2);p.price=+(f.sourcePrice+p.addedValue).toFixed(2);save(d);res.json({product:p,change:{oldSourcePrice,newSourcePrice:f.sourcePrice}})}catch(e){res.status(422).json({error:String(e.message||'No se pudo actualizar el origen')})}
