@@ -120,7 +120,7 @@ function requireCustomerReady(req,res,next){
 
 // FVM_PRIVATE_PROCUREMENT_V1
 function publicProduct(p={}){
-  const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,...safe}=p;
+  const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
   safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);return safe;
 }
@@ -601,6 +601,95 @@ app.post('/api/admin/import-url',admin,async(req,res)=>{const url=String(req.bod
 app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,braveImages:!!BRAVE_SEARCH_API_KEY,imageSearch:(BRAVE_SEARCH_API_KEY?'Brave Images + Openverse + Wikimedia':'Openverse + Wikimedia (Brave pendiente de credencial)')+' · excluye dominios de España'}));
 app.post('/api/admin/ai-product',admin,async(req,res)=>{const item=req.body||{};const result=await aiAnalyzeItems([item]);const p=result.products?.[0]||fallbackProductAnalysis(item,0);const sourceImages=normalizeProductImages(item.sourceImages||[],item.sourceUrl?item.image:'').map(x=>({...x,origin:'source'}));const searchQuery=[item.title,p.title,p.imageQuery,item.sourceRef].filter(Boolean).join(' ');const alternativeImages=await searchExternalImages(searchQuery.slice(0,180),8);const images=alternativeImages.slice(0,8);const first=alternativeImages[0]||null;res.json({...p,aiMode:result.mode,warning:result.warning||'',sourceImages,alternativeImages,images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})});
 app.post('/api/admin/ai-catalog',admin,async(req,res)=>{const items=Array.isArray(req.body.products)?req.body.products.slice(0,30):[];if(!items.length)return res.status(400).json({error:'No hay productos para analizar'});const result=await aiAnalyzeItems(items);const products=[];for(const p of (result.products||[])){const images=await searchExternalImages((p.title+' '+(p.imageQuery||'')).slice(0,140),6);const first=images[0]||null;products.push({...p,images,alternativeImages:images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})}res.json({mode:result.mode,warning:result.warning||'',products})});
+
+
+// FVM_MIBRICOLAJE_IMPORT_V8
+const MB_ALLOWED_PREFIXES=/^(?:BT|FT|LH|DG|AM|AC|TK|PM|SW|VL)\d{2,10}$/i;
+const MB_BASE='https://mibricolaje.com';
+function isMiBricolajeUrl(raw=''){
+  try{const u=new URL(String(raw));const h=u.hostname.toLowerCase().replace(/^www\./,'');return u.protocol==='https:'&&h==='mibricolaje.com'}catch{return false}
+}
+function mbHeaders(){return {'User-Agent':'FVMarket/2.0 (admin-assisted product lookup; one product at a time)','Accept':'text/html,application/xhtml+xml','Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache'}}
+async function mbGet(url){return axios.get(url,{timeout:15000,maxRedirects:4,maxContentLength:4*1024*1024,headers:mbHeaders()})}
+function mbProductLinkFromSearch(html,ref,base=MB_BASE){
+  const $=cheerio.load(html);const target=String(ref).toUpperCase();let found='';
+  $('article,.product-miniature,.product-item,.product').each((_,el)=>{
+    if(found)return;const card=$(el);const text=card.text().replace(/\s+/g,' ').toUpperCase();
+    if(text.includes(target)){const a=card.find('a[href]').filter((_,x)=>/\.html(?:\?|$)/i.test($(x).attr('href')||'')).first();const href=a.attr('href')||card.find('a[href]').first().attr('href')||'';if(href)found=absoluteUrl(href,base)}
+  });
+  if(found)return found;
+  $('a[href]').each((_,el)=>{if(found)return;const href=$(el).attr('href')||'';const text=$(el).text().replace(/\s+/g,' ').toUpperCase();if(text.includes(target)&&/\.html(?:\?|$)/i.test(href))found=absoluteUrl(href,base)});
+  return found;
+}
+async function resolveMiBricolajeInput(input=''){
+  const q=String(input||'').trim();if(!q)throw new Error('Introduce una referencia o URL');
+  if(/^https?:\/\//i.test(q)){if(!isMiBricolajeUrl(q))throw new Error('Solo se permiten fichas públicas de mibricolaje.com');return q}
+  const ref=q.toUpperCase().replace(/\s+/g,'');if(!MB_ALLOWED_PREFIXES.test(ref))throw new Error('Referencia no válida. Usa BT, FT, LH, DG, AM, AC, TK, PM, SW o VL seguida de números.');
+  const searches=[
+    MB_BASE+'/buscar?controller=search&s='+encodeURIComponent(ref),
+    MB_BASE+'/search?controller=search&s='+encodeURIComponent(ref),
+    MB_BASE+'/?s='+encodeURIComponent(ref)
+  ];
+  for(const u of searches){try{const r=await mbGet(u);const found=mbProductLinkFromSearch(r.data,ref,u);if(found&&isMiBricolajeUrl(found))return found}catch{}}
+  // Fallback limitado a listados públicos ordenados por referencia de las marcas conocidas.
+  const brandByPrefix={FT:'13_fargo-tools',AM:'10_airmec',AC:'8_aicer',TK:'49_takuma',PM:'39_pamacon',SW:'46_sowell',LH:'31_larryhouse'};
+  const slug=brandByPrefix[ref.slice(0,2)];
+  if(slug){try{const u=MB_BASE+'/'+slug+'?order=product.reference.asc&productListView=list&resultsPerPage=99999';const r=await mbGet(u);const found=mbProductLinkFromSearch(r.data,ref,u);if(found&&isMiBricolajeUrl(found))return found}catch{}}
+  throw new Error('No encontré esa referencia en MiBricolaje. Puedes pegar la URL exacta de la ficha.');
+}
+function mbBrand(prod={},$){
+  const b=prod.brand;let name='';if(typeof b==='string')name=b;else if(b&&typeof b==='object')name=b.name||b['@id']||'';
+  if(!name)name=$('[itemprop="brand"]').first().text()||$('.product-manufacturer,.manufacturer-name,.brand').first().text()||'';
+  return String(name).replace(/\s+/g,' ').trim().slice(0,80)
+}
+function mbFactsFromHtml(html,url){
+  const $=cheerio.load(html);const products=productJsonLd($);const prod=products[0]||{};const offers=Array.isArray(prod.offers)?prod.offers[0]:(prod.offers||{});
+  const meta=(sel,attr='content')=>$(sel).first().attr(attr)||'';
+  const bodyText=$('body').text().replace(/\s+/g,' ').trim();
+  const sourceTitle=cleanProductTitle(prod.name||meta('meta[property="og:title"]')||$('h1').first().text()||'Producto');
+  const sourceDescription=String(prod.description||meta('meta[property="og:description"]')||meta('meta[name="description"]')||'').replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim().slice(0,1800);
+  let sourcePrice=numberPrice(offers.price||offers.lowPrice||meta('meta[property="product:price:amount"]')||meta('meta[itemprop="price"]')||$('[itemprop="price"]').first().attr('content')||$('[data-price]').first().attr('data-price'));
+  if(!sourcePrice){const m=bodyText.match(/(?:\d{1,3}(?:\.\d{3})*|\d+)(?:,\d{2})\s*€/);if(m)sourcePrice=numberPrice(m[0])}
+  const sourceRef=String(prod.sku||prod.mpn||prod.productID||(bodyText.match(/Referencia\s*:\s*([A-Z]{2}\d{2,10})/i)||[])[1]||'').trim().toUpperCase();
+  const sourceEan=String(prod.gtin13||prod.gtin14||prod.gtin12||prod.gtin8||prod.gtin||(bodyText.match(/(?:EAN|GTIN)\s*[:#-]?\s*(\d{8,14})/i)||[])[1]||'').replace(/\s/g,'').slice(0,20);
+  const sourceBrand=mbBrand(prod,$);
+  const av=String(offers.availability||'');const sourceAvailability=av?av.split('/').pop():/\bDisponible\b/i.test(bodyText)?'Disponible':'';
+  const sourceTaxNote=/impuestos?\s+excluidos?/i.test(bodyText)?'Impuestos excluidos':(/impuestos?\s+incluidos?/i.test(bodyText)?'Impuestos incluidos':'');
+  if(!sourcePrice)throw new Error('No se pudo leer el precio de origen');
+  if(!sourceRef||!MB_ALLOWED_PREFIXES.test(sourceRef))throw new Error('La ficha no contiene una referencia válida de las familias configuradas');
+  return {sourceTitle,sourceDescription,sourcePrice,sourceRef,sourceEan,sourceBrand,sourceAvailability,sourceTaxNote,sourceUrl:url};
+}
+function mbFallbackCopy(f={}){
+  const category=guessCategory((f.sourceTitle||'')+' '+(f.sourceDescription||''));
+  const brand=f.sourceBrand?(' '+f.sourceBrand):'';
+  const title=cleanProductTitle(String(f.sourceTitle||('Artículo'+brand)).replace(/\s+/g,' '));
+  return {title,category,description:'Producto de '+category.toLowerCase()+' disponible bajo pedido en FVMarket. La ficha comercial se revisa y redacta de forma independiente antes de su publicación.'}
+}
+async function mbCandidate(input,margin=40){
+  const sourceUrl=await resolveMiBricolajeInput(input);const r=await mbGet(sourceUrl);const f=mbFactsFromHtml(r.data,sourceUrl);
+  let own=mbFallbackCopy(f);const ai=await aiAnalyzeItems([{title:f.sourceTitle,description:f.sourceDescription,sourcePrice:f.sourcePrice,sourceRef:f.sourceRef}]);
+  if(ai.mode==='openai'&&ai.products?.[0]){const p=ai.products[0];own={title:cleanProductTitle(p.title||own.title),category:p.category||own.category,description:String(p.description||own.description).replace(/\s+/g,' ').trim().slice(0,700)}}
+  const m=Math.max(0,Math.min(300,Number(margin)||40));const addedValue=+(f.sourcePrice*m/100).toFixed(2);const price=+(f.sourcePrice+addedValue).toFixed(2);
+  return {...own,ref:ownReference(own.title,f.sourcePrice,own.category),sourceProvider:'Mi Bricolaje',sourceRef:f.sourceRef,sourceEan:f.sourceEan,sourceBrand:f.sourceBrand,sourceAvailability:f.sourceAvailability,sourceTaxNote:f.sourceTaxNote,sourceUrl:f.sourceUrl,sourcePrice:f.sourcePrice,margin:m,addedValue,price,stock:'bajo_pedido',published:false,featured:false,image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',reviewStatus:'borrador',aiMode:ai.mode||'local'}
+}
+app.post('/api/admin/mibricolaje/analyze',admin,async(req,res)=>{
+  const raw=Array.isArray(req.body.inputs)?req.body.inputs:[req.body.input];const inputs=raw.map(x=>String(x||'').trim()).filter(Boolean).slice(0,20);if(!inputs.length)return res.status(400).json({error:'Introduce al menos una referencia o URL'});
+  const margin=Math.max(0,Math.min(300,Number(req.body.margin)||40));const products=[],errors=[];
+  for(const input of inputs){try{products.push(await mbCandidate(input,margin))}catch(e){errors.push({input,error:String(e.message||e)})}}
+  res.json({products,errors,policy:{source:'Mi Bricolaje',copyImages:false,copyDescriptions:false,internalAssociation:true,defaultMargin:margin}})
+});
+app.post('/api/admin/mibricolaje/import',admin,(req,res)=>{
+  const items=Array.isArray(req.body.products)?req.body.products.slice(0,50):[];if(!items.length)return res.status(400).json({error:'No hay productos seleccionados'});
+  const d=read();let created=0,skipped=0;const products=[];
+  for(const x of items){const sourceRef=String(x.sourceRef||'').toUpperCase().trim();if(!MB_ALLOWED_PREFIXES.test(sourceRef)){skipped++;continue}if(d.products.some(p=>String(p.sourceProvider||'')==='Mi Bricolaje'&&String(p.sourceRef||'').toUpperCase()===sourceRef)){skipped++;continue}
+    const title=cleanProductTitle(x.title||('Producto '+sourceRef));const category=String(x.category||guessCategory(title));const sourcePrice=Number(x.sourcePrice)||0;if(!sourcePrice){skipped++;continue}const margin=Math.max(0,Math.min(300,Number(x.margin)||40));const addedValue=+(sourcePrice*margin/100).toFixed(2);const price=+(sourcePrice+addedValue).toFixed(2);
+    const p={id:id('prd'),title,category,subcategory:String(x.subcategory||''),ref:nextProductRef(d,title,category),price,stock:'bajo_pedido',image:'',images:[],imageSource:'',imageLicense:'',imageAuthor:'',description:String(x.description||'').slice(0,900),published:false,featured:false,onOffer:false,discountPct:0,sourceProvider:'Mi Bricolaje',sourceRef,sourceEan:String(x.sourceEan||''),sourceBrand:String(x.sourceBrand||''),sourceAvailability:String(x.sourceAvailability||''),sourceTaxNote:String(x.sourceTaxNote||''),sourceUrl:String(x.sourceUrl||''),sourcePrice,margin,addedValue,sourceCheckedAt:new Date().toISOString(),sourceSync:'mibricolaje_v8',reviewStatus:'borrador',importedAt:new Date().toISOString()};d.products.unshift(p);products.push(p);created++}
+  save(d);res.json({created,skipped,products})
+});
+app.post('/api/admin/mibricolaje/refresh/:id',admin,async(req,res)=>{
+  const d=read();const p=d.products.find(x=>x.id===req.params.id);if(!p)return res.status(404).json({error:'Producto no encontrado'});if(p.sourceProvider!=='Mi Bricolaje'||!isMiBricolajeUrl(p.sourceUrl))return res.status(400).json({error:'El producto no está asociado a MiBricolaje'});
+  try{const r=await mbGet(p.sourceUrl);const f=mbFactsFromHtml(r.data,p.sourceUrl);const oldSourcePrice=Number(p.sourcePrice)||0;p.sourcePrice=f.sourcePrice;p.sourceAvailability=f.sourceAvailability;p.sourceTaxNote=f.sourceTaxNote;p.sourceCheckedAt=new Date().toISOString();p.addedValue=+(f.sourcePrice*(Number(p.margin)||0)/100).toFixed(2);p.price=+(f.sourcePrice+p.addedValue).toFixed(2);save(d);res.json({product:p,change:{oldSourcePrice,newSourcePrice:f.sourcePrice}})}catch(e){res.status(422).json({error:String(e.message||'No se pudo actualizar el origen')})}
+});
 
 app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public','admin.html')));
 

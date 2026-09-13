@@ -843,4 +843,43 @@ setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
 })();
 </script>
 
+
+<script>
+/* FVM_MIBRICOLAJE_UI_V8 */
+(function(){
+  let mbProducts=[];
+  function eur(n){return Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
+  function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function mount(){
+    const grid=document.querySelector('#view-catalog .grid');if(!grid||document.getElementById('mbImportCard'))return;
+    const card=document.createElement('div');card.id='mbImportCard';card.className='card wide';
+    card.innerHTML=`<div class="bar"><div><h2 style="margin:0">Importar desde MiBricolaje</h2><p class="sub" style="margin:5px 0 0">Fuente interna de aprovisionamiento. FVMarket conserva referencia/precio origen, crea referencia propia y no copia imágenes ni descripciones literales.</p></div><span class="badge">Método principal</span></div>
+      <div class="notice"><b>Uso independiente:</b> pega referencias (FT1533, FT1526...) o URLs de fichas. Los productos se guardan como <b>borradores</b> y la asociación con MiBricolaje solo es visible en administración.</div>
+      <div class="row2" style="margin-top:12px"><div class="field"><label>Referencias o URLs · una por línea</label><textarea id="mbInputs" rows="5" placeholder="FT1533\nFT1526\nhttps://mibricolaje.com/..." style="width:100%"></textarea></div><div><div class="field"><label>Valor añadido (%)</label><input id="mbMargin" type="number" min="0" max="300" step="0.1" value="40"></div><button class="btn navy" id="mbAnalyzeBtn" type="button">Analizar productos</button><div class="msg" id="mbMsg"></div></div></div>
+      <div id="mbResults" style="margin-top:14px"></div>`;
+    const pdf=grid.querySelector('.fvmCatalogV2');if(pdf)grid.insertBefore(card,pdf);else grid.prepend(card);
+    document.getElementById('mbAnalyzeBtn').onclick=analyze;
+  }
+  async function analyze(){
+    const box=document.getElementById('mbInputs'),msg=document.getElementById('mbMsg'),btn=document.getElementById('mbAnalyzeBtn');
+    const inputs=String(box?.value||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);if(!inputs.length){msg.textContent='Introduce al menos una referencia o URL.';return}
+    btn.disabled=true;msg.textContent='Consultando fichas públicas y generando fichas propias FVMarket…';
+    try{const r=await api('/api/admin/mibricolaje/analyze',{method:'POST',body:JSON.stringify({inputs,margin:Number(document.getElementById('mbMargin').value)||40})});mbProducts=r.products||[];render(r.errors||[]);msg.textContent=mbProducts.length+' productos preparados para revisión'+((r.errors||[]).length?' · '+r.errors.length+' no encontrados':'')+'.';}catch(e){msg.textContent=e.message||'No se pudo analizar.'}finally{btn.disabled=false}
+  }
+  function render(errors=[]){
+    const el=document.getElementById('mbResults');if(!el)return;if(!mbProducts.length){el.innerHTML=errors.length?'<div class="notice">'+errors.map(x=>esc(x.input)+': '+esc(x.error)).join('<br>')+'</div>':'';return}
+    el.innerHTML=`<div class="catalogTable" style="max-height:560px"><table><thead><tr><th>✓</th><th>Producto FVMarket</th><th>Ref. origen</th><th>Marca</th><th>Precio origen</th><th>Margen</th><th>PVP</th><th>Estado</th></tr></thead><tbody>${mbProducts.map((p,i)=>`<tr><td><input type="checkbox" class="mbSel" data-i="${i}"></td><td><input class="miniTitle mbTitle" data-i="${i}" value="${esc(p.title)}"><div class="aiMeta">Ref. FVMarket se asignará al importar · sin imagen del origen</div></td><td><b>${esc(p.sourceRef)}</b></td><td>${esc(p.sourceBrand||'')}</td><td>${eur(p.sourcePrice)}${p.sourceTaxNote?'<div class="aiMeta">'+esc(p.sourceTaxNote)+'</div>':''}</td><td><input class="miniInput mbMarginRow" data-i="${i}" type="number" min="0" max="300" step="0.1" value="${Number(p.margin||40)}"></td><td class="mbPvp" data-i="${i}"><b>${eur(p.price)}</b></td><td><span class="badge">Borrador</span><div class="aiMeta">${esc(p.sourceAvailability||'')}</div></td></tr>`).join('')}</tbody></table></div>
+      <div class="bar" style="margin-top:10px"><button class="btn ghost" id="mbSelectAll">Seleccionar todos</button><button class="btn navy" id="mbImportSelected">Importar seleccionados como borrador</button><span class="msg" id="mbImportMsg"></span></div>${errors.length?'<div class="notice">No encontrados:<br>'+errors.map(x=>esc(x.input)+': '+esc(x.error)).join('<br>')+'</div>':''}`;
+    el.querySelectorAll('.mbMarginRow').forEach(inp=>inp.oninput=()=>{const i=Number(inp.dataset.i),m=Math.max(0,Number(inp.value)||0);mbProducts[i].margin=m;mbProducts[i].addedValue=+(Number(mbProducts[i].sourcePrice||0)*m/100).toFixed(2);mbProducts[i].price=+(Number(mbProducts[i].sourcePrice||0)+mbProducts[i].addedValue).toFixed(2);el.querySelector('.mbPvp[data-i="'+i+'"]').innerHTML='<b>'+eur(mbProducts[i].price)+'</b>'});
+    el.querySelectorAll('.mbTitle').forEach(inp=>inp.oninput=()=>{mbProducts[Number(inp.dataset.i)].title=inp.value});
+    document.getElementById('mbSelectAll').onclick=()=>el.querySelectorAll('.mbSel').forEach(x=>x.checked=true);
+    document.getElementById('mbImportSelected').onclick=doImport;
+  }
+  async function doImport(){
+    const el=document.getElementById('mbResults'),msg=document.getElementById('mbImportMsg');const chosen=[...el.querySelectorAll('.mbSel:checked')].map(x=>mbProducts[Number(x.dataset.i)]);if(!chosen.length){msg.textContent='Selecciona al menos un producto.';return}
+    msg.textContent='Importando…';try{const r=await api('/api/admin/mibricolaje/import',{method:'POST',body:JSON.stringify({products:chosen})});msg.textContent='Creados '+r.created+' borradores'+(r.skipped?' · '+r.skipped+' omitidos/duplicados':'')+'. Revisa imágenes y ficha desde Productos.';if(typeof loadProducts==='function')loadProducts()}catch(e){msg.textContent=e.message||'Error al importar.'}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else setTimeout(mount,0);
+})();
+</script>
 </body></html>
