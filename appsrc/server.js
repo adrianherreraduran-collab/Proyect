@@ -22,8 +22,8 @@ const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SEC
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
 const EMAIL_FROM = String(process.env.EMAIL_FROM || '').trim();
 const PUBLIC_URL = String(process.env.PUBLIC_URL || '').trim().replace(/\/$/,'');
-const ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase();
-const ADMIN_PIN = String(process.env.ADMIN_PIN || '');
+const INITIAL_ADMIN_USERNAME = String(process.env.ADMIN_USERNAME || 'admin').trim().toLowerCase() || 'admin';
+const INITIAL_ADMIN_PIN = String(process.env.ADMIN_PIN || '3669').trim() || '3669';
 const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || '');
 const OPENAI_MODEL = String(process.env.OPENAI_MODEL || 'gpt-5.6-luna');
 const OPENAI_IMAGE_MODEL = String(process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2');
@@ -52,16 +52,20 @@ function seed(){return {users:[],products:defaultProducts,orders:[],quotes:[],se
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2))}
 function ensureAdmin(d){
   if(!Array.isArray(d.users))d.users=[];
-  for(const x of d.users){if(String(x.username||'').toLowerCase()!==ADMIN_USERNAME && x.role!=='customer')x.role='customer'}
+  d.settings=d.settings||{};
   let changed=false;
-  let u=d.users.find(x=>String(x.username||'').toLowerCase()===ADMIN_USERNAME);
+  let u=d.users.find(x=>x.role==='admin');
   if(!u){
-    u={id:id('usr'),name:'Administrador FVMarket',username:ADMIN_USERNAME,email:ADMIN_USERNAME+'@fvmarket.local',password:ADMIN_PIN?bcrypt.hashSync(ADMIN_PIN,12):'',role:'admin',emailVerified:true,createdAt:new Date().toISOString()};
+    u={id:id('usr'),name:'Administrador FVMarket',username:INITIAL_ADMIN_USERNAME,email:INITIAL_ADMIN_USERNAME+'@fvmarket.local',password:bcrypt.hashSync(INITIAL_ADMIN_PIN,12),role:'admin',emailVerified:true,createdAt:new Date().toISOString()};
     d.users.unshift(u);changed=true;
+  }
+  if(!d.settings.adminCredentialsInitializedV14){
+    u.username='admin';u.email='admin@fvmarket.local';u.password=bcrypt.hashSync('3669',12);u.role='admin';u.emailVerified=true;
+    d.settings.adminCredentialsInitializedV14=true;changed=true;
   }else{
-    if(u.role!=='admin'){u.role='admin';changed=true}
-    if(u.username!==ADMIN_USERNAME){u.username=ADMIN_USERNAME;changed=true}
-    if(ADMIN_PIN && (!u.password || !bcrypt.compareSync(ADMIN_PIN,u.password))){u.password=bcrypt.hashSync(ADMIN_PIN,12);changed=true}
+    if(!String(u.username||'').trim()){u.username=INITIAL_ADMIN_USERNAME;changed=true}
+    if(!u.password){u.password=bcrypt.hashSync(INITIAL_ADMIN_PIN,12);changed=true}
+    if(!u.emailVerified){u.emailVerified=true;changed=true}
   }
   return changed;
 }
@@ -242,6 +246,26 @@ app.post('/api/auth/login',async(req,res)=>{
   res.json({token:token(u),user:safeUser(u)});
 });
 app.get('/api/me',auth,(req,res)=>{const u=read().users.find(x=>x.id===req.user.id);res.json(u?safeUser(u):null)});
+// FVM_ADMIN_SECURITY_V14
+app.get('/api/admin/security',admin,(req,res)=>{
+  const d=read();const u=d.users.find(x=>x.id===req.user.id&&x.role==='admin');
+  if(!u)return res.status(404).json({error:'Administrador no encontrado'});
+  res.set('Cache-Control','no-store');res.json({username:String(u.username||'admin')});
+});
+app.put('/api/admin/security',admin,async(req,res)=>{
+  const d=read();const u=d.users.find(x=>x.id===req.user.id&&x.role==='admin');
+  if(!u)return res.status(404).json({error:'Administrador no encontrado'});
+  const currentPin=String(req.body?.currentPin||'');
+  if(!currentPin||!u.password||!(await bcrypt.compare(currentPin,u.password)))return res.status(401).json({error:'El PIN actual no es correcto'});
+  const newUsername=String(req.body?.newUsername??u.username??'').trim().toLowerCase();
+  const newPin=String(req.body?.newPin||'').trim();
+  if(!/^[a-z0-9._-]{3,32}$/.test(newUsername))return res.status(400).json({error:'El usuario debe tener entre 3 y 32 caracteres: letras, números, punto, guion o guion bajo'});
+  if(d.users.some(x=>x.id!==u.id&&String(x.username||'').trim().toLowerCase()===newUsername))return res.status(409).json({error:'Ese usuario ya está en uso'});
+  if(newPin&&!/^\d{4,12}$/.test(newPin))return res.status(400).json({error:'El nuevo PIN debe tener entre 4 y 12 dígitos'});
+  u.username=newUsername;u.email=newUsername+'@fvmarket.local';if(newPin)u.password=await bcrypt.hash(newPin,12);u.updatedAt=new Date().toISOString();save(d);
+  res.json({ok:true,token:token(u),user:safeUser(u)});
+});
+
 app.put('/api/me/profile',auth,async(req,res)=>{
   const d=read();const u=d.users.find(x=>x.id===req.user.id);if(!u)return res.status(404).json({error:'Cuenta no encontrada'});if(u.role==='customer'&&!u.emailVerified)return res.status(403).json({error:'Verifica primero tu correo electrónico'});
   const firstName=String(req.body?.firstName||'').trim(),lastName=String(req.body?.lastName||'').trim(),nifNie=cleanNifNie(req.body?.nifNie||''),billingAddress=String(req.body?.billingAddress||'').trim(),phone=String(req.body?.phone||'').trim();const dv=req.body?.deliveryAddress||{};

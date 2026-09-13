@@ -3,7 +3,7 @@
   const $=id=>document.getElementById(id);
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const eur=n=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-  const apiCall=(url,opt={})=>window.api?window.api(url,opt):Promise.reject(new Error('API no disponible'));
+  const apiCall=(url,opt={})=>{const method=String(opt.method||'GET').toUpperCase();const finalUrl=method==='GET'?url+(url.includes('?')?'&':'?')+'_v14='+Date.now():url;return window.api?window.api(finalUrl,{...opt,cache:'no-store'}):Promise.reject(new Error('API no disponible'))};
   const state={suppliers:[],taxonomy:{},selectedSupplier:null,products:[],capture:'',photos:[],editingSupplier:null};
   let oldOpenEdit=window.openEdit;
 
@@ -37,7 +37,20 @@
 
   function openSupplierModal(s=null){state.editingSupplier=s;document.querySelector('.v13Modal')?.remove();const m=document.createElement('div');m.className='v13Modal';m.innerHTML=`<div class="v13ModalBox" style="width:min(620px,96vw)"><div class="v13ModalTop"><div><h2>${s?'Editar proveedor':'Crear proveedor'}</h2><p>Cada proveedor tendrá su propio contenedor de productos.</p></div><button class="closeX" id="v13SupplierClose">✕</button></div><div class="v13SupplierForm"><div class="field"><label>Nombre del proveedor *</label><input id="v13SupplierName" value="${esc(s?.name||'')}" placeholder="Ej. Obramat Jinámar"></div><div class="field"><label>Margen por defecto %</label><input id="v13SupplierMargin" type="number" min="0" max="300" step="0.1" value="${Number(s?.defaultMargin??40)}"></div><div class="field wide"><label>Web del proveedor</label><input id="v13SupplierWeb" value="${esc(s?.website||'')}" placeholder="https://..."></div><div class="field wide"><label>Notas internas</label><textarea id="v13SupplierNotes" rows="3">${esc(s?.notes||'')}</textarea></div></div><div id="v13SupplierMsg" class="msg"></div><div class="v13Bottom"><button class="btn ghost" id="v13SupplierCancel">Cancelar</button><button class="btn navy" id="v13SupplierSave">Guardar proveedor</button></div></div>`;document.body.appendChild(m);$('v13SupplierClose').onclick=$('v13SupplierCancel').onclick=()=>m.remove();$('v13SupplierSave').onclick=saveSupplier}
   window.v13EditSupplier=id=>{const s=state.suppliers.find(x=>x.id===id);if(s)openSupplierModal(s)};
-  async function saveSupplier(){const btn=$('v13SupplierSave'),msg=$('v13SupplierMsg'),body={name:$('v13SupplierName').value,website:$('v13SupplierWeb').value,defaultMargin:Number($('v13SupplierMargin').value)||0,notes:$('v13SupplierNotes').value};if(!body.name.trim()){msg.textContent='Indica el nombre.';return}btn.disabled=true;btn.textContent='Guardando…';try{if(state.editingSupplier)await apiCall('/api/admin/suppliers/'+state.editingSupplier.id,{method:'PUT',body:JSON.stringify(body)});else await apiCall('/api/admin/suppliers',{method:'POST',body:JSON.stringify(body)});document.querySelector('.v13Modal')?.remove();await loadAll()}catch(e){msg.textContent=e.message||'No se pudo guardar';btn.disabled=false;btn.textContent='Guardar proveedor'}}
+  async function saveSupplier(){
+    const btn=$('v13SupplierSave'),msg=$('v13SupplierMsg'),editing=state.editingSupplier,body={name:$('v13SupplierName').value,website:$('v13SupplierWeb').value,defaultMargin:Number($('v13SupplierMargin').value)||0,notes:$('v13SupplierNotes').value};
+    if(!body.name.trim()){msg.textContent='Indica el nombre.';return}btn.disabled=true;btn.textContent='Guardando…';
+    try{
+      const saved=editing?await apiCall('/api/admin/suppliers/'+editing.id,{method:'PUT',body:JSON.stringify(body)}):await apiCall('/api/admin/suppliers',{method:'POST',body:JSON.stringify(body)});
+      document.querySelector('.v13Modal')?.remove();
+      if(saved?.id){
+        const pos=state.suppliers.findIndex(x=>x.id===saved.id);if(pos>=0)state.suppliers[pos]=saved;else state.suppliers.unshift(saved);
+        state.selectedSupplier=saved;renderSuppliers();await loadSupplierProducts(saved.id);
+      }
+      await loadAll();
+      if(saved?.id){state.selectedSupplier=state.suppliers.find(x=>x.id===saved.id)||saved;renderSuppliers();await loadSupplierProducts(saved.id)}
+    }catch(e){msg.textContent=e.message||'No se pudo guardar';btn.disabled=false;btn.textContent='Guardar proveedor'}
+  }
   window.v13DeleteSupplier=async id=>{const s=state.suppliers.find(x=>x.id===id);if(!s||!confirm('¿Eliminar el proveedor '+s.name+'?'))return;try{await apiCall('/api/admin/suppliers/'+id,{method:'DELETE'});if(state.selectedSupplier?.id===id){state.selectedSupplier=null;state.products=[];$('v13ProductContainer').innerHTML=''}await loadAll()}catch(e){alert(e.message||'No se pudo eliminar')}};
 
   async function imageData(file,max=1600,quality=.86){return new Promise((resolve,reject)=>{const r=new FileReader();r.onerror=reject;r.onload=()=>{const img=new Image();img.onerror=reject;img.onload=()=>{let w=img.width,h=img.height;const scale=Math.min(1,max/Math.max(w,h));w=Math.round(w*scale);h=Math.round(h*scale);const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);resolve(c.toDataURL('image/jpeg',quality))};img.src=r.result};r.readAsDataURL(file)})}
