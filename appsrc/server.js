@@ -10,6 +10,7 @@ const cheerio = require('cheerio');
 const Stripe = require('stripe');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
+const {prepareImages} = require('./free_image_prep');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -686,7 +687,7 @@ app.post('/api/admin/mibricolaje/import',admin,(req,res)=>{
   for(const x of items){const sourceRef=String(x.sourceRef||'').toUpperCase().trim();if(!MB_ALLOWED_PREFIXES.test(sourceRef)){skipped++;continue}if(d.products.some(p=>String(p.sourceProvider||'')==='Mi Bricolaje'&&String(p.sourceRef||'').toUpperCase()===sourceRef)){skipped++;continue}
     const title=cleanProductTitle(x.title||('Producto '+sourceRef));const category=String(x.category||guessCategory(title));const sourcePrice=Number(x.sourcePrice)||0;if(!sourcePrice){skipped++;continue}const margin=Math.max(0,Math.min(300,Number(x.margin)||40));const addedValue=+(sourcePrice*margin/100).toFixed(2);const price=+(sourcePrice+addedValue).toFixed(2);
     const aiImages=normalizeProductImages(Array.isArray(x.images)?x.images:[]).filter(im=>String(im.origin||'')==='ai-render'||/^data:image\//i.test(String(im.url||''))).slice(0,6);const mainImage=aiImages[0]?.url||'';const requestedRef=String(x.ref||'').toUpperCase().trim();const ownRef=(requestedRef.startsWith('FVM-')&&!d.products.some(q=>String(q.ref||'').toUpperCase()===requestedRef))?requestedRef:nextProductRef(d,title,category);
-    const p={id:id('prd'),title,category,subcategory:String(x.subcategory||''),ref:ownRef,price,stock:'bajo_pedido',image:mainImage,images:aiImages,imageSource:'IA FVMarket',imageLicense:'',imageAuthor:'',description:String(x.description||'').slice(0,900),published:false,featured:false,onOffer:false,discountPct:0,sourceProvider:'Mi Bricolaje',sourceRef,sourceEan:String(x.sourceEan||''),sourceBrand:String(x.sourceBrand||''),sourceAvailability:String(x.sourceAvailability||''),sourceTaxNote:String(x.sourceTaxNote||''),sourceUrl:String(x.sourceUrl||''),sourceImages:Array.isArray(x.sourceImages)?x.sourceImages.slice(0,6):[],sourcePrice,margin,addedValue,sourceCheckedAt:new Date().toISOString(),sourceSync:'mibricolaje_v8',reviewStatus:'borrador',importedAt:new Date().toISOString()};d.products.unshift(p);products.push(p);created++}
+    const p={id:id('prd'),title,category,subcategory:String(x.subcategory||''),ref:ownRef,price,stock:'bajo_pedido',image:mainImage,images:aiImages,imageSource:(aiImages.some(im=>im.origin==='ai-render')?'IA FVMarket':'Preparación FVMarket'),imageLicense:'',imageAuthor:'',description:String(x.description||'').slice(0,900),published:false,featured:false,onOffer:false,discountPct:0,sourceProvider:'Mi Bricolaje',sourceRef,sourceEan:String(x.sourceEan||''),sourceBrand:String(x.sourceBrand||''),sourceAvailability:String(x.sourceAvailability||''),sourceTaxNote:String(x.sourceTaxNote||''),sourceUrl:String(x.sourceUrl||''),sourceImages:Array.isArray(x.sourceImages)?x.sourceImages.slice(0,6):[],sourcePrice,margin,addedValue,sourceCheckedAt:new Date().toISOString(),sourceSync:'mibricolaje_v8',reviewStatus:'borrador',importedAt:new Date().toISOString()};d.products.unshift(p);products.push(p);created++}
   save(d);res.json({created,skipped,products})
 });
 
@@ -707,6 +708,17 @@ async function mbGenerateImageVariant({title='',sourceRef='',inputImages=[],vari
   const out=(r.data?.output||[]).find(x=>x?.type==='image_generation_call'&&x?.result);if(!out?.result)throw new Error('La IA no devolvió una imagen');
   return {url:'data:image/jpeg;base64,'+out.result,source:'IA FVMarket',license:'',author:'',origin:'ai-render',model:OPENAI_IMAGE_MODEL}
 }
+app.post('/api/admin/mibricolaje/prepare-images',admin,async(req,res)=>{
+  const src=(Array.isArray(req.body.sourceImages)?req.body.sourceImages:[]).map(x=>typeof x==='string'?x:x?.url).filter(Boolean).slice(0,3);
+  if(!src.length)return res.status(400).json({error:'No hay imágenes del artículo para preparar'});
+  try{
+    const dataUrls=[];for(const u of src){try{dataUrls.push(await mbImageDataUrl(u))}catch{}}
+    if(!dataUrls.length)return res.status(422).json({error:'No se pudieron leer las imágenes del artículo origen'});
+    const images=await prepareImages(dataUrls,req.body.count||3);
+    res.json({images,mode:'free',cost:0});
+  }catch(e){console.error('free image prep',e);res.status(500).json({error:'No se pudieron preparar las imágenes: '+String(e.message||e)})}
+});
+
 app.post('/api/admin/mibricolaje/render-images',admin,async(req,res)=>{
   if(!OPENAI_API_KEY)return res.status(503).json({error:'La generación de imágenes requiere OPENAI_API_KEY en Render'});
   const src=(Array.isArray(req.body.sourceImages)?req.body.sourceImages:[]).map(x=>typeof x==='string'?x:x?.url).filter(Boolean).slice(0,2);if(!src.length)return res.status(400).json({error:'No hay imágenes del artículo para usar como referencia visual'});
