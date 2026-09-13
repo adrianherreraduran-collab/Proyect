@@ -1,0 +1,50 @@
+name: Apply FVMarket supplier capture v13
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-supplier-capture-v13.yml'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply FVMarket v13 patch
+        run: python scripts/patch_fvmarket_supplier_capture_v13.py
+      - name: Install app dependencies for validation
+        run: npm install --prefix appsrc --omit=dev
+      - name: Validate application
+        run: |
+          node --check appsrc/server.js
+          node --check appsrc/supplier_capture_v13.js
+          node --check appsrc/public/fvmarket-admin-v13.js
+          node --check appsrc/public/fvmarket-home-v13.js
+          node - <<'NODE'
+          const t=require('./appsrc/supplier_capture_v13')._test;
+          const checks=[
+            [Math.abs(t.money('119,90 €')-119.9)<0.001,'price comma'],
+            [Math.abs(t.money('1.249,50 €')-1249.5)<0.001,'price thousands'],
+            [t.cleanRef(' MO1089 ')==='MO1089','reference']
+          ];
+          for(const [ok,name] of checks)if(!ok)throw new Error('Failed: '+name);
+          console.log('supplier capture v13 validation ok');
+          NODE
+      - name: Verify integration markers
+        run: |
+          grep -q "require('./supplier_capture_v13')" appsrc/server.js
+          grep -q "limit:'30mb'" appsrc/server.js
+          grep -q '/fvmarket-admin-v13.js?v=13' appsrc/public/admin.html
+          grep -q '/fvmarket-home-v13.js?v=13' appsrc/public/index.html
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated FVMarket application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/server.js appsrc/supplier_capture_v13.js appsrc/public/admin.html appsrc/public/fvmarket-admin-v13.js appsrc/public/index.html appsrc/public/fvmarket-home-v13.js fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Aplicar proveedores por captura e interfaz FVMarket v13'
+          git push
