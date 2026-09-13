@@ -1,0 +1,48 @@
+name: Apply FVMarket provider render v15
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-provider-render-v15.yml'
+      - 'scripts/patch_fvmarket_provider_render_v15.py'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply FVMarket v15 patch
+        run: python scripts/patch_fvmarket_provider_render_v15.py
+      - name: Install app dependencies
+        run: npm install --prefix appsrc --omit=dev
+      - name: Validate JavaScript
+        run: |
+          node --check appsrc/server.js
+          node --check appsrc/supplier_capture_v13.js
+          node --check appsrc/free_image_prep.js
+          node --check appsrc/public/fvmarket-admin-v13.js
+      - name: Verify provider routes are before storefront catch-all
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('appsrc/server.js').read_text()
+          reg=s.index('registerProviderSourceRoutes(app,admin')
+          catch=s.index("app.get('*'")
+          assert reg < catch, 'Provider routes must be registered before catch-all'
+          assert 'prepareImages});' in s
+          assert 'FVM_FREE_LOCAL_RENDER_V15' in Path('appsrc/supplier_capture_v13.js').read_text()
+          assert 'Render inteligente gratis' in Path('appsrc/public/fvmarket-admin-v13.js').read_text()
+          print('v15 route order and renderer markers OK')
+          PY
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated FVMarket application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/server.js appsrc/supplier_capture_v13.js appsrc/free_image_prep.js appsrc/public/fvmarket-admin-v13.js fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Corregir proveedores y añadir render gratuito FVMarket v15'
+          git push
