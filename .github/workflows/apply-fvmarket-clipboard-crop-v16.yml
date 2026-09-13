@@ -1,0 +1,45 @@
+name: Apply FVMarket clipboard crop v16
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-clipboard-crop-v16.yml'
+      - 'scripts/patch_fvmarket_clipboard_crop_v16.py'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply FVMarket v16 patch
+        run: python scripts/patch_fvmarket_clipboard_crop_v16.py
+      - name: Validate JavaScript
+        run: |
+          node --check appsrc/public/fvmarket-admin-v13.js
+          node --check appsrc/public/fvmarket-admin-crop-v16.js
+      - name: Verify clipboard, crop and hidden technical field
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          a=Path('appsrc/public/fvmarket-admin-v13.js').read_text()
+          c=Path('appsrc/public/fvmarket-admin-crop-v16.js').read_text()
+          h=Path('appsrc/public/admin.html').read_text()
+          assert 'Ctrl+V' in a
+          assert 'v13CropPhoto' in a
+          assert 'fvmOpenCropV16' in c
+          assert "field.style.display='none'" in c
+          assert '/fvmarket-admin-crop-v16.js?v=16' in h
+          print('v16 clipboard/crop markers OK')
+          PY
+      - name: Repack FVMarket
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit updated FVMarket application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/public/admin.html appsrc/public/fvmarket-admin-v13.js appsrc/public/fvmarket-admin-crop-v16.js fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Añadir pegado y recorte de imágenes FVMarket v16'
+          git push
