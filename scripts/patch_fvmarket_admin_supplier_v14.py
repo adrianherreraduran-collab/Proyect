@@ -76,7 +76,7 @@ new="const apiCall=(url,opt={})=>{const method=String(opt.method||'GET').toUpper
 if old in a:a=a.replace(old,new,1)
 else: raise SystemExit('No se encontró apiCall v13')
 
-old_save=re.search(r"  async function saveSupplier\(\)\{[\s\S]*?\n  \}\n  window\.v13DeleteSupplier",a)
+old_save=re.search(r"  async function saveSupplier\(\)\{[\s\S]*?\}\n  window\.v13DeleteSupplier",a)
 if not old_save: raise SystemExit('No se encontró saveSupplier')
 new_save=r'''  async function saveSupplier(){
     const btn=$('v13SupplierSave'),msg=$('v13SupplierMsg'),editing=state.editingSupplier,body={name:$('v13SupplierName').value,website:$('v13SupplierWeb').value,defaultMargin:Number($('v13SupplierMargin').value)||0,notes:$('v13SupplierNotes').value};
