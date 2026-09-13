@@ -12,9 +12,24 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply FVMarket v12 patch
         run: python scripts/patch_fvmarket_provider_v12.py
+      - name: Fix provider parser regression
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('appsrc/provider_sources_v12.js')
+          s=p.read_text(encoding='utf-8')
+          old="function priceFromText(text=''){const s=compact(text);const patterns=[/(\\d{1,5}(?:[.,]\\d{1,2})?)\\s*(?:€|EUR)\\b/i,/(?:€|EUR)\\s*(\\d{1,5}(?:[.,]\\d{1,2})?)/i];for(const rx of patterns){const m=s.match(rx);if(m){const n=money(m[1]);if(n)return n}}return 0}"
+          new="function priceFromText(text=''){const s=compact(text);const patterns=[/(\\d{1,5}(?:[.,]\\d{1,2})?)\\s*(?:€|EUR)/i,/(?:€|EUR)\\s*(\\d{1,5}(?:[.,]\\d{1,2})?)/i];for(const rx of patterns){const m=s.match(rx);if(m){const n=money(m[1]);if(n)return n}}return 0}"
+          if old not in s: raise SystemExit('price parser anchor not found')
+          s=s.replace(old,new,1)
+          marker="const BRAVE_SEARCH_API_KEY=String(process.env.BRAVE_SEARCH_API_KEY||'').trim();"
+          if "[provider-v12] search fallback:" not in s:
+              s=s.replace(marker,marker+"\nconsole.log('[provider-v12] search fallback: '+((GOOGLE_CSE_API_KEY&&GOOGLE_CSE_CX)?'google-cse':(BRAVE_SEARCH_API_KEY?'brave':'none')));",1)
+          p.write_text(s,encoding='utf-8')
+          PY
       - name: Install app dependencies for validation
         run: npm install --prefix appsrc --omit=dev
-      - name: Validate JavaScript
+      - name: Validate JavaScript and price parsing
         run: |
           node --check appsrc/server.js
           node --check appsrc/provider_sources_v12.js
