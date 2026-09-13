@@ -398,6 +398,7 @@ function slideRail(id,dir){const el=document.getElementById(id);if(!el)return;co
 function autoRail(id){const el=document.getElementById(id);if(!el)return;setInterval(()=>{const max=el.scrollWidth-el.clientWidth;if(max<80)return;if(el.scrollLeft>=max-20)el.scrollTo({left:0,behavior:'smooth'});else slideRail(id,1)},5500)}
 window.addEventListener('load',()=>{setTimeout(()=>{autoRail('offerGrid');autoRail('productGrid')},1200)})
 </script>
+<script src="/fvmarket-home-v13.js?v=13"></script>
 </body></html>
 
 <style id="fvm-hardware-hero-v1">

@@ -11,7 +11,7 @@ const Stripe = require('stripe');
 const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
-const {registerProviderSourceRoutes} = require('./provider_sources_v12');
+const {registerProviderSourceRoutes} = require('./supplier_capture_v13');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -37,7 +37,7 @@ const RUTAFV_QUOTE_PATH = String(process.env.RUTAFV_QUOTE_PATH || '/api/integrat
 const RUTAFV_DELIVERY_PATH = String(process.env.RUTAFV_DELIVERY_PATH || '/api/integrations/fvmarket/deliveries').trim();
 // FVM_CATALOG_TRANSPORT_V1
 // FVM_PROVIDER_BRAVE_IMAGES_V3
-app.use(express.json({limit:'12mb'}));
+app.use(express.json({limit:'30mb'}));
 const upload = multer({storage:multer.memoryStorage(),limits:{fileSize:25*1024*1024}});
 app.use(express.static(path.join(__dirname,'public')));
 
@@ -123,7 +123,7 @@ function requireCustomerReady(req,res,next){
 
 // FVM_PRIVATE_PROCUREMENT_V1
 function publicProduct(p={}){
-  const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,sourceStore,sourceSeller,providerKey,...safe}=p;
+  const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,sourceStore,sourceSeller,providerKey,supplierId,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
   safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);return safe;
 }
