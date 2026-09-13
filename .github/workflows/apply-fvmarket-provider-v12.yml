@@ -12,6 +12,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Apply FVMarket v12 patch
         run: python scripts/patch_fvmarket_provider_v12.py
+      - name: Install app dependencies for validation
+        run: npm install --prefix appsrc --omit=dev
       - name: Validate JavaScript
         run: |
           node --check appsrc/server.js
