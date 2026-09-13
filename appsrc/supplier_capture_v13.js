@@ -54,6 +54,25 @@ function registerProviderSourceRoutes(app,admin,deps){
 
   app.post('/api/admin/suppliers/:id/analyze-capture',admin,async(req,res)=>{const d=ensureStores(deps.read());const supplier=d.suppliers.find(s=>s.id===req.params.id);if(!supplier)return res.status(404).json({error:'Proveedor no encontrado'});const capture=String(req.body.capture||'');if(!dataImageOk(capture))return res.status(400).json({error:'Sube una captura PNG, JPG o WEBP válida'});const margin=clamp(req.body.margin??supplier.defaultMargin??40,0,300);const result=await analyzeVision(capture,supplier,deps,margin,taxonomyFromData(d));result.supplier=publicSupplier(supplier,d);result.taxonomy=taxonomyFromData(d);res.json(result)});
 
+  // FVM_FREE_LOCAL_RENDER_V15
+  app.post('/api/admin/suppliers/:id/render-image',admin,async(req,res)=>{
+    const d=ensureStores(deps.read());
+    const supplier=d.suppliers.find(s=>s.id===req.params.id);
+    if(!supplier)return res.status(404).json({error:'Proveedor no encontrado'});
+    if(typeof deps.prepareImages!=='function')return res.status(503).json({error:'Renderizador local no disponible'});
+    const input=String(req.body?.image||'');
+    if(!dataImageOk(input))return res.status(400).json({error:'Añade primero una foto o usa la captura como foto'});
+    const count=Math.max(1,Math.min(3,Number(req.body?.count)||3));
+    try{
+      const images=await deps.prepareImages([input],count);
+      res.set('Cache-Control','no-store');
+      res.json({images,mode:'local-smart-render',cost:0,count:images.length});
+    }catch(e){
+      console.error('FVMarket local render',e);
+      res.status(422).json({error:'No se pudo renderizar la imagen: '+String(e.message||e)});
+    }
+  });
+
   app.post('/api/admin/suppliers/:id/products',admin,(req,res)=>{const d=ensureStores(deps.read());const supplier=d.suppliers.find(s=>s.id===req.params.id);if(!supplier)return res.status(404).json({error:'Proveedor no encontrado'});const title=deps.cleanProductTitle(compact(req.body.title));if(!title)return res.status(400).json({error:'El nombre del producto es obligatorio'});const category=compact(req.body.category)||deps.guessCategory(title+' '+compact(req.body.description));const subcategory=compact(req.body.subcategory);const sourcePrice=money(req.body.sourcePrice);if(sourcePrice<=0)return res.status(400).json({error:'Indica el precio real del proveedor'});let price=money(req.body.price);const suppliedMargin=clamp(req.body.margin??supplier.defaultMargin??40,0,300);if(price<=0)price=+(sourcePrice*(1+suppliedMargin/100)).toFixed(2);const margin=sourcePrice?+(((price-sourcePrice)/sourcePrice)*100).toFixed(2):0;const addedValue=+(price-sourcePrice).toFixed(2);const images=deps.normalizeProductImages(Array.isArray(req.body.images)?req.body.images:[]).slice(0,12);const published=!!req.body.published;if(published&&images.length<1)return res.status(400).json({error:'Para publicar se requiere al menos una imagen'});const sourceRef=cleanRef(req.body.sourceRef);if(sourceRef&&d.products.some(p=>p.supplierId===supplier.id&&cleanRef(p.sourceRef)===sourceRef))return res.status(409).json({error:'Ya existe un producto de este proveedor con esa referencia'});const p={id:deps.id('prd'),title,category,subcategory,ref:deps.nextProductRef(d,title,category),price,stock:'bajo_pedido',image:images[0]?.url||'',images,description:compact(req.body.description).slice(0,1500),published,featured:!!req.body.featured,onOffer:false,discountPct:0,supplierId:supplier.id,sourceProvider:supplier.name,sourceRef,sourceBrand:compact(req.body.brand).slice(0,100),sourceAvailability:compact(req.body.availability).slice(0,100),sourcePrice,margin,addedValue,sourceCheckedAt:new Date().toISOString(),sourceSync:'capture_v13',reviewStatus:published?'publicado':'borrador',importedAt:new Date().toISOString()};d.products.unshift(p);upsertTaxonomy(d,category,subcategory);const capture=String(req.body.capture||'');if(dataImageOk(capture))d.supplierCaptures.unshift({id:deps.id('cap'),productId:p.id,supplierId:supplier.id,capture,capturedAt:new Date().toISOString(),sourcePrice,sourceRef});deps.save(d);res.json({product:p,supplier:publicSupplier(supplier,d)})});
 
   app.get('/api/admin/products/:id/source-capture',admin,(req,res)=>{const d=ensureStores(deps.read());const cap=d.supplierCaptures.find(c=>c.productId===req.params.id);if(!cap)return res.status(404).json({error:'No hay captura de origen guardada'});res.json(cap)});

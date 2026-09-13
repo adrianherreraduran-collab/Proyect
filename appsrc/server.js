@@ -775,9 +775,8 @@ app.post('/api/rutafv/quote',auth,async(req,res)=>{try{const d=read();const u=d.
 app.get('/api/rutafv/address-search',auth,async(req,res)=>{try{const q=String(req.query.q||'').trim();if(q.length<3)return res.json({results:[]});const data=await rutaFVGet('/api/integrations/fvmarket/address-search',{q,limit:'5'});res.json(data)}catch(e){res.status(503).json({error:e.message})}});
 app.post('/api/admin/orders/:id/create-rutafv-delivery',admin,async(req,res)=>{try{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});if(!o.transport?.requested)return res.status(400).json({error:'Este pedido no tiene transporte RutaFV'});const u=d.users.find(x=>x.id===o.userId)||{};const payload={clientCode:RUTAFV_CLIENT_CODE,externalOrderId:o.id,externalOrderNumber:o.number,customer:{name:o.customer?.name||u.name||'',email:o.customer?.email||u.email||'',phone:o.customer?.phone||o.phone||''},destination:{address:o.customer?.address||o.address||'',city:o.customer?.city||o.city||'',postalCode:o.customer?.postalCode||o.postalCode||'',notes:o.customer?.notes||o.notes||''},destinationText:[o.customer?.address||o.address,o.customer?.city||o.city,o.customer?.postalCode||o.postalCode].filter(Boolean).join(', '),transportAmount:o.delivery,transportPaid:['pagado','paid','cobrado'].includes(String(o.status).toLowerCase()),items:o.items.map(x=>({ref:x.ref,title:x.title,qty:x.qty}))};const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');o.transport.status='creado_en_rutafv';o.transport.syncedAt=new Date().toISOString();save(d);res.json(o)}catch(e){res.status(503).json({error:e.message})}});
 
+// FVM_PROVIDER_ROUTES_V15 - API routes must be registered before the storefront catch-all.
+registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeItems,guessCategory,cleanProductTitle,normalizeProductImages,prepareImages});
+
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-
-
-// FVM_PROVIDER_BLOCKS_V11
-registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeItems,guessCategory,cleanProductTitle,normalizeProductImages});
 app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`));
