@@ -45,22 +45,8 @@
 
   function mount(){
     removeDuplicateCategories();
-    if(document.getElementById('v17Hero'))return;
-    const nav=document.querySelector('.v13Nav')||document.querySelector('.v5nav')||document.querySelector('.nav')||document.querySelector('nav');
-    if(!nav)return;
-    const hero=document.createElement('section');
-    hero.id='v17Hero';hero.className='v17Hero';hero.setAttribute('aria-label','Destacados FVMarket');
-    hero.innerHTML=`<div class="v17Track">${slides.map((s,i)=>`<div class="v17Slide ${i===0?'active':''}" data-i="${i}"><img src="${s.src}" alt="${s.alt}" ${i===0?'fetchpriority="high" decoding="sync"':'loading="lazy" decoding="async"'}></div>`).join('')}</div><button class="v17HeroBtn v17Prev" aria-label="Anterior">‹</button><button class="v17HeroBtn v17Next" aria-label="Siguiente">›</button><div class="v17Dots">${slides.map((_,i)=>`<button class="v17Dot ${i===0?'active':''}" data-i="${i}" aria-label="Ir a imagen ${i+1}"></button>`).join('')}</div>`;
-    nav.insertAdjacentElement('afterend',hero);
-    hero.querySelector('.v17Prev').onclick=()=>go(idx-1);
-    hero.querySelector('.v17Next').onclick=()=>go(idx+1);
-    hero.querySelectorAll('.v17Dot').forEach(b=>b.onclick=()=>go(Number(b.dataset.i)));
-    hero.querySelectorAll('.v17Slide').forEach(el=>el.onclick=()=>filterCat(slides[Number(el.dataset.i)]?.cat));
-    hero.addEventListener('mouseenter',()=>clearInterval(timer));
-    hero.addEventListener('mouseleave',restart);
-    hero.addEventListener('touchstart',e=>touchX=e.touches?.[0]?.clientX??null,{passive:true});
-    hero.addEventListener('touchend',e=>{if(touchX==null)return;const x=e.changedTouches?.[0]?.clientX??touchX;if(Math.abs(x-touchX)>45)go(idx+(x<touchX?1:-1));touchX=null},{passive:true});
-    restart();
+    /* FVM_SYNC_WITH_CHATGPT_SITE_V8: la portada ya contiene el carrusel único. */
+    document.getElementById('v17Hero')?.remove();
   }
 
   const replacements=[
