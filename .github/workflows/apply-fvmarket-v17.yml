@@ -1,0 +1,92 @@
+name: Apply FVMarket v17
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-v17.yml'
+      - 'scripts/patch_fvmarket_v17.py'
+      - 'appsrc/public/fvmarket-admin-v17.js'
+      - 'appsrc/public/fvmarket-storefront-v17.js'
+      - 'appsrc/persistent_store_v17.js'
+      - 'tmp_carousel_v17_*.part'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Assemble supplied FVMarket carousel
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/fvm-carousel
+          mkdir -p /tmp/fvm-carousel appsrc/public/assets/fvmarket
+          cat tmp_carousel_v17_*.part | base64 -d > /tmp/fvm-carousel.tar.gz
+          tar -xzf /tmp/fvm-carousel.tar.gz -C /tmp/fvm-carousel
+          python -m pip install --quiet pillow
+          python - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          root=Path('/tmp/fvm-carousel')
+          files=[p for p in root.rglob('*') if p.suffix.lower() in {'.jpg','.jpeg','.png','.webp'}]
+          if len(files)<6:
+              raise SystemExit(f'Expected at least 6 carousel images, found {len(files)}: {[str(x) for x in files]}')
+          def key(p):
+              import re
+              m=re.search(r'(\d+)',p.stem)
+              return int(m.group(1)) if m else 999
+          files=sorted(files,key=key)[:6]
+          out=Path('appsrc/public/assets/fvmarket');out.mkdir(parents=True,exist_ok=True)
+          for i,p in enumerate(files,1):
+              im=Image.open(p).convert('RGB')
+              if im.size!=(1400,700):
+                  im=im.resize((1400,700),Image.Resampling.LANCZOS)
+              target=out/f'hero-{i}.webp'
+              im.save(target,'WEBP',quality=84,method=6)
+              print(i,p,'->',target,target.stat().st_size)
+          PY
+      - name: Apply FVMarket v17 patch
+        run: python scripts/patch_fvmarket_v17.py
+      - name: Validate JavaScript and required assets
+        run: |
+          set -euo pipefail
+          node --check appsrc/server.js
+          node --check appsrc/supplier_capture_v13.js
+          node --check appsrc/public/fvmarket-admin-v13.js
+          node --check appsrc/public/fvmarket-admin-v17.js
+          node --check appsrc/public/fvmarket-storefront-v17.js
+          node --check appsrc/public/fvmarket-admin-crop-v16.js
+          for i in 1 2 3 4 5 6; do test -s "appsrc/public/assets/fvmarket/hero-$i.webp"; done
+          python - <<'PY'
+          from pathlib import Path
+          s=Path('appsrc/server.js').read_text()
+          a=Path('appsrc/public/fvmarket-admin-v13.js').read_text()
+          h=Path('appsrc/public/admin.html').read_text()
+          i=Path('appsrc/public/index.html').read_text()
+          pkg=Path('appsrc/package.json').read_text()
+          assert 'FVM_SUPPLIER_SIMILAR_IMAGES_V17' in s
+          assert 'persistence.init()' in s
+          assert 'search-images' in s
+          assert 'window.fvmSupplierV13' in a
+          assert 'v13Flow' not in a or 'display:none' in Path('appsrc/public/fvmarket-admin-v17.js').read_text()
+          assert '/fvmarket-admin-v17.js?v=17' in h
+          assert '/fvmarket-storefront-v17.js?v=17' in i
+          assert '"pg"' in pkg
+          print('FVMarket v17 validation markers OK')
+          PY
+      - name: Repack FVMarket application
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit final FVMarket v17 application
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc fvmarket-app.tgz.b64
+          git add -u tmp_carousel_v17_*.part tmp_slide1.b64 || true
+          rm -f tmp_carousel_v17_*.part tmp_slide1.b64
+          git add -u || true
+          if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
+          git commit -m 'Aplicar paquete integral FVMarket v17'
+          git push
