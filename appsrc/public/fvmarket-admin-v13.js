@@ -5,6 +5,7 @@
   const eur=n=>Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
   const apiCall=(url,opt={})=>{const method=String(opt.method||'GET').toUpperCase();const finalUrl=method==='GET'?url+(url.includes('?')?'&':'?')+'_v14='+Date.now():url;return window.api?window.api(finalUrl,{...opt,cache:'no-store'}):Promise.reject(new Error('API no disponible'))};
   const state={suppliers:[],taxonomy:{},selectedSupplier:null,products:[],capture:'',photos:[],editingSupplier:null};
+  window.fvmSupplierV13={state,renderPhotos:()=>renderPhotos()};
   let oldOpenEdit=window.openEdit;
 
   function addCss(){if($('fvmV13Style'))return;const s=document.createElement('style');s.id='fvmV13Style';s.textContent=`
@@ -24,7 +25,6 @@
   function hideLegacy(){document.querySelectorAll('#view-catalog .card').forEach(card=>{if(card.id!=='mbImportCard')card.style.display='none'});const tab=document.querySelector('.tab[data-view="catalog"]');if(tab)tab.textContent='🏭 Proveedores';}
   function mount(){const card=$('mbImportCard');if(!card)return false;hideLegacy();card.style.display='block';card.dataset.v13='1';card.innerHTML=`
     <div class="v13Head"><div><h2 style="margin:0">Aprovisionamiento por proveedores</h2><p class="sub" style="margin:5px 0 0">Crea tus proveedores. Cada uno mantiene su propio contenedor de productos y los artículos se incorporan a partir de una captura de la ficha del proveedor.</p></div><button class="btn navy" id="v13NewSupplier">+ Crear proveedor</button></div>
-    <div class="v13Flow"><div class="v13Step"><span>1</span><b>Proveedor</b>Crea el proveedor y su margen por defecto.</div><div class="v13Step"><span>2</span><b>Captura</b>Sube una captura de la ficha del producto.</div><div class="v13Step"><span>3</span><b>IA + revisión</b>FVMarket propone datos, categoría, precio y PVP.</div><div class="v13Step"><span>4</span><b>Fotos y publicación</b>Añade imágenes, corrige lo necesario y guarda.</div></div>
     <div id="v13SupplierList"></div><div id="v13ProductContainer"></div>`;
     $('v13NewSupplier').onclick=()=>openSupplierModal();loadAll();return true}
 

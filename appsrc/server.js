@@ -12,11 +12,13 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
 const {registerProviderSourceRoutes} = require('./supplier_capture_v13');
+const persistence = require('./persistent_store_v17');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
 const JWT_SECRET = process.env.JWT_SECRET || crypto.createHash('sha256').update('fvmarket-dev-' + (process.env.RENDER_SERVICE_ID || 'local')).digest('hex');
 const DATA_FILE = process.env.DATA_FILE || path.join(__dirname, 'data.json');
+persistence.config(DATA_FILE);
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 // FVM_CUSTOMER_ACCOUNTS_V2
 const RESEND_API_KEY = String(process.env.RESEND_API_KEY || '').trim();
@@ -49,7 +51,7 @@ const defaultProducts = [
   {id:'p5',title:'Carretilla de jardín 100 L rueda neumática',category:'Jardín',ref:'FVM-CAR-100',price:74.90,stock:'bajo_pedido',image:'https://images.unsplash.com/photo-1599685315640-68d303c222b9?auto=format&fit=crop&w=700&q=80',published:true,featured:true}
 ];
 function seed(){return {users:[],products:defaultProducts,orders:[],quotes:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
-function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2))}
+function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2));persistence.persist(d)}
 function ensureAdmin(d){
   if(!Array.isArray(d.users))d.users=[];
   d.settings=d.settings||{};
@@ -306,7 +308,7 @@ app.post('/api/checkout/stripe',auth,requireCustomerReady,async(req,res)=>{
   if(!line_items.length)return res.status(400).json({error:'Carrito vacío'});
   const transportAmount=useRutaFV?Math.max(0,Number(quote.amount||quote.total||0)):0;
   if(transportAmount>0){
-    line_items.push({quantity:1,price_data:{currency:'eur',unit_amount:Math.round(transportAmount*100),product_data:{name:'Transporte RutaFV',description:'Servicio de entrega asociado a la compra FVMarket'}}});
+    line_items.push({quantity:1,price_data:{currency:'eur',unit_amount:Math.round(transportAmount*100),product_data:{name:'Envío a tu obra',description:'Servicio de entrega asociado a la compra FVMarket'}}});
   }
   const base=process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`;
   const session=await stripe.checkout.sessions.create({
@@ -345,7 +347,7 @@ function categoryCode(category='Otros'){return ({'Construcción':'CON','Herramie
 function ownReference(title='',sourcePrice=0,category='Otros'){const key=String(title).toLowerCase().replace(/\s+/g,' ').trim()+'|'+Number(sourcePrice||0).toFixed(2);const h=crypto.createHash('sha1').update(key).digest('hex').slice(0,6).toUpperCase();return 'FVM-'+categoryCode(category)+'-'+h}
 function cleanProductTitle(title=''){return String(title).replace(/\s+/g,' ').replace(/[|•]+/g,' ').trim().slice(0,150)}
 function imageSearchQuery(title='',category='Otros'){const x=String(title).toLowerCase();const pairs=[[/inodoro|wc|sanitario/,'toilet bathroom fixture'],[/plato.*ducha|ducha/,'shower tray bathroom'],[/mampara/,'shower screen glass'],[/grifo|monomando/,'faucet tap'],[/fregadero/,'kitchen sink'],[/taladro/,'electric drill tool'],[/sierra/,'power saw tool'],[/martillo/,'hammer hand tool'],[/pintura/,'paint bucket interior'],[/cemento/,'cement bag construction'],[/mortero/,'mortar bag construction'],[/carretilla/,'wheelbarrow garden'],[/puerta/,'interior door'],[/ventana/,'aluminium window'],[/lavabo/,'bathroom sink'],[/cable/,'electrical cable'],[/enchufe/,'electrical socket outlet']];for(const [rx,q] of pairs)if(rx.test(x))return q;return ({'Construcción':'construction material','Herramientas':'hardware tool','Fontanería':'plumbing fixture','Electricidad':'electrical hardware','Pintura':'painting supplies','Jardín':'garden hardware','Baño y cocina':'bathroom kitchen fixture','Otros':'hardware product'})[category]||'hardware product'}
-function fallbackProductAnalysis(item={},index=0){const title=cleanProductTitle(item.title||'Producto');const category=guessCategory(title+' '+(item.description||''));const sourcePrice=Number(item.sourcePrice||0);const baseDesc=String(item.description||'').replace(/\s+/g,' ').trim().slice(0,700);return {index,title,description:baseDesc||('Artículo de '+category.toLowerCase()+' seleccionado para FVMarket. Disponible bajo pedido con entrega en Fuerteventura mediante RutaFV.'),category,imageQuery:imageSearchQuery(title,category),keywords:title.toLowerCase().split(/\s+/).filter(x=>x.length>3).slice(0,6),ref:ownReference(title,sourcePrice,category)}}
+function fallbackProductAnalysis(item={},index=0){const title=cleanProductTitle(item.title||'Producto');const category=guessCategory(title+' '+(item.description||''));const sourcePrice=Number(item.sourcePrice||0);const baseDesc=String(item.description||'').replace(/\s+/g,' ').trim().slice(0,700);return {index,title,description:baseDesc||('Artículo de '+category.toLowerCase()+' seleccionado para FVMarket. Disponible bajo pedido. Lo enviamos a tu obra en Fuerteventura.'),category,imageQuery:imageSearchQuery(title,category),keywords:title.toLowerCase().split(/\s+/).filter(x=>x.length>3).slice(0,6),ref:ownReference(title,sourcePrice,category)}}
 function responseOutputText(data){if(data&&typeof data.output_text==='string')return data.output_text;for(const item of (data?.output||[])){for(const c of (item?.content||[])){if(c?.type==='output_text'&&typeof c.text==='string')return c.text}}return ''}
 async function aiAnalyzeItems(items=[]){const base=items.map((x,i)=>({...x,index:i}));if(!OPENAI_API_KEY)return {mode:'local',warning:'OPENAI_API_KEY no configurada: se usa análisis inteligente local.',products:base.map(fallbackProductAnalysis)};const schema={type:'object',additionalProperties:false,properties:{products:{type:'array',items:{type:'object',additionalProperties:false,properties:{index:{type:'integer'},title:{type:'string'},description:{type:'string'},category:{type:'string',enum:['Construcción','Herramientas','Fontanería','Electricidad','Pintura','Jardín','Baño y cocina','Otros']},imageQuery:{type:'string'},keywords:{type:'array',items:{type:'string'}}},required:['index','title','description','category','imageQuery','keywords']}}},required:['products']};const prompt='Eres el asistente de catalogación de FVMarket, marketplace de ferretería y hogar en Fuerteventura. Para cada producto: conserva index; redacta un título propio y claro en español, sin copiar eslóganes ni mencionar la tienda de origen; escribe una descripción comercial propia de 1-2 frases basada solo en datos presentes, sin inventar medidas, materiales, potencia, marca o prestaciones; elige exactamente una categoría permitida; crea imageQuery breve en inglés para buscar una imagen genérica visualmente similar del tipo de producto, evitando nombres de tiendas y marcas salvo que sean imprescindibles para identificar el tipo de pieza; genera hasta 6 keywords. No inventes disponibilidad ni afiliaciones. Entrada JSON: '+JSON.stringify(base.map(x=>({index:x.index,title:x.title||'',description:x.description||'',category:x.category||'',sourcePrice:Number(x.sourcePrice||0)})));try{const r=await axios.post('https://api.openai.com/v1/responses',{model:OPENAI_MODEL,input:prompt,text:{format:{type:'json_schema',name:'fvmarket_products',strict:true,schema}},max_output_tokens:5000},{timeout:30000,headers:{Authorization:'Bearer '+OPENAI_API_KEY,'Content-Type':'application/json'}});const parsed=JSON.parse(responseOutputText(r.data)||'{}');const out=(parsed.products||[]).map(p=>{const src=base[p.index]||{};const title=cleanProductTitle(p.title||src.title||'Producto');const category=p.category||guessCategory(title);return {...src,...p,title,category,ref:ownReference(title,Number(src.sourcePrice||0),category)}});return {mode:'openai',products:out}}catch(e){return {mode:'local',warning:'La IA no respondió; se aplicó el análisis local.',products:base.map(fallbackProductAnalysis)}}}
 async function searchCommonsImages(query='',limit=4){const q=String(query).trim();if(!q)return [];try{const run=async term=>axios.get('https://commons.wikimedia.org/w/api.php',{timeout:12000,headers:{'User-Agent':'FVMarket/1.5 (product image search; contact via site)'},params:{action:'query',generator:'search',gsrsearch:String(term).slice(0,120),gsrnamespace:6,gsrlimit:Math.min(Math.max(Number(limit)||4,1),6),prop:'imageinfo',iiprop:'url|extmetadata',iiurlwidth:700,format:'json',origin:'*'}});let r=await run(q);let pages=Object.values(r.data?.query?.pages||{});if(!pages.length&&q.includes(' ')){r=await run(q.split(' ').slice(0,2).join(' '));pages=Object.values(r.data?.query?.pages||{})}return pages.map(p=>{const ii=p.imageinfo?.[0]||{};const m=ii.extmetadata||{};return {title:p.title||'',url:ii.thumburl||ii.url||'',original:ii.url||'',source:ii.descriptionurl||'',license:m.LicenseShortName?.value||m.UsageTerms?.value||'',author:String(m.Artist?.value||'').replace(/<[^>]*>/g,'').slice(0,160)}}).filter(x=>x.url).slice(0,limit)}catch(e){console.warn('Commons image search failed:',e.response?.status||e.message);return []}}
@@ -358,7 +360,7 @@ async function searchOpenverseImages(query='',limit=8){
   const q=String(query).trim();if(!q)return [];
   try{
     const r=await axios.get('https://api.openverse.org/v1/images/',{timeout:12000,headers:{'User-Agent':'FVMarket/1.7'},params:{q:q.slice(0,140),page_size:Math.min(Math.max(Number(limit)||8,3),20),mature:false}});
-    return (r.data?.results||[]).map(x=>({title:x.title||'',url:x.thumbnail||x.url||'',original:x.url||'',source:x.foreign_landing_url||x.detail_url||'',license:[x.license,x.license_version].filter(Boolean).join(' ').toUpperCase(),author:x.creator||'',origin:'similar'})).filter(x=>x.url&&!isSpanishImageDomain(x.url)&&!isSpanishImageDomain(x.source));
+    return (r.data?.results||[]).map(x=>({title:x.title||'',url:x.thumbnail||x.url||'',original:x.url||'',source:x.foreign_landing_url||x.detail_url||'',license:[x.license,x.license_version].filter(Boolean).join(' ').toUpperCase(),author:x.creator||'',origin:'similar'})).filter(x=>x.url);
   }catch(e){console.warn('Openverse image search failed:',e.response?.status||e.message);return []}
 }
 function searchTokens(text=''){
@@ -375,6 +377,7 @@ function imageCandidateScore(x={},query=''){
   const qcrit=critical.filter(t=>String(query).toLowerCase().includes(t));
   const full=[x.title,x.source,x.url].join(' ').toLowerCase();
   for(const t of qcrit)score+=full.includes(t)?6:-4;
+  try{const h=new URL(String(x.source||x.url||'')).hostname.toLowerCase();if(/\.(?:es|fr|de|it|pt|nl|be|eu|at|ie|pl|cz|dk|se|fi|gr|ro|hu)$/.test(h))score+=2}catch{}
   return score;
 }
 async function searchBraveImages(query='',limit=8){
@@ -395,7 +398,7 @@ async function searchBraveImages(query='',limit=8){
       license:'Comprobar derechos/licencia antes de publicar',
       author:'',
       origin:'brave'
-    })).filter(x=>x.url&&!isSpanishImageDomain(x.url)&&!isSpanishImageDomain(x.source));
+    })).filter(x=>x.url);
   }catch(e){
     console.warn('Brave image search failed:',e.response?.status||e.message);
     return [];
@@ -403,7 +406,7 @@ async function searchBraveImages(query='',limit=8){
 }
 async function searchExternalImages(query='',limit=8){
   const target=Math.max(3,Math.min(Number(limit)||8,12));const seen=new Set(),pool=[];
-  const add=items=>{for(const x of items||[]){const url=String(x.url||'');const src=String(x.source||'');if(!url||seen.has(url)||isSpanishImageDomain(url)||isSpanishImageDomain(src))continue;seen.add(url);pool.push({...x,origin:x.origin||'similar'})}};
+  const add=items=>{for(const x of items||[]){const url=String(x.url||'');const src=String(x.source||'');if(!url||seen.has(url))continue;seen.add(url);pool.push({...x,origin:x.origin||'similar'})}};
   add(await searchBraveImages(query,Math.min(target+6,20)));
   add(await searchOpenverseImages(query,target+5));
   add((await searchCommonsImages(query,target+5)).map(x=>({...x,origin:'similar'})));
@@ -630,7 +633,7 @@ function extractProductFromHtml(html,url){const $=cheerio.load(html);const produ
 app.post('/api/admin/import-url',admin,async(req,res)=>{const url=String(req.body.url||'').trim();if(isUnsafeUrl(url))return res.status(400).json({error:'URL no permitida'});try{const r=await axios.get(url,{timeout:15000,maxRedirects:5,maxContentLength:3*1024*1024,headers:{'User-Agent':'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/126 Safari/537.36','Accept':'text/html,application/xhtml+xml','Accept-Language':'es-ES,es;q=0.9,en;q=0.7','Cache-Control':'no-cache'}});const p=extractProductFromHtml(r.data,url);if(!p.title||p.title==='Producto')return res.status(422).json({error:'La página no expone una ficha de producto legible.'});res.json(p)}catch(e){const status=e.response?.status;res.status(422).json({error:status?('La tienda respondió '+status+' y no permite leer esa ficha automáticamente. Puedes introducir el precio origen manualmente y usar la IA/imágenes.'):('No se pudo leer esa URL. Comprueba que sea una ficha pública de producto.')})}});
 
 
-app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,braveImages:!!BRAVE_SEARCH_API_KEY,imageSearch:(BRAVE_SEARCH_API_KEY?'Brave Images + Openverse + Wikimedia':'Openverse + Wikimedia (Brave pendiente de credencial)')+' · excluye dominios de España'}));
+app.get('/api/admin/ai-status',admin,(req,res)=>res.json({openai:!!OPENAI_API_KEY,model:OPENAI_MODEL,braveImages:!!BRAVE_SEARCH_API_KEY,imageSearch:(BRAVE_SEARCH_API_KEY?'Brave Images + Openverse + Wikimedia':'Openverse + Wikimedia (Brave pendiente de credencial)')+' · búsqueda internacional y europea'}));
 app.post('/api/admin/ai-product',admin,async(req,res)=>{const item=req.body||{};const result=await aiAnalyzeItems([item]);const p=result.products?.[0]||fallbackProductAnalysis(item,0);const sourceImages=normalizeProductImages(item.sourceImages||[],item.sourceUrl?item.image:'').map(x=>({...x,origin:'source'}));const searchQuery=[item.title,p.title,p.imageQuery,item.sourceRef].filter(Boolean).join(' ');const alternativeImages=await searchExternalImages(searchQuery.slice(0,180),8);const images=alternativeImages.slice(0,8);const first=alternativeImages[0]||null;res.json({...p,aiMode:result.mode,warning:result.warning||'',sourceImages,alternativeImages,images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})});
 app.post('/api/admin/ai-catalog',admin,async(req,res)=>{const items=Array.isArray(req.body.products)?req.body.products.slice(0,30):[];if(!items.length)return res.status(400).json({error:'No hay productos para analizar'});const result=await aiAnalyzeItems(items);const products=[];for(const p of (result.products||[])){const images=await searchExternalImages((p.title+' '+(p.imageQuery||'')).slice(0,140),6);const first=images[0]||null;products.push({...p,images,alternativeImages:images,image:first?.url||'',imageSource:first?.source||'',imageLicense:first?.license||'',imageAuthor:first?.author||''})}res.json({mode:result.mode,warning:result.warning||'',products})});
 
@@ -775,8 +778,21 @@ app.post('/api/rutafv/quote',auth,async(req,res)=>{try{const d=read();const u=d.
 app.get('/api/rutafv/address-search',auth,async(req,res)=>{try{const q=String(req.query.q||'').trim();if(q.length<3)return res.json({results:[]});const data=await rutaFVGet('/api/integrations/fvmarket/address-search',{q,limit:'5'});res.json(data)}catch(e){res.status(503).json({error:e.message})}});
 app.post('/api/admin/orders/:id/create-rutafv-delivery',admin,async(req,res)=>{try{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});if(!o.transport?.requested)return res.status(400).json({error:'Este pedido no tiene transporte RutaFV'});const u=d.users.find(x=>x.id===o.userId)||{};const payload={clientCode:RUTAFV_CLIENT_CODE,externalOrderId:o.id,externalOrderNumber:o.number,customer:{name:o.customer?.name||u.name||'',email:o.customer?.email||u.email||'',phone:o.customer?.phone||o.phone||''},destination:{address:o.customer?.address||o.address||'',city:o.customer?.city||o.city||'',postalCode:o.customer?.postalCode||o.postalCode||'',notes:o.customer?.notes||o.notes||''},destinationText:[o.customer?.address||o.address,o.customer?.city||o.city,o.customer?.postalCode||o.postalCode].filter(Boolean).join(', '),transportAmount:o.delivery,transportPaid:['pagado','paid','cobrado'].includes(String(o.status).toLowerCase()),items:o.items.map(x=>({ref:x.ref,title:x.title,qty:x.qty}))};const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');o.transport.status='creado_en_rutafv';o.transport.syncedAt=new Date().toISOString();save(d);res.json(o)}catch(e){res.status(503).json({error:e.message})}});
 
+
+// FVM_SUPPLIER_SIMILAR_IMAGES_V17
+app.post('/api/admin/suppliers/:id/search-images',admin,async(req,res)=>{
+  const d=read();const supplier=(d.suppliers||[]).find(x=>x.id===req.params.id);
+  if(!supplier)return res.status(404).json({error:'Proveedor no encontrado'});
+  const title=String(req.body?.title||'').trim(),brand=String(req.body?.brand||'').trim(),sourceRef=String(req.body?.sourceRef||'').trim();
+  const query=[sourceRef,brand,title].filter(Boolean).join(' ').slice(0,180);
+  if(!query)return res.status(400).json({error:'Indica nombre o referencia para buscar imágenes'});
+  try{const images=await searchExternalImages(query,Math.max(4,Math.min(12,Number(req.body?.limit)||12)));res.set('Cache-Control','no-store');res.json({query,images,includesEuropeanDomains:true})}
+  catch(e){res.status(502).json({error:'No se pudo completar la búsqueda de imágenes: '+String(e.message||e)})}
+});
+app.get('/api/admin/persistence-status',admin,(req,res)=>res.json(persistence.status()));
+
 // FVM_PROVIDER_ROUTES_V15 - API routes must be registered before the storefront catch-all.
 registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeItems,guessCategory,cleanProductTitle,normalizeProductImages,prepareImages});
 
 app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
-app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`));
+(async()=>{try{await persistence.init();read()}catch(e){console.error('FVMarket persistence bootstrap:',e)}app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`))})();
