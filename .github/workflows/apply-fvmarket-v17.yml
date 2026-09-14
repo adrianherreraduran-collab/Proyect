@@ -20,11 +20,13 @@ jobs:
       - name: Assemble supplied FVMarket carousel
         run: |
           set -euo pipefail
-          rm -rf /tmp/fvm-carousel
-          mkdir -p /tmp/fvm-carousel appsrc/public/assets/fvmarket
-          cat carousel_sprite_v17_*.part | base64 -d > /tmp/fvm-carousel/sprite.avif
-          python -m pip install --quiet pillow
-          python - <<'PY'
+          mkdir -p appsrc/public/assets/fvmarket
+          if compgen -G 'carousel_sprite_v17_*.part' > /dev/null; then
+            rm -rf /tmp/fvm-carousel
+            mkdir -p /tmp/fvm-carousel
+            cat carousel_sprite_v17_*.part | base64 -d > /tmp/fvm-carousel/sprite.avif
+            python -m pip install --quiet pillow
+            python - <<'PY'
           from pathlib import Path
           from PIL import Image
           src = Image.open('/tmp/fvm-carousel/sprite.avif').convert('RGB')
@@ -39,6 +41,10 @@ jobs:
               frame.save(target, 'WEBP', quality=84, method=6)
               print(i + 1, '->', target, target.stat().st_size)
           PY
+          else
+            echo 'Carousel source parts not present; keeping the already generated hero assets.'
+            for i in 1 2 3 4 5 6; do test -s "appsrc/public/assets/fvmarket/hero-$i.webp"; done
+          fi
       - name: Apply FVMarket v17 patch
         run: python scripts/patch_fvmarket_v17.py
       - name: Validate JavaScript and required assets
