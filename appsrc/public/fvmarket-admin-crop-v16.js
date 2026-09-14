@@ -67,3 +67,93 @@
   hideTechnicalField();
   new MutationObserver(hideTechnicalField).observe(document.body,{childList:true,subtree:true});
 })();
+
+// FVM_MULTI_CAPTURE_V18 · multiple clipboard snippets are analysed as one product evidence sheet
+(()=>{
+  const MAX_CAPTURES=8;
+  const MAX_SIDE=1700;
+  const bridge=()=>window.fvmSupplierV13||null;
+  const q=(root,sel)=>root?.querySelector(sel)||null;
+
+  const style=document.createElement('style');
+  style.id='fvmMultiCaptureV18Style';
+  style.textContent=`
+    .fvmMultiCaptures{margin-top:10px;border-top:1px solid #dfe7ee;padding-top:9px}
+    .fvmMultiCaptureHead{display:flex;align-items:center;gap:8px;margin-bottom:7px}.fvmMultiCaptureHead b{font-size:11px;color:#06345f;margin-right:auto}.fvmMultiCaptureHead span{font-size:9px;color:#6b7787}.fvmMultiCaptureHead button{border:0;background:#eef3f7;color:#06345f;border-radius:7px;padding:6px 8px;font-size:9px;font-weight:900;cursor:pointer}
+    .fvmMultiCaptureGrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}.fvmCaptureThumb{position:relative;border:1px solid #dfe7ee;border-radius:8px;background:#fff;padding:4px;min-width:0}.fvmCaptureThumb img{width:100%;height:82px!important;max-height:none!important;object-fit:contain!important;margin:0!important;background:#f7f9fb!important;border-radius:5px!important;cursor:zoom-in}.fvmCaptureThumb small{display:block;font-size:8px;color:#5d6f82;margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fvmCaptureBtns{display:flex;gap:4px;margin-top:4px}.fvmCaptureBtns button{flex:1;border:0;border-radius:5px;padding:5px 3px;font-size:8px;font-weight:800;cursor:pointer;background:#edf3f8;color:#06345f}.fvmCaptureBtns button:last-child{background:#fff0f0;color:#9c2929}
+    .fvmCaptureHint{font-size:9px;color:#6b7787;line-height:1.35;margin-top:7px}
+    @media(max-width:650px){.fvmMultiCaptureGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.fvmCaptureThumb img{height:92px!important}}
+  `;
+  document.head.appendChild(style);
+
+  function fileToData(file,max=MAX_SIDE,quality=.88){
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();reader.onerror=reject;reader.onload=()=>{
+        const img=new Image();img.onerror=reject;img.onload=()=>{
+          let w=img.naturalWidth||img.width,h=img.naturalHeight||img.height;
+          const scale=Math.min(1,max/Math.max(w,h));w=Math.max(1,Math.round(w*scale));h=Math.max(1,Math.round(h*scale));
+          const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);resolve(c.toDataURL('image/jpeg',quality));
+        };img.src=reader.result;
+      };reader.readAsDataURL(file);
+    });
+  }
+
+  function loadImage(src){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src})}
+
+  async function compose(captures){
+    if(!captures.length)return '';
+    if(captures.length===1)return captures[0];
+    const imgs=await Promise.all(captures.map(loadImage));
+    let width=Math.min(1600,Math.max(...imgs.map(im=>im.naturalWidth||im.width),900));
+    const gap=14;
+    let rows=imgs.map(im=>{const iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height;const s=Math.min(1,width/iw);return {im,w:Math.round(iw*s),h:Math.round(ih*s)}});
+    let total=rows.reduce((n,r)=>n+r.h,0)+gap*(rows.length-1);
+    if(total>9500){const k=9500/total;width=Math.max(850,Math.round(width*k));rows=imgs.map(im=>{const iw=im.naturalWidth||im.width,ih=im.naturalHeight||im.height;const s=Math.min(1,width/iw);return {im,w:Math.round(iw*s),h:Math.round(ih*s)}});total=rows.reduce((n,r)=>n+r.h,0)+gap*(rows.length-1)}
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=Math.max(1,total);const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    let y=0;rows.forEach((r,i)=>{const x=Math.max(0,Math.round((width-r.w)/2));ctx.drawImage(r.im,x,y,r.w,r.h);y+=r.h;if(i<rows.length-1){ctx.fillStyle='#d9e4ed';ctx.fillRect(0,y,width,gap);y+=gap}});
+    return canvas.toDataURL('image/jpeg',.84);
+  }
+
+  async function syncState(modal,message=''){
+    const b=bridge();if(!b)return;const st=b.state||(b.state={});const caps=Array.isArray(st.captures)?st.captures:[];
+    try{st.capture=await compose(caps)}catch{st.capture=caps[caps.length-1]||''}
+    const preview=q(modal,'#v13CapturePreview'),analyze=q(modal,'#v13AnalyzeCapture'),use=q(modal,'#v13UseCapture'),status=q(modal,'#v13AiStatus');
+    if(preview){if(caps.length){preview.src=caps[caps.length-1];preview.style.display='block'}else{preview.removeAttribute('src');preview.style.display='none'}}
+    if(analyze)analyze.disabled=!caps.length;if(use)use.disabled=!caps.length;
+    if(status){status.className='v13AiStatus '+(caps.length?'ok':'');status.textContent=caps.length?(message||`${caps.length} recorte${caps.length===1?'':'s'} listo${caps.length===1?'':'s'}. La IA los analizará juntos para completar el producto.`):'Pega o selecciona uno o varios recortes para comenzar.'}
+    renderGallery(modal);
+  }
+
+  function renderGallery(modal){
+    const b=bridge(),st=b?.state;if(!st)return;const caps=Array.isArray(st.captures)?st.captures:[];const grid=q(modal,'#fvmMultiCaptureGrid'),count=q(modal,'#fvmMultiCaptureCount');if(count)count.textContent=`${caps.length}/${MAX_CAPTURES}`;if(!grid)return;
+    grid.innerHTML=caps.length?caps.map((src,i)=>`<div class="fvmCaptureThumb"><img src="${src}" data-cap="${i}" title="Abrir recorte"><small>Recorte ${i+1}</small><div class="fvmCaptureBtns"><button type="button" data-crop="${i}">Recortar</button><button type="button" data-del="${i}">Eliminar</button></div></div>`).join(''):'<div class="fvmCaptureHint" style="grid-column:1/-1">Puedes pegar varios recortes seguidos con Ctrl+V. No sustituyen al anterior: se acumulan para el análisis.</div>';
+    grid.querySelectorAll('[data-del]').forEach(btn=>btn.onclick=async()=>{const i=Number(btn.dataset.del);st.captures.splice(i,1);await syncState(modal)});
+    grid.querySelectorAll('[data-crop]').forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.crop),src=st.captures[i];if(!src||typeof window.fvmOpenCropV16!=='function')return;window.fvmOpenCropV16(src,async data=>{st.captures[i]=data;await syncState(modal,'Recorte actualizado. La IA analizará todos los recortes juntos.')})});
+    grid.querySelectorAll('img[data-cap]').forEach(img=>img.onclick=()=>{const i=Number(img.dataset.cap),src=st.captures[i];if(src&&typeof window.fvmOpenCropV16==='function')window.fvmOpenCropV16(src,async data=>{st.captures[i]=data;await syncState(modal,'Recorte actualizado. La IA analizará todos los recortes juntos.')})});
+  }
+
+  async function addFiles(modal,files,viaPaste=false){
+    const b=bridge(),st=b?.state;if(!st)return;if(!Array.isArray(st.captures))st.captures=[];
+    const candidates=[...files].filter(f=>String(f?.type||'').startsWith('image/')).slice(0,Math.max(0,MAX_CAPTURES-st.captures.length));if(!candidates.length)return;
+    const status=q(modal,'#v13AiStatus');if(status){status.className='v13AiStatus';status.textContent=viaPaste?'Pegando recortes…':'Preparando recortes…'}
+    for(const f of candidates){try{const data=await fileToData(f);if(data&&!st.captures.includes(data))st.captures.push(data)}catch{}}
+    await syncState(modal,`${st.captures.length} recorte${st.captures.length===1?'':'s'} añadido${st.captures.length===1?'':'s'}. Puedes seguir pegando o pulsar “Analizar captura con IA”.`);
+  }
+
+  function decorate(modal){
+    if(!modal||modal.dataset.multiCaptureV18==='1'||!q(modal,'#v13CaptureBox'))return;modal.dataset.multiCaptureV18='1';
+    const b=bridge();if(!b)return;const st=b.state||(b.state={});st.captures=[];st.capture='';
+    const input=q(modal,'#v13CaptureFile');if(input){input.multiple=true;input.setAttribute('multiple','multiple')}
+    const captureBox=q(modal,'#v13CaptureBox');const meta=captureBox?.querySelector('.aiMeta');if(meta)meta.innerHTML='Selecciona uno o varios archivos o pega <b>varios recortes</b> con <b>Ctrl+V</b>. Todos se analizarán juntos para completar nombre, referencia, precio, marca y descripción.';
+    const holder=document.createElement('div');holder.className='fvmMultiCaptures';holder.innerHTML=`<div class="fvmMultiCaptureHead"><b>Recortes del producto</b><span id="fvmMultiCaptureCount">0/${MAX_CAPTURES}</span><button type="button" id="fvmClearCaptures">Vaciar</button></div><div id="fvmMultiCaptureGrid" class="fvmMultiCaptureGrid"></div><div class="fvmCaptureHint">Pega un recorte, vuelve a la web del proveedor, copia otro y pégalo: FVMarket conservará todos hasta que analices el producto.</div>`;
+    const row=input?.closest('.v17FileRow');(row||input)?.insertAdjacentElement('afterend',holder);if(!row&&!input)captureBox?.appendChild(holder);
+    holder.querySelector('#fvmClearCaptures').onclick=async()=>{st.captures=[];await syncState(modal)};
+    if(input)input.onchange=async e=>{await addFiles(modal,[...(e.target.files||[])],false);e.target.value=''};
+    modal.addEventListener('paste',async e=>{const files=[...(e.clipboardData?.items||[])].filter(x=>String(x.type||'').startsWith('image/')).map(x=>x.getAsFile()).filter(Boolean);if(!files.length)return;e.preventDefault();e.stopImmediatePropagation();await addFiles(modal,files,true)},true);
+    const use=q(modal,'#v13UseCapture');if(use)use.onclick=()=>{const src=st.captures?.[st.captures.length-1];if(!src)return;st.photos=Array.isArray(st.photos)?st.photos:[];if(st.photos.length<12&&!st.photos.some(x=>x.url===src)){st.photos.unshift({url:src,origin:'capture-photo',source:'Recorte proveedor'});b.renderPhotos?.()}};
+    syncState(modal);
+  }
+
+  const observer=new MutationObserver(()=>document.querySelectorAll('.v13Modal').forEach(decorate));observer.observe(document.documentElement,{childList:true,subtree:true});
+  document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('.v13Modal').forEach(decorate));
+})();
