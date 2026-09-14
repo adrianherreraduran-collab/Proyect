@@ -9,7 +9,7 @@
     {src:'/assets/fvmarket/hero-6.webp',cat:'',alt:'FVMarket · Todo para tu proyecto'}
   ];
   const css=document.createElement('style');css.id='fvmStoreV17Style';css.textContent=`
-    .v5hero,.v5cats{display:none!important}
+    .v5hero,body .v5cats{display:none!important}
     .v17Hero{position:relative;width:100%;background:#052e59;overflow:hidden}.v17Track{position:relative;width:100%;aspect-ratio:2/1;max-height:590px;min-height:260px}.v17Slide{position:absolute;inset:0;opacity:0;transition:opacity .65s ease;pointer-events:none;background:#052e59}.v17Slide.active{opacity:1;pointer-events:auto}.v17Slide img{width:100%;height:100%;display:block;object-fit:cover;object-position:center}.v17HeroBtn{position:absolute;top:50%;transform:translateY(-50%);z-index:4;width:42px;height:42px;border:0;border-radius:50%;background:#052e59d9;color:#fff;font-size:25px;cursor:pointer;box-shadow:0 5px 20px #0004}.v17HeroBtn:hover{background:#f28a00}.v17Prev{left:18px}.v17Next{right:18px}.v17Dots{position:absolute;z-index:5;left:50%;bottom:13px;transform:translateX(-50%);display:flex;gap:7px;background:#052e598c;padding:6px 9px;border-radius:999px}.v17Dot{width:8px;height:8px;border-radius:50%;border:0;background:#fff8;cursor:pointer;padding:0}.v17Dot.active{background:#f28a00;transform:scale(1.25)}
     .v13DeliveryStrip{background:#052e59!important}.v13RouteBanner{margin-top:14px!important;grid-template-columns:250px repeat(3,1fr)!important}.v13RouteTitle b span{color:inherit!important}.v13Van{display:none!important}
     @media(max-width:800px){.v17Track{min-height:210px;aspect-ratio:2/1}.v17HeroBtn{width:34px;height:34px;font-size:19px}.v17Prev{left:8px}.v17Next{right:8px}.v17Dots{bottom:7px}}
