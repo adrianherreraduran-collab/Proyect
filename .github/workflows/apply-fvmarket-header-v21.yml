@@ -1,0 +1,36 @@
+name: Apply FVMarket header v21
+on:
+  push:
+    paths:
+      - '.github/workflows/apply-fvmarket-header-v21.yml'
+      - 'scripts/patch_fvmarket_header_v21.py'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply discreet admin access
+        run: python scripts/patch_fvmarket_header_v21.py
+      - name: Validate storefront header
+        run: |
+          set -euo pipefail
+          grep -q 'FVM_HEADER_ADMIN_V21' appsrc/public/index.html
+          grep -q 'class="fvmAdminIcon"' appsrc/public/index.html
+          grep -q 'aria-label="Buscar"' appsrc/public/index.html
+          node --check appsrc/server.js
+      - name: Repack FVMarket application
+        run: |
+          tar -czf fvmarket-app.tgz -C appsrc .
+          base64 -w 0 fvmarket-app.tgz > fvmarket-app.tgz.b64
+      - name: Commit patched storefront package
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add appsrc/public/index.html fvmarket-app.tgz.b64
+          if git diff --cached --quiet; then echo 'No changes'; exit 0; fi
+          git commit -m 'Ajustar acceso discreto de administración FVMarket'
+          git push
