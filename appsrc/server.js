@@ -219,11 +219,12 @@ async function rutaFVGet(pathname,params={}){
   if(!r.ok)throw new Error(data.error||data.detail||`RutaFV HTTP ${r.status}`);return data;
 }
 
-app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket'}));
+app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',emailVerification:!!(RESEND_API_KEY&&EMAIL_FROM)}));
 app.get('/api/products',(req,res)=>{const d=read();const q=(req.query.q||'').toLowerCase();const category=(req.query.category||'').toLowerCase();res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.ref}`.toLowerCase().includes(q)) && (!category || p.category.toLowerCase()===category)).map(publicProduct))});
 app.post('/api/auth/register',async(req,res)=>{
   const email=String(req.body?.email||'').trim().toLowerCase(),password=String(req.body?.password||'');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<8)return res.status(400).json({error:'Introduce un correo válido y una contraseña de al menos 8 caracteres'});
+  if(!RESEND_API_KEY||!EMAIL_FROM)return res.status(503).json({error:'El registro requiere configurar el envío de correos de verificación en Render. Inténtalo de nuevo más tarde.'});
   const d=read();if(d.users.some(u=>String(u.email||'').toLowerCase()===email))return res.status(409).json({error:'Ese correo ya está registrado'});
   const rawToken=newVerificationToken();
   const u={id:id('usr'),name:'',firstName:'',lastName:'',nifNie:'',phone:'',billingAddress:'',deliveryAddress:{},username:'',email,password:await bcrypt.hash(password,12),role:'customer',emailVerified:false,verificationTokenHash:verificationHash(rawToken),verificationExpiresAt:Date.now()+24*60*60*1000,createdAt:new Date().toISOString()};

@@ -2,7 +2,7 @@
 (()=>{
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function css(){if(document.getElementById('fvmAdminEntryV14Css'))return;const s=document.createElement('style');s.id='fvmAdminEntryV14Css';s.textContent=`
-    .adminTop,.adminLink{display:none!important}
+    a.adminTop,a.adminLink{display:none!important}
     #fvmAdminEntryV14{display:inline-flex!important;align-items:center;gap:6px;color:#79cf45!important;font-size:13px!important;font-weight:900!important;text-decoration:none!important;margin-top:10px!important;cursor:pointer}
     #fvmAdminEntryV14:hover{color:#f28a00!important}
     .fvmAdminEntryShade{position:fixed;inset:0;background:#03264ad9;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
@@ -28,6 +28,7 @@
     if(!user||!pin){msg.textContent='Introduce usuario y PIN.';return}btn.disabled=true;btn.textContent='Entrando…';
     try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,pin})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.error||'Acceso denegado');if(d?.user?.role!=='admin')throw Error('La cuenta no tiene permisos de administración');localStorage.setItem('fv_session',JSON.stringify(d));sessionStorage.setItem('fvm_admin_authorized_tab','1');location.href='/admin'}catch(e){msg.textContent=e.message||'No se pudo acceder';btn.disabled=false;btn.textContent='Entrar'}
   }
+  window.openFvmAdminLogin=openLogin;
   css();if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountLink);else mountLink();
   if(new URLSearchParams(location.search).get('admin')==='login'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>openLogin());else openLogin()}
 })();
