@@ -3,8 +3,8 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function css(){if(document.getElementById('fvmAdminEntryV14Css'))return;const s=document.createElement('style');s.id='fvmAdminEntryV14Css';s.textContent=`
     a.adminTop,a.adminLink{display:none!important}
-    #fvmAdminEntryV14{display:inline-flex!important;align-items:center;gap:6px;color:#79cf45!important;font-size:13px!important;font-weight:900!important;text-decoration:none!important;margin-top:10px!important;cursor:pointer}
-    #fvmAdminEntryV14:hover{color:#f28a00!important}
+    #fvmAdminEntryV14{display:inline-flex!important;align-items:center;justify-content:center;width:24px;height:24px;color:#91a3b5!important;font-size:14px!important;font-weight:700!important;text-decoration:none!important;opacity:.72;border-radius:50%;cursor:pointer;transition:color .18s,background .18s,opacity .18s}
+    #fvmAdminEntryV14:hover{color:#f28a00!important;background:#ffffff16!important;opacity:1}
     .fvmAdminEntryShade{position:fixed;inset:0;background:#03264ad9;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
     .fvmAdminEntryBox{width:min(430px,94vw);background:white;border-radius:15px;padding:22px;box-shadow:0 30px 90px #0007;color:#10233f}
     .fvmAdminEntryBox h2{margin:0 0 4px;color:#06345f;font-size:22px}.fvmAdminEntryBox p{margin:0 0 16px;color:#64748b;font-size:12px}
@@ -15,8 +15,8 @@
   function mountLink(){
     document.querySelectorAll('a[href="/admin"],a.adminTop,a.adminLink').forEach(x=>{x.style.display='none';x.setAttribute('aria-hidden','true')});
     if(document.getElementById('fvmAdminEntryV14'))return;
-    const a=document.createElement('a');a.id='fvmAdminEntryV14';a.href='#';a.textContent='Administración FVMarket →';a.onclick=e=>{e.preventDefault();openLogin()};
-    const footer=findFooter();const first=footer.querySelector?.('.fcol,div')||footer;first.appendChild(a);
+    const a=document.createElement('a');a.id='fvmAdminEntryV14';a.href='#';a.textContent='⚙';a.setAttribute('aria-label','Acceso de administración');a.title='Acceso de administración';a.onclick=e=>{e.preventDefault();openLogin()};
+    const footer=findFooter();footer.appendChild(a);
   }
   function openLogin(message=''){
     document.querySelector('.fvmAdminEntryShade')?.remove();
