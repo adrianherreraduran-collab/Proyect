@@ -273,12 +273,22 @@ app.put('/api/me/profile',auth,async(req,res)=>{
   const d=read();const u=d.users.find(x=>x.id===req.user.id);if(!u)return res.status(404).json({error:'Cuenta no encontrada'});if(u.role==='customer'&&!u.emailVerified)return res.status(403).json({error:'Verifica primero tu correo electrónico'});
   const firstName=String(req.body?.firstName||'').trim(),lastName=String(req.body?.lastName||'').trim(),nifNie=cleanNifNie(req.body?.nifNie||''),billingAddress=String(req.body?.billingAddress||'').trim(),phone=String(req.body?.phone||'').trim();const dv=req.body?.deliveryAddress||{};
   if(!firstName||!lastName||!validNifNie(nifNie)||!billingAddress)return res.status(400).json({error:'Completa nombre, apellidos, un NIF/NIE válido y la dirección de facturación'});
-  const query=[dv.address,dv.city,dv.postalCode].filter(Boolean).join(', ').trim();if(!query)return res.status(400).json({error:'Selecciona una dirección de entrega válida'});
+  const deliveryAddress=String(dv.address||dv.label||'').trim();
+  const deliveryCity=String(dv.city||'').trim();
+  const deliveryPostal=String(dv.postalCode||dv.postal_code||'').trim();
+  if(!deliveryAddress||!deliveryCity||!deliveryPostal)return res.status(400).json({error:'Completa la dirección de entrega, el municipio y el código postal'});
   try{
-    const found=await rutaFVGet('/api/integrations/fvmarket/address-search',{q:query,limit:'5'});const rows=Array.isArray(found?.results)?found.results:[];
-    const wanted=String(dv.placeId||'');const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
-    const match=rows.find(r=>wanted&&String(r.placeId||r.place_id||'')===wanted)||rows.find(r=>norm(r.address||r.label).includes(norm(dv.address))||norm(dv.address).includes(norm(r.address||r.label)));
-    if(!match)return res.status(400).json({error:'La dirección de entrega no pudo validarse. Selecciónala desde las sugerencias de Google.'});
+    let match=null;
+    const placeId=String(dv.placeId||dv.place_id||'').trim();
+    if(placeId||dv.validated===true){
+      match={...dv,address:deliveryAddress,city:deliveryCity,postalCode:deliveryPostal,placeId};
+    }else{
+      const query=[deliveryAddress,deliveryCity,deliveryPostal].filter(Boolean).join(', ').trim();
+      const found=await rutaFVGet('/api/integrations/fvmarket/address-search',{q:query,limit:'5'});const rows=Array.isArray(found?.results)?found.results:[];
+      const norm=x=>String(x||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();
+      match=rows.find(r=>norm(r.address||r.label).includes(norm(deliveryAddress))||norm(deliveryAddress).includes(norm(r.address||r.label)));
+    }
+    if(!match)return res.status(400).json({error:'La dirección de entrega no pudo validarse. Selecciónala desde las sugerencias o completa los datos manualmente.'});
     u.firstName=firstName;u.lastName=lastName;u.name=(firstName+' '+lastName).trim();u.nifNie=nifNie;u.billingAddress=billingAddress;u.phone=phone;u.deliveryAddress={address:String(match.address||match.label||dv.address),city:String(match.city||dv.city||''),postalCode:String(match.postalCode||match.postal_code||dv.postalCode||''),municipality:String(match.municipality||''),placeId:String(match.placeId||match.place_id||dv.placeId||''),lat:match.lat??match.latitude??dv.lat??null,lng:match.lng??match.longitude??dv.lng??null,validated:true,source:'google'};save(d);res.json({user:safeUser(u)});
   }catch(e){res.status(503).json({error:'No se pudo validar la dirección con Google/RutaFV: '+e.message})}
 });
