@@ -26,7 +26,7 @@
   async function login(){
     const user=document.getElementById('fvmAdminEntryUser')?.value.trim()||'',pin=document.getElementById('fvmAdminEntryPin')?.value.trim()||'',msg=document.getElementById('fvmAdminEntryMsg'),btn=document.getElementById('fvmAdminEntryGo');
     if(!user||!pin){msg.textContent='Introduce usuario y PIN.';return}btn.disabled=true;btn.textContent='Entrando…';
-    try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,pin})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.error||'Acceso denegado');if(d?.user?.role!=='admin')throw Error('La cuenta no tiene permisos de administración');localStorage.setItem('fv_session',JSON.stringify(d));sessionStorage.setItem('fvm_admin_authorized_tab','1');location.href='/admin'}catch(e){msg.textContent=e.message||'No se pudo acceder';btn.disabled=false;btn.textContent='Entrar'}
+    try{const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,pin})});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(d.error||'Acceso denegado');if(!['admin','catalog_manager','orders_manager','operator'].includes(d?.user?.role))throw Error('La cuenta no tiene permisos para el panel');localStorage.setItem('fv_session',JSON.stringify(d));sessionStorage.setItem('fvm_admin_authorized_tab','1');location.href='/admin'}catch(e){msg.textContent=e.message||'No se pudo acceder';btn.disabled=false;btn.textContent='Entrar'}
   }
   window.openFvmAdminLogin=openLogin;
   css();if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mountLink);else mountLink();
