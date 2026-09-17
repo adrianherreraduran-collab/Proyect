@@ -611,7 +611,7 @@ function slideRail(id,dir){const el=document.getElementById(id);if(!el)return;co
 function autoRail(id){const el=document.getElementById(id);if(!el)return;setInterval(()=>{const max=el.scrollWidth-el.clientWidth;if(max<80)return;if(el.scrollLeft>=max-20)el.scrollTo({left:0,behavior:'smooth'});else slideRail(id,1)},5500)}
 window.addEventListener('load',()=>{setTimeout(()=>{autoRail('offerGrid');autoRail('productGrid')},1200)})
 </script>
-<script src="/fvmarket-admin-entry-v14.js?v=15"></script>
+<script src="/fvmarket-admin-entry-v14.js?v=16"></script>
 <script src="/fvmarket-password-reset-v1.js?v=1"></script>
 <script id="fvm-synchronized-marketing-carousel-js">
 (function(){
@@ -632,6 +632,10 @@ window.addEventListener('load',()=>{setTimeout(()=>{autoRail('offerGrid');autoRa
 #site-storefront .site-product-meta{color:var(--site-muted)}
 #site-storefront .site-catalog-status span{font-size:0}#site-storefront .site-catalog-status span:after{content:'Disponibilidad a consultar';font-size:.95rem}
 #site-storefront .site-search button{top:0;bottom:auto;height:54px;align-items:center;justify-content:center}
+#site-storefront .site-search button{width:58px!important;min-width:58px!important;height:54px!important;padding:0!important;display:grid!important;place-items:center!important;line-height:0!important;box-sizing:border-box!important;cursor:pointer!important}
+#site-storefront .site-search button svg{display:block!important;width:28px!important;height:28px!important;margin:0!important;stroke-width:2.5!important;pointer-events:none!important}
+#site-storefront .site-search button:focus-visible{outline:3px solid #82c341;outline-offset:2px}
+@media(max-width:650px){#site-storefront .site-search button{width:54px!important;min-width:54px!important;height:54px!important}}
 @media(max-width:650px){.fvmQuoteModalBox{padding:16px}.fvmQuoteModalBox .fvmStamp{right:18px;top:22px;font-size:15px}.fvmQuoteItems td{font-size:10px}.fvmProfileView h3{font-size:15px}}
 </style>
 <style id="fvm-transport-feedback-v1">.routeQuote.ok{background:#edf8e7;border-color:#c8e7b8;color:#2f6e20}.routeQuote.error{background:#fff4f4;border-color:#e6b2b2;color:#9e2929}</style>
