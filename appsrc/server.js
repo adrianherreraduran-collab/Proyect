@@ -157,6 +157,13 @@ async function sendVerificationEmail(req,u,rawToken){
   let data={};try{data=await r.json()}catch{}
   if(!r.ok)throw new Error(data.message||'No se pudo enviar el correo de verificación');return {sent:true,id:data.id||''};
 }
+async function sendPasswordResetEmail(req,u,rawToken){
+  if(!RESEND_API_KEY||!EMAIL_FROM)return {sent:false,reason:'email_not_configured'};
+  const resetUrl=`${baseUrl(req)}/?reset=${encodeURIComponent(rawToken)}`;
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:EMAIL_FROM,to:[u.email],subject:'Restablece tu contraseña de FVMarket',html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#06345f">Restablece tu contraseña</h2><p>Hemos recibido una solicitud para cambiar la contraseña de tu cuenta FVMarket.</p><p><a href="${resetUrl}" style="display:inline-block;background:#35a33a;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:12px;color:#64748b">El enlace caduca en 30 minutos. Si no solicitaste este cambio, puedes ignorar este correo.</p></div>`})});
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok)throw new Error(data.message||'No se pudo enviar el correo de recuperación');return {sent:true,id:data.id||''};
+}
 function requireCustomerReady(req,res,next){
   const u=read().users.find(x=>x.id===req.user.id);if(!u)return res.status(401).json({error:'Cuenta no encontrada'});
   if(u.role==='admin')return next();
@@ -285,6 +292,31 @@ app.post('/api/auth/resend-verification',async(req,res)=>{
   if(!u||u.emailVerified)return res.json({ok:true,message:'Si la cuenta existe y está pendiente, recibirás un correo de verificación.'});
   const rawToken=newVerificationToken();u.verificationTokenHash=verificationHash(rawToken);u.verificationExpiresAt=Date.now()+24*60*60*1000;save(d);
   try{const mail=await sendVerificationEmail(req,u,rawToken);if(!mail.sent)return res.status(503).json({error:'El servicio de correo de verificación no está configurado'});res.json({ok:true,message:'Correo de verificación reenviado'})}catch(e){res.status(502).json({error:e.message})}
+});
+app.post('/api/auth/forgot-password',async(req,res)=>{
+  const email=String(req.body?.email||'').trim().toLowerCase();
+  const generic='Si existe una cuenta con ese correo, recibirás un enlace para restablecer la contraseña.';
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.json({ok:true,message:generic});
+  const d=read();const u=d.users.find(x=>String(x.email||'').toLowerCase()===email&&x.active!==false);
+  if(!u)return res.json({ok:true,message:generic});
+  const rawToken=newVerificationToken();u.passwordResetTokenHash=verificationHash(rawToken);u.passwordResetExpiresAt=Date.now()+30*60*1000;save(d);
+  try{
+    const mail=await sendPasswordResetEmail(req,u,rawToken);
+    if(!mail.sent){u.passwordResetTokenHash='';u.passwordResetExpiresAt=0;save(d);return res.json({ok:true,message:generic});}
+  }catch(e){
+    u.passwordResetTokenHash='';u.passwordResetExpiresAt=0;save(d);
+    console.error('Password reset email:',e.message);
+    return res.json({ok:true,message:generic});
+  }
+  res.json({ok:true,message:generic});
+});
+app.post('/api/auth/reset-password',async(req,res)=>{
+  const rawToken=String(req.body?.token||'').trim();const password=String(req.body?.password||'');
+  if(!rawToken||password.length<8)return res.status(400).json({error:'El enlace no es válido o la contraseña debe tener al menos 8 caracteres'});
+  const d=read();const hash=verificationHash(rawToken);const u=d.users.find(x=>x.passwordResetTokenHash===hash&&Number(x.passwordResetExpiresAt||0)>=Date.now()&&x.active!==false);
+  if(!u)return res.status(400).json({error:'El enlace de recuperación no es válido o ha caducado. Solicita uno nuevo.'});
+  u.password=await bcrypt.hash(password,12);u.passwordResetTokenHash='';u.passwordResetExpiresAt=0;u.updatedAt=new Date().toISOString();save(d);
+  res.json({ok:true,message:'Contraseña actualizada. Ya puedes iniciar sesión.'});
 });
 app.get('/api/auth/verify-email',(req,res)=>{
   const raw=String(req.query.token||'');if(!raw)return res.redirect('/?verified=invalid');const d=read();const h=verificationHash(raw);const u=d.users.find(x=>x.verificationTokenHash===h&&x.role==='customer');
