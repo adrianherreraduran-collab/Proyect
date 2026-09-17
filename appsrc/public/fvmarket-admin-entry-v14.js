@@ -3,12 +3,12 @@
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function css(){if(document.getElementById('fvmAdminEntryV14Css'))return;const s=document.createElement('style');s.id='fvmAdminEntryV14Css';s.textContent=`
     #adminTop,button.adminTop,a.adminTop,.site-footer .adminLink,.v5footer .adminLink{display:none!important}
-    .site-footer-inner{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));align-items:center;gap:10px 18px!important}
+    .site-footer-inner{position:relative!important;display:flex!important;align-items:center;justify-content:space-between;gap:18px!important;padding-right:40px!important}
     .v5footer .footerin{flex-wrap:wrap!important}
-    #fvmAdminEntryV14{display:inline-flex!important;align-items:center;justify-content:center;grid-column:1/-1!important;justify-self:center!important;order:99!important;width:auto!important;max-width:calc(100% - 28px);margin:3px auto 0;padding:5px 10px;color:#9db5c9!important;background:transparent;border:1px solid #456b8c;border-radius:999px;font-size:11px!important;font-weight:700!important;line-height:1.1;text-decoration:none!important;cursor:pointer;box-shadow:none;transition:background .18s,border-color .18s,color .18s}
-    #fvmAdminEntryV14::before{content:'⚙';margin-right:5px;font-size:13px;line-height:1;opacity:.9}
-    #fvmAdminEntryV14:hover{color:#fff!important;background:#0b4a76;border-color:#82c341;transform:none}
-    @media(max-width:650px){.site-footer-inner{grid-template-columns:1fr!important;text-align:center}.site-footer-inner>span{display:block}#fvmAdminEntryV14{grid-column:1!important;width:30px!important;height:30px;max-width:none;margin:2px auto 0;padding:0;font-size:0!important}#fvmAdminEntryV14::before{margin:0;font-size:15px}}
+    #fvmAdminEntryV14{position:absolute!important;right:0;top:50%;display:inline-flex!important;align-items:center;justify-content:center;width:30px!important;height:30px!important;margin:0;padding:0;color:#6c8499!important;background:transparent;border:1px solid #cbd8e4;border-radius:50%;font-size:0!important;font-weight:700!important;line-height:1;text-decoration:none!important;cursor:pointer;box-shadow:none;transform:translateY(-50%);transition:background .18s,border-color .18s,color .18s}
+    #fvmAdminEntryV14::before{content:'⚙';font-size:15px;line-height:1;opacity:.9}
+    #fvmAdminEntryV14:hover{color:#0b4a76!important;background:#edf6fb;border-color:#82c341;transform:translateY(-50%)}
+    @media(max-width:650px){.site-footer-inner{padding-right:34px!important;text-align:center}.site-footer-inner>span{display:block}#fvmAdminEntryV14{right:0;width:28px!important;height:28px!important}#fvmAdminEntryV14::before{font-size:14px}}
     .fvmAdminEntryShade{position:fixed;inset:0;background:#03264ad9;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
     .fvmAdminEntryBox{width:min(430px,94vw);background:white;border-radius:15px;padding:22px;box-shadow:0 30px 90px #0007;color:#10233f}
     .fvmAdminEntryBox h2{margin:0 0 4px;color:#06345f;font-size:22px}.fvmAdminEntryBox p{margin:0 0 16px;color:#64748b;font-size:12px}
