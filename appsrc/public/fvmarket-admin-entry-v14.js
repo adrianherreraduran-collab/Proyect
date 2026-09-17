@@ -2,20 +2,22 @@
 (()=>{
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   function css(){if(document.getElementById('fvmAdminEntryV14Css'))return;const s=document.createElement('style');s.id='fvmAdminEntryV14Css';s.textContent=`
-    a.adminTop,a.adminLink{display:none!important}
-    #fvmAdminEntryV14{display:inline-flex!important;align-items:center;justify-content:center;width:24px;height:24px;color:#91a3b5!important;font-size:14px!important;font-weight:700!important;text-decoration:none!important;opacity:.72;border-radius:50%;cursor:pointer;transition:color .18s,background .18s,opacity .18s}
-    #fvmAdminEntryV14:hover{color:#f28a00!important;background:#ffffff16!important;opacity:1}
+    #adminTop,button.adminTop,a.adminTop,.site-footer .adminLink,.v5footer .adminLink{display:none!important}
+    .site-footer-inner,.v5footer .footerin{flex-wrap:wrap!important}
+    #fvmAdminEntryV14{display:flex!important;align-items:center;justify-content:center;flex:0 0 100%!important;grid-column:1/-1!important;order:99!important;width:100%;margin:14px 0 0;padding:10px 14px;color:#dcecff!important;background:#0b4a76;border:1px solid #3e7096;border-radius:8px;font-size:12px!important;font-weight:900!important;line-height:1.2;text-decoration:none!important;cursor:pointer;transition:background .18s,border-color .18s,transform .18s}
+    #fvmAdminEntryV14::before{content:'⚙';margin-right:7px;font-size:15px}
+    #fvmAdminEntryV14:hover{color:#fff!important;background:#12608e;border-color:#76bf49;transform:translateY(-1px)}
     .fvmAdminEntryShade{position:fixed;inset:0;background:#03264ad9;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
     .fvmAdminEntryBox{width:min(430px,94vw);background:white;border-radius:15px;padding:22px;box-shadow:0 30px 90px #0007;color:#10233f}
     .fvmAdminEntryBox h2{margin:0 0 4px;color:#06345f;font-size:22px}.fvmAdminEntryBox p{margin:0 0 16px;color:#64748b;font-size:12px}
     .fvmAdminEntryBox label{display:block;font-size:11px;font-weight:900;margin:10px 0 5px}.fvmAdminEntryBox input{width:100%;height:43px;border:1px solid #d8e0e9;border-radius:8px;padding:0 12px;outline:none}.fvmAdminEntryBox input:focus{border-color:#f28a00;box-shadow:0 0 0 3px #f28a0020}
     .fvmAdminEntryBtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}.fvmAdminEntryBtns button{border:0;border-radius:8px;padding:10px 14px;font-weight:900;cursor:pointer}.fvmAdminCancel{background:#eef4f8;color:#06345f}.fvmAdminGo{background:#06345f;color:white}.fvmAdminMsg{font-size:11px;color:#a32929;min-height:16px;margin-top:8px}
   `;document.head.appendChild(s)}
-  function findFooter(){return document.querySelector('.v5footer .footerin')||document.querySelector('footer .footerin')||document.querySelector('footer')||document.body}
+  function findFooter(){return document.querySelector('#site-storefront .site-footer-inner')||document.querySelector('.site-footer .footerin')||document.querySelector('.v5footer .footerin')||document.querySelector('footer .footerin')||document.querySelector('footer')||document.body}
   function mountLink(){
-    document.querySelectorAll('a[href="/admin"],a.adminTop,a.adminLink').forEach(x=>{x.style.display='none';x.setAttribute('aria-hidden','true')});
+    document.querySelectorAll('#adminTop,button.adminTop,a.adminTop,a.adminLink,a[href="/admin"]').forEach(x=>{x.style.setProperty('display','none','important');x.setAttribute('aria-hidden','true')});
     if(document.getElementById('fvmAdminEntryV14'))return;
-    const a=document.createElement('a');a.id='fvmAdminEntryV14';a.href='#';a.textContent='⚙';a.setAttribute('aria-label','Acceso de administración');a.title='Acceso de administración';a.onclick=e=>{e.preventDefault();openLogin()};
+    const a=document.createElement('a');a.id='fvmAdminEntryV14';a.href='#';a.textContent='Administración FVMarket';a.setAttribute('aria-label','Acceso de administración FVMarket');a.title='Acceso de administración FVMarket';a.onclick=e=>{e.preventDefault();openLogin()};
     const footer=findFooter();footer.appendChild(a);
   }
   function openLogin(message=''){
