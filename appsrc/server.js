@@ -375,6 +375,14 @@ app.put('/api/me/profile',auth,async(req,res)=>{
 });
 app.get('/api/my-orders',auth,(req,res)=>res.json(read().orders.filter(o=>o.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(publicOrder)));
 app.get('/api/my-quotes',auth,(req,res)=>res.json((read().quotes||[]).filter(q=>q.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
+app.delete('/api/quotes/:id',auth,(req,res)=>{
+  const d=read();
+  const index=(d.quotes||[]).findIndex(q=>q.id===req.params.id&&q.userId===req.user.id);
+  if(index<0)return res.status(404).json({error:'Presupuesto no encontrado'});
+  const q=d.quotes[index];
+  if(String(q.status||'').toLowerCase()==='aceptado')return res.status(409).json({error:'No se puede eliminar un presupuesto aceptado.'});
+  d.quotes.splice(index,1);save(d);res.json({ok:true});
+});
 function profileSummary(d,u){const quotes=(d.quotes||[]).filter(q=>q.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));const orders=(d.orders||[]).filter(o=>o.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(publicOrder);const invoices=(d.invoices||[]).filter(x=>x.userId===u.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice);const payments=orders.map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:o.paymentMethod,status:['pagado','entregado'].includes(String(o.status||''))?'pagado':'pendiente',createdAt:o.createdAt}));return {quotes,orders,invoices,payments}}
 app.get('/api/my-invoices',auth,(req,res)=>res.json(read().invoices.filter(x=>x.userId===req.user.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice)));
 app.get('/api/invoices/:id',auth,(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).json({error:'Factura no encontrada'});if(inv.userId!==req.user.id&&!['admin','orders_manager'].includes(req.user.role))return res.status(403).json({error:'No tienes permiso para ver esta factura'});res.json(publicInvoice(inv))});

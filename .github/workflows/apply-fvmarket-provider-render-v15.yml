@@ -47,3 +47,5 @@ jobs:
           git commit -m 'Corregir proveedores y añadir render gratuito FVMarket v15'
           git push
 # retry-v15
+# repack storefront after FVMarket footer adjustment
+# repack after customer quote deletion
