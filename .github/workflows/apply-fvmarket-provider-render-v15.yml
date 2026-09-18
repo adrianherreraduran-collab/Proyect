@@ -49,3 +49,4 @@ jobs:
 # retry-v15
 # repack storefront after FVMarket footer adjustment
 # repack after customer quote deletion
+# repack after session and quote acceptance fixes

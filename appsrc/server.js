@@ -375,6 +375,14 @@ app.put('/api/me/profile',auth,async(req,res)=>{
 });
 app.get('/api/my-orders',auth,(req,res)=>res.json(read().orders.filter(o=>o.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(publicOrder)));
 app.get('/api/my-quotes',auth,(req,res)=>res.json((read().quotes||[]).filter(q=>q.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
+app.post('/api/quotes/:id/accept',auth,(req,res)=>{
+  const d=read();
+  const q=(d.quotes||[]).find(x=>x.id===req.params.id&&x.userId===req.user.id);
+  if(!q)return res.status(404).json({error:'Presupuesto no encontrado'});
+  if(String(q.status||'').toLowerCase()==='aceptado')return res.json(q);
+  if(q.validUntil&&new Date(q.validUntil).getTime()<Date.now())return res.status(409).json({error:'Este presupuesto ha caducado.'});
+  q.status='aceptado';q.acceptedAt=new Date().toISOString();save(d);res.json(q);
+});
 app.delete('/api/quotes/:id',auth,(req,res)=>{
   const d=read();
   const index=(d.quotes||[]).findIndex(q=>q.id===req.params.id&&q.userId===req.user.id);
