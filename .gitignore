@@ -1,0 +1,4 @@
+appsrc/node_modules/
+appsrc/.env
+appsrc/.env.*
+!appsrc/.env.example

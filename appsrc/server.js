@@ -13,6 +13,7 @@ const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
 const {registerProviderSourceRoutes} = require('./supplier_capture_v13');
 const persistence = require('./persistent_store_v17');
+const transactionalEmails = require('./transactional_emails');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -48,7 +49,11 @@ app.post('/api/stripe/webhook',express.raw({type:'application/json'}),async(req,
   const signature=String(req.headers['stripe-signature']||'');let event;
   try{event=stripe.webhooks.constructEvent(req.body,signature,STRIPE_WEBHOOK_SECRET)}catch(e){return res.status(400).json({error:'Firma de Stripe no válida'})}
   if(event.type==='checkout.session.completed'||event.type==='checkout.session.async_payment_succeeded'){
-    const s=event.data.object||{};if(s.payment_status==='paid'||event.type.endsWith('succeeded')){const d=read();const o=d.orders.find(x=>x.stripeSessionId===s.id||x.id===String(s.metadata?.orderId||''));if(o){o.status='pagado';o.paidAt=o.paidAt||new Date().toISOString();o.paymentIntentId=String(s.payment_intent||'');o.stripePaymentStatus=String(s.payment_status||'paid');issueInvoiceForOrder(d,o);save(d)}}
+    const s=event.data.object||{};
+    if(s.payment_status==='paid'||event.type.endsWith('succeeded')){
+      const d=read();const o=d.orders.find(x=>x.stripeSessionId===s.id||x.id===String(s.metadata?.orderId||''));
+      if(o){o.status=paidOrderStatus(o.status)?o.status:'pagado';o.paidAt=o.paidAt||new Date().toISOString();o.paymentIntentId=String(typeof s.payment_intent==='string'?s.payment_intent:s.payment_intent?.id||'');o.stripePaymentStatus=String(s.payment_status||'paid');const invoice=issueInvoiceForOrder(d,o);save(d);scheduleOrderEmail(req,o.id,'order_confirmation');if(invoice)scheduleOrderEmail(req,o.id,'invoice_issued')}
+    }
   }
   res.json({received:true});
 });
@@ -150,19 +155,52 @@ function safeUser(u){return {id:u.id,name:String(u.name||[u.firstName,u.lastName
 function verificationHash(v=''){return crypto.createHash('sha256').update(String(v)).digest('hex')}
 function newVerificationToken(){return crypto.randomBytes(32).toString('hex')}
 function baseUrl(req){return PUBLIC_URL||`${req.protocol}://${req.get('host')}`}
+async function sendResendEmail({to,subject,html,text=''}){
+  if(!RESEND_API_KEY||!EMAIL_FROM)return {sent:false,reason:'email_not_configured'};
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:EMAIL_FROM,to:[to],subject,html,text})});
+  let data={};try{data=await r.json()}catch{}
+  if(!r.ok)throw new Error(data.message||data.error||'No se pudo enviar el correo');
+  return {sent:true,id:data.id||''};
+}
 async function sendVerificationEmail(req,u,rawToken){
   if(!RESEND_API_KEY||!EMAIL_FROM)return {sent:false,reason:'email_not_configured'};
   const verifyUrl=`${baseUrl(req)}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
-  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:EMAIL_FROM,to:[u.email],subject:'Verifica tu cuenta FVMarket',html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#06345f">Verifica tu cuenta FVMarket</h2><p>Confirma tu correo electrónico para activar tu cuenta.</p><p><a href="${verifyUrl}" style="display:inline-block;background:#35a33a;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Verificar correo</a></p><p style="font-size:12px;color:#64748b">El enlace caduca en 24 horas.</p></div>`})});
-  let data={};try{data=await r.json()}catch{}
-  if(!r.ok)throw new Error(data.message||'No se pudo enviar el correo de verificación');return {sent:true,id:data.id||''};
+  return sendResendEmail({to:u.email,subject:'Verifica tu cuenta FVMarket',html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#06345f">Verifica tu cuenta FVMarket</h2><p>Confirma tu correo electrónico para activar tu cuenta.</p><p><a href="${verifyUrl}" style="display:inline-block;background:#35a33a;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Verificar correo</a></p><p style="font-size:12px;color:#64748b">El enlace caduca en 24 horas.</p></div>`,text:`Verifica tu cuenta FVMarket: ${verifyUrl}`});
 }
 async function sendPasswordResetEmail(req,u,rawToken){
   if(!RESEND_API_KEY||!EMAIL_FROM)return {sent:false,reason:'email_not_configured'};
   const resetUrl=`${baseUrl(req)}/?reset=${encodeURIComponent(rawToken)}`;
-  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+RESEND_API_KEY,'Content-Type':'application/json'},body:JSON.stringify({from:EMAIL_FROM,to:[u.email],subject:'Restablece tu contraseña de FVMarket',html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#06345f">Restablece tu contraseña</h2><p>Hemos recibido una solicitud para cambiar la contraseña de tu cuenta FVMarket.</p><p><a href="${resetUrl}" style="display:inline-block;background:#35a33a;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:12px;color:#64748b">El enlace caduca en 30 minutos. Si no solicitaste este cambio, puedes ignorar este correo.</p></div>`})});
-  let data={};try{data=await r.json()}catch{}
-  if(!r.ok)throw new Error(data.message||'No se pudo enviar el correo de recuperación');return {sent:true,id:data.id||''};
+  return sendResendEmail({to:u.email,subject:'Restablece tu contraseña de FVMarket',html:`<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto"><h2 style="color:#06345f">Restablece tu contraseña</h2><p>Hemos recibido una solicitud para cambiar la contraseña de tu cuenta FVMarket.</p><p><a href="${resetUrl}" style="display:inline-block;background:#35a33a;color:white;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:700">Crear nueva contraseña</a></p><p style="font-size:12px;color:#64748b">El enlace caduca en 30 minutos. Si no solicitaste este cambio, puedes ignorar este correo.</p></div>`,text:`Restablece tu contraseña de FVMarket: ${resetUrl}`});
+}
+function invoiceEmailToken(invoice={}){return crypto.createHmac('sha256',JWT_SECRET).update(`fvmarket-invoice:${invoice.id}:${invoice.orderId}`).digest('hex')}
+function invoicePublicUrl(req,invoice={}){return `${baseUrl(req)}/api/invoices/${encodeURIComponent(invoice.id)}/print?token=${encodeURIComponent(invoiceEmailToken(invoice))}`}
+function orderRecipient(d,o){const u=(d.users||[]).find(x=>x.id===o.userId)||{};return String(o.customer?.email||u.email||'').trim().toLowerCase()}
+function emailEventExists(o,event){return !!(o.emailEvents&&o.emailEvents[event]?.sentAt)}
+const EMAIL_IN_FLIGHT=new Set();
+function emailForOrderEvent(req,d,o,event,extra={}){
+  const invoice=(d.invoices||[]).find(x=>x.id===o.invoiceId||x.orderId===o.id)||null;
+  if(event==='order_received')return transactionalEmails.orderReceived(o);
+  if(event==='order_confirmation')return transactionalEmails.orderConfirmation(o,invoice?invoicePublicUrl(req,invoice):'');
+  if(event==='invoice_issued')return invoice?transactionalEmails.invoice(o,invoice,invoicePublicUrl(req,invoice)):null;
+  if(event==='delivery_in_transit')return transactionalEmails.delivery(o,'en_reparto');
+  if(event==='delivery_completed')return transactionalEmails.delivery(o,'entregado');
+  if(event.startsWith('refund:'))return transactionalEmails.refund(o,extra.refund||{});
+  return null;
+}
+async function sendOrderEmail(req,orderId,event,extra={}){
+  const flightKey=`${orderId}:${event}`;if(EMAIL_IN_FLIGHT.has(flightKey))return {sent:true,duplicate:true};EMAIL_IN_FLIGHT.add(flightKey);
+  try{
+  const d=read();const o=(d.orders||[]).find(x=>x.id===orderId);if(!o)return {sent:false,reason:'order_not_found'};
+  const to=orderRecipient(d,o);if(!to)return {sent:false,reason:'customer_email_missing'};
+  if(emailEventExists(o,event))return {sent:true,duplicate:true};
+  const message=emailForOrderEvent(req,d,o,event,extra);if(!message)return {sent:false,reason:'email_template_missing'};
+  const result=await sendResendEmail({to,subject:message.subject,html:message.html,text:message.text});
+  if(result.sent){o.emailEvents=o.emailEvents||{};o.emailEvents[event]={sentAt:new Date().toISOString(),resendId:result.id||''};save(d)}
+  return result;
+  }finally{EMAIL_IN_FLIGHT.delete(flightKey)}
+}
+function scheduleOrderEmail(req,orderId,event,extra={}){
+  setImmediate(()=>sendOrderEmail(req,orderId,event,extra).catch(error=>console.error(`FVMarket email ${event}:`,error.message)));
 }
 function requireCustomerReady(req,res,next){
   const u=read().users.find(x=>x.id===req.user.id);if(!u)return res.status(401).json({error:'Cuenta no encontrada'});
@@ -179,7 +217,8 @@ function publicProduct(p={}){
   safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);return safe;
 }
 function publicOrder(o={}){
-  return {...o,items:(o.items||[]).map(({procurement,...item})=>item)};
+  const {stripeSessionId,paymentIntentId,stripePaymentStatus,emailEvents,refunds,...safe}=o;
+  return {...safe,refunds:Array.isArray(refunds)?refunds.map(({stripeRefundId,...refund})=>refund):refunds,items:(o.items||[]).map(({procurement,...item})=>item)};
 }
 function providerFromUrl(raw=''){
   try{
@@ -394,7 +433,7 @@ app.delete('/api/quotes/:id',auth,(req,res)=>{
 function profileSummary(d,u){const quotes=(d.quotes||[]).filter(q=>q.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));const orders=(d.orders||[]).filter(o=>o.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(publicOrder);const invoices=(d.invoices||[]).filter(x=>x.userId===u.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice);const payments=orders.map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:o.paymentMethod,status:['pagado','entregado'].includes(String(o.status||''))?'pagado':'pendiente',createdAt:o.createdAt}));return {quotes,orders,invoices,payments}}
 app.get('/api/my-invoices',auth,(req,res)=>res.json(read().invoices.filter(x=>x.userId===req.user.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice)));
 app.get('/api/invoices/:id',auth,(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).json({error:'Factura no encontrada'});if(inv.userId!==req.user.id&&!['admin','orders_manager'].includes(req.user.role))return res.status(403).json({error:'No tienes permiso para ver esta factura'});res.json(publicInvoice(inv))});
-app.get('/api/invoices/:id/print',auth,(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).send('Factura no encontrada');if(inv.userId!==req.user.id&&!['admin','orders_manager'].includes(req.user.role))return res.status(403).send('No tienes permiso para ver esta factura');res.type('html').send(invoiceDocumentHtml(inv,d.settings))});
+app.get('/api/invoices/:id/print',(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).send('Factura no encontrada');const supplied=String(req.query.token||'');const expected=invoiceEmailToken(inv);const tokenOk=supplied&&supplied.length===expected.length&&crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected));let viewer=null;const header=String(req.headers.authorization||'');if(header.startsWith('Bearer ')){try{viewer=jwt.verify(header.slice(7),JWT_SECRET)}catch{}}if(!tokenOk&&(!viewer|| (inv.userId!==viewer.id&&!['admin','orders_manager'].includes(viewer.role))))return res.status(401).send('No tienes permiso para ver esta factura');res.type('html').send(invoiceDocumentHtml(inv,d.settings))});
 app.get('/api/me/summary',auth,(req,res)=>{const d=read();const u=d.users.find(x=>x.id===req.user.id);if(!u)return res.status(404).json({error:'Cuenta no encontrada'});res.json({user:safeUser(u),...profileSummary(d,u)})});
 app.post('/api/quotes',auth,requireCustomerReady,async(req,res)=>{
   const d=read();const normalized=[];let subtotal=0;for(const item of req.body?.items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));const unit=offerPrice(p);normalized.push({productId:p.id,title:p.title,ref:p.ref,qty,unitPrice:unit,lineTotal:+(unit*qty).toFixed(2)});subtotal+=unit*qty}
@@ -403,30 +442,20 @@ app.post('/api/quotes',auth,requireCustomerReady,async(req,res)=>{
   const now=new Date(),until=new Date(now.getTime()+15*24*60*60*1000);const total=+(subtotal+delivery).toFixed(2);const q={id:id('quo'),number:'PRE-FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,total,transport,status:'emitido',validUntil:until.toISOString(),customer:{name:req.customer.name,email:req.customer.email,nifNie:req.customer.nifNie,billingAddress:req.customer.billingAddress,deliveryAddress:req.customer.deliveryAddress},createdAt:now.toISOString()};d.quotes.push(q);save(d);res.status(201).json(q);
 });
 
-app.post('/api/orders',auth,requireCustomerReady,(req,res)=>{const body=req.body||{};if(!Array.isArray(body.items)||!body.items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const built=buildOrder(d,req.customer,body.items,body.customer||{address:body.address,city:body.city,postalCode:body.postalCode,phone:body.phone,notes:body.notes},{paymentMethod:'transfer',useRutaFV:!!body.useRutaFV,quote:body.rutaFVQuote||{},phone:body.phone,notes:body.notes});if(built.error)return res.status(built.status||400).json({error:built.error});d.orders.push(built.order);save(d);res.json(publicOrder(built.order))});
+app.post('/api/orders',auth,requireCustomerReady,(req,res)=>{const body=req.body||{};if(!Array.isArray(body.items)||!body.items.length)return res.status(400).json({error:'El carrito está vacío'});const d=read();const built=buildOrder(d,req.customer,body.items,body.customer||{address:body.address,city:body.city,postalCode:body.postalCode,phone:body.phone,notes:body.notes},{paymentMethod:'transfer',useRutaFV:!!body.useRutaFV,quote:body.rutaFVQuote||{},phone:body.phone,notes:body.notes});if(built.error)return res.status(built.status||400).json({error:built.error});d.orders.push(built.order);save(d);scheduleOrderEmail(req,built.order.id,'order_received');res.json(publicOrder(built.order))});
 app.post('/api/checkout/stripe',auth,requireCustomerReady,async(req,res)=>{
   // FVM_TRANSPORT_CHECKOUT_V2
   if(!stripe)return res.status(503).json({error:'Pago con tarjeta pendiente de activación'});
-  const body=req.body||{};
-  const items=Array.isArray(body.items)?body.items:[];
-  const useRutaFV=!!body.useRutaFV;
-  const quote=body.rutaFVQuote||{};
-  const d=read();const built=buildOrder(d,req.customer,items,body.customer||{address:body.address,city:body.city,postalCode:body.postalCode,phone:body.phone,notes:body.notes},{id:id('ord'),paymentMethod:'stripe',useRutaFV,quote,phone:body.phone,notes:body.notes});if(built.error)return res.status(built.status||400).json({error:built.error});const order=built.order;
-  const line_items=order.items.map(item=>({quantity:item.qty,price_data:{currency:'eur',unit_amount:Math.round(item.unitPrice*100),product_data:{name:item.title,metadata:{ref:item.ref}}}}));
-  const transportAmount=order.delivery;
-  if(transportAmount>0){
-    line_items.push({quantity:1,price_data:{currency:'eur',unit_amount:Math.round(transportAmount*100),product_data:{name:'Envío a tu obra',description:'Servicio de entrega asociado a la compra FVMarket'}}});
-  }
-  const base=process.env.PUBLIC_URL||`${req.protocol}://${req.get('host')}`;
-  const session=await stripe.checkout.sessions.create({
-    mode:'payment',
-    line_items,
-    success_url:`${base}/?payment=success`,
-    cancel_url:`${base}/?payment=cancel`,
-    customer_email:order.customer.email,
-    metadata:{source:'FVMarket',orderId:order.id,orderNumber:order.number,rutafv:String(useRutaFV),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(transportAmount),rutafv_quote_id:String(quote.id||quote.quoteId||''),delivery_address:String(order.address||'').slice(0,450),delivery_phone:String(order.phone||'').slice(0,100)}
-  });
-  order.stripeSessionId=session.id;d.orders.push(order);save(d);res.json({url:session.url,orderNumber:order.number,transportAmount,totalIncludesTransport:transportAmount>0});
+  const body=req.body||{};const items=Array.isArray(body.items)?body.items:[];const useRutaFV=!!body.useRutaFV;const quote=body.rutaFVQuote||{};const d=read();
+  const built=buildOrder(d,req.customer,items,body.customer||{address:body.address,city:body.city,postalCode:body.postalCode,phone:body.phone,notes:body.notes},{id:id('ord'),paymentMethod:'stripe',useRutaFV,quote,phone:body.phone,notes:body.notes});
+  if(built.error)return res.status(built.status||400).json({error:built.error});
+  const order=built.order;const line_items=order.items.map(item=>({quantity:item.qty,price_data:{currency:'eur',unit_amount:Math.round(item.unitPrice*100),product_data:{name:item.title,metadata:{ref:item.ref}}}}));
+  if(order.delivery>0)line_items.push({quantity:1,price_data:{currency:'eur',unit_amount:Math.round(order.delivery*100),product_data:{name:'Envío a tu obra',description:'Servicio de entrega asociado a la compra FVMarket'}}});
+  const base=baseUrl(req);
+  try{
+    const session=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:`${base}/?payment=success&order=${encodeURIComponent(order.id)}`,cancel_url:`${base}/?payment=cancel&order=${encodeURIComponent(order.id)}`,customer_email:order.customer.email,metadata:{source:'FVMarket',orderId:order.id,orderNumber:order.number,rutafv:String(useRutaFV),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(order.delivery),rutafv_quote_id:String(quote.id||quote.quoteId||''),delivery_address:String(order.address||'').slice(0,450),delivery_phone:String(order.phone||'').slice(0,100)}});
+    order.stripeSessionId=session.id;d.orders.push(order);save(d);res.json({url:session.url,orderNumber:order.number,transportAmount:order.delivery,totalIncludesTransport:order.delivery>0});
+  }catch(e){console.error('Stripe checkout:',e.message);res.status(502).json({error:`No se pudo crear el pago con Stripe: ${e.message}`})}
 });
 
 // FVM_IMAGE_MANAGER_V2
@@ -447,7 +476,25 @@ app.put('/api/admin/products/:id',catalogEditor,(req,res)=>{const d=read();const
 app.delete('/api/admin/products/:id',catalogEditor,(req,res)=>{const d=read();d.products=d.products.filter(p=>p.id!==req.params.id);save(d);res.json({ok:true})});
 app.get('/api/admin/orders',ordersManager,(req,res)=>res.json(read().orders.sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
 app.get('/api/admin/quotes',ordersManager,(req,res)=>res.json((read().quotes||[]).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))));
-app.put('/api/admin/orders/:id',ordersManager,(req,res)=>{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});o.status=String(req.body.status||o.status);if(paidOrderStatus(o.status)){o.paidAt=o.paidAt||new Date().toISOString();issueInvoiceForOrder(d,o)}save(d);res.json(o)});
+app.post('/api/admin/orders/:id/refund',ordersManager,async(req,res)=>{
+  if(!stripe)return res.status(503).json({error:'Stripe no está configurado'});
+  const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});
+  const current=String(o.status||'').toLowerCase();if(!['pagado','preparando','en_reparto','entregado','reembolso_parcial'].includes(current))return res.status(409).json({error:'El pedido no tiene un pago Stripe reembolsable'});
+  if(!o.stripeSessionId&&!o.paymentIntentId)return res.status(409).json({error:'El pedido no tiene identificador de pago Stripe'});
+  const already=Math.max(0,Number(o.refundedAmount)||0),total=Math.max(0,Number(o.total)||0),remaining=Math.max(0,moneyRound(total-already));
+  const requested=req.body?.amount==null||String(req.body.amount).trim()===''?remaining:moneyRound(Number(req.body.amount));
+  if(!Number.isFinite(requested)||requested<=0||requested>remaining+0.01)return res.status(400).json({error:`El importe debe estar entre 0,01 € y ${remaining.toFixed(2)} €`});
+  try{
+    let paymentIntentId=String(o.paymentIntentId||'');
+    if(!paymentIntentId&&o.stripeSessionId){const session=await stripe.checkout.sessions.retrieve(o.stripeSessionId);paymentIntentId=String(typeof session.payment_intent==='string'?session.payment_intent:session.payment_intent?.id||'')}
+    if(!paymentIntentId)throw new Error('Stripe todavía no ha devuelto el PaymentIntent');
+    const full=already<=0.01&&requested>=total-0.01;const refund=await stripe.refunds.create({payment_intent:paymentIntentId,...(full?{}:{amount:Math.round(requested*100)})});
+    const refundRecord={id:id('ref'),amount:requested,stripeRefundId:String(refund.id||''),createdAt:new Date().toISOString(),status:String(refund.status||'succeeded'),emailSent:false};o.paymentIntentId=paymentIntentId;o.refunds=Array.isArray(o.refunds)?o.refunds:[];o.refunds.push(refundRecord);o.refundedAmount=moneyRound(already+requested);o.refundStatus=o.refundedAmount>=total-0.01?'total':'parcial';o.status=o.refundedAmount>=total-0.01?'reembolsado':'reembolso_parcial';save(d);
+    scheduleOrderEmail(req,o.id,`refund:${refundRecord.id}`,{refund:refundRecord});
+    res.json({ok:true,orderNumber:o.number,refundedAmount:o.refundedAmount,remainingAmount:moneyRound(total-o.refundedAmount),status:o.status});
+  }catch(e){console.error('Stripe refund:',e.message);res.status(502).json({error:`No se pudo ejecutar el reembolso con Stripe: ${e.message}`})}
+});
+app.put('/api/admin/orders/:id',ordersManager,(req,res)=>{const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});const previous=String(o.status||'');o.status=String(req.body.status||o.status);const becamePaid=paidOrderStatus(o.status)&&!paidOrderStatus(previous);let invoice=null;if(paidOrderStatus(o.status)){o.paidAt=o.paidAt||new Date().toISOString();invoice=issueInvoiceForOrder(d,o)}save(d);if(becamePaid){scheduleOrderEmail(req,o.id,'order_confirmation');if(invoice)scheduleOrderEmail(req,o.id,'invoice_issued')}if(previous!==o.status&&o.status==='en_reparto')scheduleOrderEmail(req,o.id,'delivery_in_transit');if(previous!==o.status&&o.status==='entregado')scheduleOrderEmail(req,o.id,'delivery_completed');res.json(o)});
 app.get('/api/admin/users',admin,(req,res)=>res.json(read().users.map(safeUser)));
 app.post('/api/admin/users',admin,async(req,res)=>{const d=read();const body=req.body||{};const role=String(body.role||'operator').trim();const email=String(body.email||'').trim().toLowerCase();const username=String(body.username||email.split('@')[0]||'').trim().toLowerCase();const password=String(body.password??body.pin??'');const name=String(body.name||'').trim();if(!STAFF_ROLE_KEYS.has(role))return res.status(400).json({error:'Rol no válido'});if(!name||!email||!/^\S+@\S+\.\S+$/.test(email))return res.status(400).json({error:'Indica nombre y un correo válido'});if(!/^[a-z0-9._-]{3,32}$/.test(username))return res.status(400).json({error:'El usuario debe tener entre 3 y 32 caracteres: letras, números, punto, guion o guion bajo'});if(password.length<8)return res.status(400).json({error:'La contraseña debe tener al menos 8 caracteres'});if(d.users.some(x=>String(x.email||'').toLowerCase()===email||String(x.username||'').toLowerCase()===username))return res.status(409).json({error:'Ese correo o usuario ya está en uso'});const parts=name.split(/\s+/),u={id:id('usr'),name,firstName:parts.shift()||name,lastName:parts.join(' '),email,username,password:await bcrypt.hash(password,12),role,emailVerified:true,internal:true,active:true,createdAt:new Date().toISOString(),deliveryAddress:{}};d.users.unshift(u);save(d);res.status(201).json(safeUser(u))});
 app.get('/api/admin/settings',admin,(req,res)=>res.json(read().settings));
