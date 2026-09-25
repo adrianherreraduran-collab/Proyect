@@ -180,7 +180,8 @@ function ensureLogisticsSettings(d){
   if(d.settings.rutaFVDeliveryDateMode==null)d.settings.rutaFVDeliveryDateMode='gestion_rutafv';
   const fiscalOrigin=[d.settings.fiscalAddress,d.settings.fiscalCity,d.settings.fiscalPostalCode].filter(Boolean).join(', ').trim();
   const configuredOrigin=String(d.settings.rutaFVOrigin||'').trim();
-  if(d.settings.rutaFVOriginAuto===true||!configuredOrigin){
+  const matchesFiscalOrigin=!!(configuredOrigin&&fiscalOrigin&&configuredOrigin===fiscalOrigin);
+  if(d.settings.rutaFVOriginAuto===true||!configuredOrigin||matchesFiscalOrigin){
     const fallback=fiscalOrigin||FVMARKET_FISCAL_ORIGIN||'';
     d.settings.rutaFVOrigin=fallback;
     d.settings.rutaFVOriginAuto=true;
