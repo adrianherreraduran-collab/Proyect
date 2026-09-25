@@ -67,6 +67,21 @@ function orderConfirmation(order, invoiceUrl = '') {
   };
 }
 
+function paymentLink(order, paymentLinkUrl = '') {
+  const text = `El pedido ${order.number} está listo para pagar online. Total: ${money(order.total)}.`;
+  return {
+    subject: `Enlace de pago ${order.number} · FVMarket`,
+    text: paymentLinkUrl ? `${text} Enlace: ${paymentLinkUrl}` : text,
+    html: layout({
+      title: 'Enlace de pago',
+      intro: `${text} Utiliza el botón siguiente para completar el pago de forma segura con Stripe.`,
+      order,
+      body: orderItems(order),
+      button: paymentLinkUrl ? {url: paymentLinkUrl, label: 'Pagar ahora con Stripe'} : null
+    })
+  };
+}
+
 function invoice(order, invoiceData, invoiceUrl = '') {
   const text = `Factura ${invoiceData.number} correspondiente al pedido ${order.number}. Total: ${money(invoiceData.total)}.`;
   const body = `<p><b>Factura ${esc(invoiceData.number)}</b></p>${orderItems(order)}<p style="text-align:right;font-size:18px"><b>Total: ${money(invoiceData.total)}</b></p>`;
@@ -100,4 +115,4 @@ function refund(order, refundData = {}) {
   };
 }
 
-module.exports = {orderReceived, orderConfirmation, invoice, delivery, refund};
+module.exports = {orderReceived, orderConfirmation, paymentLink, invoice, delivery, refund};
