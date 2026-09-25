@@ -1122,14 +1122,14 @@ app.post('/api/rutafv/quote',auth,async(req,res)=>{
     const now=Date.now();pruneRutaFVQuoteState(now);
     const cached=rutafvQuoteCache.get(cacheKey);
     if(cached&&cached.expiresAt>now)return res.json(decorateTransportQuote(cached.quote,req.user.id,req.body.items||items,destination));
-    const lastExternal=rutafvQuoteLastExternal.get(req.user.id)||0;
-    if(now-lastExternal<RUTAFV_QUOTE_MIN_INTERVAL_MS){
-      const retryAfter=Math.max(1,Math.ceil((RUTAFV_QUOTE_MIN_INTERVAL_MS-(now-lastExternal))/1000));
-      res.set('Retry-After',String(retryAfter));
-      return res.status(429).json({error:'El cálculo de transporte está temporalmente limitado. Reintentaremos en unos segundos.'});
-    }
     let pending=rutafvQuoteInflight.get(cacheKey);
     if(!pending){
+      const lastExternal=rutafvQuoteLastExternal.get(req.user.id)||0;
+      if(now-lastExternal<RUTAFV_QUOTE_MIN_INTERVAL_MS){
+        const retryAfter=Math.max(1,Math.ceil((RUTAFV_QUOTE_MIN_INTERVAL_MS-(now-lastExternal))/1000));
+        res.set('Retry-After',String(retryAfter));
+        return res.status(429).json({error:'El cálculo de transporte está temporalmente limitado. Reintentaremos en unos segundos.'});
+      }
       rutafvQuoteLastExternal.set(req.user.id,now);
       const payload={clientCode:d.settings.rutaFVClientCode||RUTAFV_CLIENT_CODE,customer,origin,originDetails,destination:destinationText,destinationText,items,orderSource:'FVMarket',fulfillmentModel:'sin_stock_fisico',deliveryMode:'normal',express:false};
       pending=rutaFVRequest(RUTAFV_QUOTE_PATH,payload).then(q=>{rutafvQuoteCache.set(cacheKey,{quote:q,expiresAt:Date.now()+RUTAFV_QUOTE_CACHE_TTL_MS});return q}).finally(()=>rutafvQuoteInflight.delete(cacheKey));
