@@ -22,6 +22,19 @@ jobs:
           if [ -f patch_images.py ]; then python patch_images.py; fi
       - name: Check server syntax
         run: node --check appsrc/server.js
+      - name: Check storefront JavaScript
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const html = fs.readFileSync('appsrc/public/index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(m => m[1]);
+          if (!scripts.length) throw new Error('No script blocks found');
+          scripts.forEach((script, i) => {
+            try { new Function(script); }
+            catch (error) { throw new Error(`Inline script ${i} failed: ${error.message}`); }
+          });
+          console.log(`Validated ${scripts.length} inline script blocks`);
+          NODE
       - name: Repack application
         run: |
           python - <<'PY'
@@ -34,6 +47,19 @@ jobs:
                   if p.is_file():
                       tar.add(p,arcname=str(p.relative_to(root)))
           Path("fvmarket-app.tgz.b64").write_text(base64.b64encode(buf.getvalue()).decode("ascii"),encoding="ascii")
+          PY
+      - name: Verify packaged storefront
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, io, tarfile
+          archive=base64.b64decode(Path("fvmarket-app.tgz.b64").read_text(encoding="ascii"))
+          with tarfile.open(fileobj=io.BytesIO(archive),mode="r:gz") as tar:
+              packed=tar.extractfile("public/index.html").read()
+          source=Path("appsrc/public/index.html").read_bytes()
+          if packed != source:
+              raise SystemExit("Packaged public/index.html differs from appsrc/public/index.html")
+          print("Packaged storefront matches validated source")
           PY
       - name: Commit application and package
         run: |
