@@ -91,10 +91,27 @@ function ensureAdmin(d){
   }
   return changed;
 }
+function ensureCatalogProducts(d){
+  if(!Array.isArray(d.products))d.products=[];
+  const visible=d.products.some(p=>p&&p.published===true&&p.warehouseStatus!=='retired');
+  if(visible)return false;
+  if(!d.products.length||d.products.every(p=>!p||p.warehouseStatus==='retired')){
+    d.products=defaultProducts.map(p=>({...p}));
+    return true;
+  }
+  let changed=false;
+  for(const p of d.products){
+    if(p&&p.warehouseStatus!=='retired'&&p.published!==true){p.published=true;changed=true}
+  }
+  return changed;
+}
 function read(){
   try{
     const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));
-    const changedAdmin=ensureAdmin(d);ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);if(changedAdmin)save(d);else save(d);
+    const changedAdmin=ensureAdmin(d);
+    const changedCatalog=ensureCatalogProducts(d);
+    ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);
+    if(changedAdmin||changedCatalog)save(d);else save(d);
     return d;
   }catch(e){
     const d=seed();ensureAdmin(d);ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);save(d);return d;
