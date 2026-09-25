@@ -492,7 +492,18 @@ body>.topline,body>.v5head,body>.v5nav,body>.fvm-sync-carousel,body>.v5cats,body
 </style>
 <style id="fvm-header-admin-v21">/* FVM_HEADER_ADMIN_V21 */
 .adminTop{width:40px!important;height:40px!important;min-width:40px!important;padding:0!important;border-radius:999px!important;align-items:center!important;justify-content:center!important;gap:0!important;background:#f5f8fb!important;color:#06345f!important;border:1px solid #dce4ec!important;box-shadow:none!important;font-size:0!important;line-height:1!important;text-decoration:none!important;transition:background .18s ease,border-color .18s ease,transform .18s ease!important}.adminTop.show{display:inline-flex!important}.adminTop:hover{background:#edf4f8!important;border-color:#c8d7e3!important;transform:translateY(-1px)}.site-header-actions .adminTop,.v5actions .adminTop{flex:0 0 40px!important}@media(max-width:700px){.adminTop{width:36px!important;height:36px!important;min-width:36px!important}}
-</style></head><body>
+</style><style id="fvm-add-cart-choice-v1">
+#fvmAddCartChoice{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:1200;width:min(560px,calc(100vw - 32px));padding:16px 18px;border:1px solid #c9dfef;border-radius:14px;background:#fff;box-shadow:0 18px 48px rgba(6,52,95,.25);color:#06345f}
+.fvmAddCartChoiceTitle{font-weight:900;font-size:15px}
+.fvmAddCartChoiceProduct{margin-top:5px;color:#52677a;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fvmAddCartChoiceActions{display:flex;justify-content:flex-end;gap:10px;margin-top:13px}
+.fvmAddCartChoiceActions button{border:0;border-radius:8px;padding:10px 14px;font-weight:800;cursor:pointer}
+.fvmAddCartChoiceActions button[data-fvm-continue]{background:#eef4f8;color:#06345f}
+.fvmAddCartChoiceActions button[data-fvm-cart]{background:#06345f;color:#fff}
+.fvmAddCartChoiceActions button:hover{filter:brightness(1.08)}
+@media(max-width:650px){#fvmAddCartChoice{bottom:14px}.fvmAddCartChoiceActions{display:grid;grid-template-columns:1fr 1fr}.fvmAddCartChoiceActions button{width:100%}}
+</style>
+</head><body>
 <main id="site-storefront">
 <div class="site-announcement">Compra online con entrega profesional de <strong>RutaFV</strong> en toda Fuerteventura</div>
 <header class="site-header">
@@ -552,7 +563,22 @@ function closeProductDetail(){document.getElementById('productDetailModal').clas
 
 function filterCategory(c){loadProducts('',c);document.getElementById('catalogo')?.scrollIntoView({behavior:'smooth',block:'start'})}function searchNow(){loadProducts(document.getElementById('search').value);document.getElementById('catalogo')?.scrollIntoView({behavior:'smooth',block:'start'})}document.getElementById('search').addEventListener('keydown',e=>{if(e.key==='Enter')searchNow()});
 function saveCart(){localStorage.setItem('fv_cart',JSON.stringify(cart));updateCart()}
-function addToCart(id){const x=cart.find(i=>i.id===id);if(x)x.qty=Math.min(99,(Number(x.qty)||1)+1);else cart.push({id,qty:1});rutaFVQuote=null;saveCart();openCart()}
+function showAddToCartChoice(id){
+  const previous=document.getElementById('fvmAddCartChoice');
+  if(previous)previous.remove();
+  const p=cartProduct(id);
+  const item=cart.find(i=>i.id===id);
+  const title=String(p?.title||'Producto').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const bar=document.createElement('div');
+  bar.id='fvmAddCartChoice';
+  bar.innerHTML=`<div class="fvmAddCartChoiceTitle">Producto añadido al carrito</div><div class="fvmAddCartChoiceProduct">${title} · Cantidad: ${Number(item?.qty||1)}</div><div class="fvmAddCartChoiceActions"><button type="button" data-fvm-continue>Seguir comprando</button><button type="button" data-fvm-cart>Ir al carrito</button></div>`;
+  document.body.appendChild(bar);
+  bar.querySelector('[data-fvm-cart]').onclick=()=>{bar.remove();openCart()};
+  bar.querySelector('[data-fvm-continue]').onclick=()=>bar.remove();
+  clearTimeout(window.fvmAddCartChoiceTimer);
+  window.fvmAddCartChoiceTimer=setTimeout(()=>bar.remove(),9000);
+}
+function addToCart(id){const x=cart.find(i=>i.id===id);if(x)x.qty=Math.min(99,(Number(x.qty)||1)+1);else cart.push({id,qty:1});rutaFVQuote=null;saveCart();showAddToCartChoice(id)}
 function setCartQty(id,value){const n=Math.max(0,Math.min(99,Number(value)||0));if(n===0){removeCart(id);return}const x=cart.find(i=>i.id===id);if(!x)return;x.qty=n;rutaFVQuote=null;saveCart();renderCart()}
 function changeCartQty(id,delta){const x=cart.find(i=>i.id===id);if(x)setCartQty(id,(Number(x.qty)||1)+Number(delta||0))}
 function removeCart(id){cart=cart.filter(i=>i.id!==id);rutaFVQuote=null;saveCart();renderCart()}
