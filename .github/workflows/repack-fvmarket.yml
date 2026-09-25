@@ -27,7 +27,7 @@ jobs:
           node - <<'NODE'
           const fs = require('fs');
           const html = fs.readFileSync('appsrc/public/index.html', 'utf8');
-          const scripts = [...html.matchAll(/<script\\b[^>]*>([\\s\\S]*?)<\\/script>/gi)].map(m => m[1]);
+          const scripts = html.split('<script').slice(1).map(block => block.slice(block.indexOf('>') + 1, block.indexOf('</script>')));
           if (!scripts.length) throw new Error('No script blocks found');
           scripts.forEach((script, i) => {
             try { new Function(script); }
