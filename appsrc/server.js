@@ -15,6 +15,7 @@ const {registerProviderSourceRoutes} = require('./supplier_capture_v13');
 const persistence = require('./persistent_store_v17');
 const transactionalEmails = require('./transactional_emails');
 const operations = require('./operations_accounting_v1');
+const procurementV2 = require('./procurement_v2');
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -69,7 +70,7 @@ app.post('/api/stripe/webhook',express.raw({type:'application/json'}),async(req,
     const s=event.data.object||{};
     if(s.payment_status==='paid'||event.type.endsWith('succeeded')){
       const d=read();const o=d.orders.find(x=>x.stripeSessionId===s.id||x.id===String(s.metadata?.orderId||''));
-      if(o){o.status=paidOrderStatus(o.status)?o.status:'pagado';o.paidAt=o.paidAt||new Date().toISOString();o.paymentIntentId=String(typeof s.payment_intent==='string'?s.payment_intent:s.payment_intent?.id||'');o.stripePaymentStatus=String(s.payment_status||'paid');o.fulfillment=o.fulfillment||{status:'pendiente_compra_proveedor',readyForRutaFV:false};operations.recordPaymentConfirmation(d,o,{id:'stripe_webhook',name:'Pago online',role:'system'});if(o.quoteId){const q=(d.quotes||[]).find(x=>x.id===o.quoteId);if(q){q.status='pagado';q.paidAt=q.paidAt||o.paidAt}}const invoice=issueInvoiceForOrder(d,o);if(invoice)operations.recordInvoiceIssued(d,o,invoice,{id:'stripe_webhook',name:'Pago online',role:'system'});if(orderReadyForRutaFV(o)){try{await createRutaFVDelivery(d,o)}catch(error){o.transport=o.transport||{};o.transport.status='error_sincronizacion';o.transport.syncError=String(error.message||error);o.transport.syncAt=new Date().toISOString()}}else{o.transport=o.transport||{};o.transport.status='pendiente_disponibilidad_proveedores'}save(d);scheduleOrderEmail(req,o.id,'order_confirmation');if(invoice)scheduleOrderEmail(req,o.id,'invoice_issued')}
+      if(o){o.status=paidOrderStatus(o.status)?o.status:'pagado';o.paidAt=o.paidAt||new Date().toISOString();o.paymentIntentId=String(typeof s.payment_intent==='string'?s.payment_intent:s.payment_intent?.id||'');o.stripePaymentStatus=String(s.payment_status||'paid');o.fulfillment=o.fulfillment||{status:'pendiente_compra_proveedor',readyForRutaFV:false};operations.recordPaymentConfirmation(d,o,{id:'stripe_webhook',name:'Pago online',role:'system'});procurementV2.ensureData(d);if(o.quoteId){const q=(d.quotes||[]).find(x=>x.id===o.quoteId);if(q){q.status='pagado';q.paidAt=q.paidAt||o.paidAt}}const invoice=issueInvoiceForOrder(d,o);if(invoice)operations.recordInvoiceIssued(d,o,invoice,{id:'stripe_webhook',name:'Pago online',role:'system'});if(orderReadyForRutaFV(o)){try{await createRutaFVDelivery(d,o)}catch(error){o.transport=o.transport||{};o.transport.status='error_sincronizacion';o.transport.syncError=String(error.message||error);o.transport.syncAt=new Date().toISOString()}}else{o.transport=o.transport||{};o.transport.status='pendiente_disponibilidad_proveedores'}save(d);scheduleOrderEmail(req,o.id,'order_confirmation');if(invoice)scheduleOrderEmail(req,o.id,'invoice_issued')}
     }
   }
   res.json({received:true});
@@ -157,11 +158,11 @@ function read(){
     const changedAdmin=ensureAdmin(d);
     const changedCatalogData=ensureCatalogData(d);
     const changedCatalog=ensureCatalogProducts(d);
-    ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);
+    ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);
     if(changedAdmin||changedCatalogData||changedCatalog)save(d);else save(d);
     return d;
   }catch(e){
-    const d=seed();ensureAdmin(d);ensureCatalogData(d);ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);save(d);return d;
+    const d=seed();ensureAdmin(d);ensureCatalogData(d);ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);save(d);return d;
   }
 }
 function id(prefix){return prefix+'_'+crypto.randomBytes(7).toString('hex')}
@@ -1163,6 +1164,9 @@ app.post('/api/admin/orders/:id/mark-ready-for-rutafv',ordersManager,async(req,r
 
 // FVM_OPERATIONS_ACCOUNTING_ROUTES_V1
 operations.registerOperationsRoutes(app,{read,save,id,ordersManager,admin,rutaFVRequest,RUTAFV_DELIVERY_PATH,RUTAFV_CLIENT_CODE,paidOrderStatus,issueInvoiceForOrder,recordInvoiceIssued:operations.recordInvoiceIssued,scheduleOrderEmail});
+
+// FVM_PROCUREMENT_CONTROL_ROUTES_V2
+procurementV2.registerProcurementRoutes(app,{read,save,ordersManager,transitionOrder:operations.transitionOrder,ensureLedgerForOrder:operations.ensureLedgerForOrder,createRutaFVDelivery,paidOrderStatus});
 
 
 // FVM_SUPPLIER_SIMILAR_IMAGES_V17
