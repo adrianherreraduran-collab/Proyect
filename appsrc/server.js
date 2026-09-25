@@ -51,6 +51,7 @@ const RUTAFV_QUOTE_MIN_INTERVAL_MS = 3500;
 const rutafvQuoteCache = new Map();
 const rutafvQuoteInflight = new Map();
 const rutafvQuoteLastExternal = new Map();
+let rutafvQuoteCircuitOpenUntil = 0;
 function rutafvQuoteKey(userId, origin, destination, items){
   const normalizedItems=(items||[]).map(x=>({id:String(x.id||''),qty:Math.max(1,Number(x.qty)||1)})).sort((a,b)=>a.id.localeCompare(b.id));
   return crypto.createHash('sha256').update(JSON.stringify({userId,origin,destination,items:normalizedItems})).digest('hex');
@@ -1122,6 +1123,11 @@ app.post('/api/rutafv/quote',auth,async(req,res)=>{
     const now=Date.now();pruneRutaFVQuoteState(now);
     const cached=rutafvQuoteCache.get(cacheKey);
     if(cached&&cached.expiresAt>now)return res.json(decorateTransportQuote(cached.quote,req.user.id,req.body.items||items,destination));
+    if(rutafvQuoteCircuitOpenUntil>now){
+      const retryAfter=Math.max(1,Math.ceil((rutafvQuoteCircuitOpenUntil-now)/1000));
+      res.set('Retry-After',String(retryAfter));
+      return res.status(429).json({error:'RutaFV está temporalmente saturado. El cálculo se reintentará cuando se libere.'});
+    }
     let pending=rutafvQuoteInflight.get(cacheKey);
     if(!pending){
       const lastExternal=rutafvQuoteLastExternal.get(req.user.id)||0;
@@ -1139,9 +1145,10 @@ app.post('/api/rutafv/quote',auth,async(req,res)=>{
     return res.json(decorateTransportQuote(q,req.user.id,req.body.items||items,destination));
   }catch(e){
     if(Number(e?.status)===429){
-      const retryAfter=Math.max(1,Number(e.retryAfter)||5);
-      res.set('Retry-After',String(retryAfter));
-      return res.status(429).json({error:'RutaFV está recibiendo demasiadas solicitudes. Reintentaremos automáticamente en unos segundos.'});
+      const cooldownMs=Math.max(30000,(Number(e.retryAfter)||30)*1000);
+      rutafvQuoteCircuitOpenUntil=Date.now()+cooldownMs;
+      res.set('Retry-After',String(Math.ceil(cooldownMs/1000)));
+      return res.status(429).json({error:'RutaFV está temporalmente saturado. El cálculo se reintentará cuando se libere.'});
     }
     return res.status(503).json({error:(e.name==='TimeoutError'||e.name==='AbortError')?'RutaFV no respondió dentro del tiempo esperado':rutaFVErrorMessage(e?.message||e,'No se pudo calcular el transporte')});
   }

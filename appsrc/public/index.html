@@ -552,18 +552,18 @@ body>.topline,body>.v5head,body>.v5nav,body>.fvm-sync-carousel,body>.v5cats,body
 let products=[],mode='login';let cart=JSON.parse(localStorage.getItem('fv_cart')||'[]');let session=JSON.parse(localStorage.getItem('fv_session')||'null');let catalogProducts=new Map();
 const eur=n=>Number(n||0).toLocaleString('es-ES',{style:'currency',currency:'EUR'});function headers(){return session?{'Authorization':'Bearer '+session.token,'Content-Type':'application/json'}:{'Content-Type':'application/json'}}
 function fvmApiErrorText(value,fallback='Error de servidor'){if(Array.isArray(value))return value.map(x=>fvmApiErrorText(x,'')).filter(Boolean).join('; ')||fallback;if(value&&typeof value==='object')return fvmApiErrorText(value.message??value.detail??value.msg??value.error??JSON.stringify(value),fallback);return String(value??fallback)}async function api(url,opt={}){const r=await fetch(url,{...opt,headers:{...headers(),...(opt.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok){const e=new Error(fvmApiErrorText(d.error??d.detail??d.message,'Error de servidor'));e.status=r.status;e.retryAfter=Number(r.headers.get('retry-after')||0)||0;throw e}return d}
+const RUTAFV_BROWSER_CACHE_TTL_MS=300000;
+const RUTAFV_BROWSER_COOLDOWN_KEY='fvm_rutafv_quote_cooldown_until';
+function rutaFVQuoteCacheKey(body){const c=body?.customer||{},items=(body?.items||[]).map(x=>({id:String(x.id||''),qty:Math.max(1,Number(x.qty)||1)})).sort((a,b)=>a.id.localeCompare(b.id));const key={user:String(session?.user?.id||session?.user?.email||'anon'),address:String(body?.address||c.address||'').trim().toLowerCase(),city:String(body?.city||c.city||'').trim().toLowerCase(),postalCode:String(body?.postalCode||c.postalCode||'').trim(),items};return 'fvm_rutafv_quote_v3:'+encodeURIComponent(JSON.stringify(key))}
+function readRutaFVBrowserQuote(body){try{const key=rutaFVQuoteCacheKey(body),raw=sessionStorage.getItem(key),value=raw?JSON.parse(raw):null;if(value?.expiresAt>Date.now())return value.quote;if(raw)sessionStorage.removeItem(key)}catch{}return null}
+function saveRutaFVBrowserQuote(body,quote){try{sessionStorage.setItem(rutaFVQuoteCacheKey(body),JSON.stringify({expiresAt:Date.now()+RUTAFV_BROWSER_CACHE_TTL_MS,quote}))}catch{}}
+function rutaFVBrowserRateLimited(){try{const until=Number(sessionStorage.getItem(RUTAFV_BROWSER_COOLDOWN_KEY)||0);if(until>Date.now())return true;if(until)sessionStorage.removeItem(RUTAFV_BROWSER_COOLDOWN_KEY)}catch{}return false}
+function markRutaFVBrowserRateLimited(retryAfter){try{const cooldown=Math.max(30000,(Number(retryAfter)||30)*1000);sessionStorage.setItem(RUTAFV_BROWSER_COOLDOWN_KEY,String(Date.now()+cooldown))}catch{}}
 async function requestRutaFVQuote(body){
-  let lastError=null;
-  for(let attempt=0;attempt<2;attempt++){
-    try{return await api('/api/rutafv/quote',{method:'POST',body:JSON.stringify(body)})}
-    catch(e){
-      lastError=e;
-      if(Number(e?.status)!==429||attempt===1)throw e;
-      const waitMs=Math.max(2500,Math.min(10000,(Number(e.retryAfter)||4)*1000));
-      await new Promise(resolve=>setTimeout(resolve,waitMs));
-    }
-  }
-  throw lastError||new Error('No se pudo calcular el transporte');
+  const cached=readRutaFVBrowserQuote(body);if(cached)return cached;
+  if(rutaFVBrowserRateLimited()){const e=new Error('RutaFV está temporalmente saturado. Espera unos segundos para volver a calcular el transporte.');e.status=429;throw e}
+  try{const quote=await api('/api/rutafv/quote',{method:'POST',body:JSON.stringify(body)});saveRutaFVBrowserQuote(body,quote);return quote}
+  catch(e){if(Number(e?.status)===429)markRutaFVBrowserRateLimited(e.retryAfter);throw e}
 }
 function normalizeStoredCart(){const next=cart.filter(i=>catalogProducts.has(i.id)).map(i=>({id:i.id,qty:Math.max(1,Math.min(99,Number(i.qty)||1))}));if(JSON.stringify(next)!==JSON.stringify(cart)){cart=next;localStorage.setItem('fv_cart',JSON.stringify(cart))}}
 async function loadProducts(q='',category=''){let url='/api/products?';if(q)url+='q='+encodeURIComponent(q)+'&';if(category)url+='category='+encodeURIComponent(category);products=await api(url);if(!q&&!category){catalogProducts=new Map(products.map(p=>[p.id,p]));normalizeStoredCart()}renderProducts()}
@@ -599,7 +599,7 @@ function cartProduct(id){return catalogProducts.get(id)||products.find(x=>x.id==
 function setCartText(id,value){document.querySelectorAll('[id="'+id+'"]').forEach(x=>x.textContent=value)}
 function updateCart(){let count=cart.reduce((s,i)=>s+i.qty,0),total=0;cart.forEach(i=>{const p=cartProduct(i.id);if(p)total+=(p.salePrice??p.price)*i.qty});setCartText('cartCount',count);setCartText('cartAmount',eur(total));setCartText('siteCartSummary',count);setCartText('siteCartTotal',eur(total))}
 function clearCart(){cart=[];localStorage.removeItem('fv_cart');if(typeof rutaFVQuote!=='undefined')rutaFVQuote=null;const route=document.getElementById('useRutaFV');if(route)route.checked=false;document.getElementById('rutaFVQuoteBox')?.style.setProperty('display','none');document.getElementById('rutaFVCalculateBtn')?.style.setProperty('display','none');updateCart();if(document.getElementById('cartItems'))renderCart()}
-function openCart(){fillCheckoutCustomer();renderCart();document.getElementById('cartDrawer').classList.add('show');window.scheduleRutaFVAutoCalc?.()}
+function openCart(){fillCheckoutCustomer();renderCart();document.getElementById('cartDrawer').classList.add('show');if(!rutaFVBrowserRateLimited())window.scheduleRutaFVAutoCalc?.()}
 function closeCart(){document.getElementById('cartDrawer').classList.remove('show')}
 function renderCart(){const validCart=cart.filter(i=>cartProduct(i.id)&&Number(i.qty)>0);const checkout=document.getElementById('cartCheckout');if(checkout)checkout.style.display=validCart.length?'block':'none';let total=0;document.getElementById('cartItems').innerHTML=cart.map(i=>{const p=cartProduct(i.id);if(!p)return'';const safeId=String(i.id).replace(/\\/g,'\\\\').replace(/'/g,"\\'");const unit=Number(p.salePrice??p.price)||0;total+=unit*i.qty;return`<div class="cartItem"><div class="cartItemInfo"><b>${p.title}</b><br><small>${eur(unit)} por unidad</small></div><div class="cartItemControls"><div class="cartQtyControl" aria-label="Cantidad"><button type="button" class="cartQtyBtn" onclick="changeCartQty('${safeId}',-1)" aria-label="Reducir cantidad">−</button><span class="cartQtyValue">${i.qty}</span><button type="button" class="cartQtyBtn" onclick="changeCartQty('${safeId}',1)" aria-label="Aumentar cantidad">+</button></div><button type="button" class="cartRemove" onclick="removeCart('${safeId}')">Eliminar</button></div></div>`}).join('')||'<p>Tu carrito está vacío.</p>';const transport=rutaFVQuote?Number(rutaFVQuote.amount||rutaFVQuote.total||0):0;document.getElementById('cartTotal').innerHTML=(transport?`<small style="display:block;font-size:11px;font-weight:700;color:var(--muted)">Productos ${eur(total)} + RutaFV ${eur(transport)}</small>`:'')+eur(total+transport);updateCart()}
 // FVM_TRANSPORT_CHECKOUT_UI_V2
@@ -797,7 +797,7 @@ window.addEventListener('load',()=>{setTimeout(()=>{autoRail('offerGrid');autoRa
       renderCart();return true
     }).catch(e=>{
       rutaFVQuote=null;
-      const message=/429/.test(String(e?.message||''))?'RutaFV está recibiendo demasiadas solicitudes. Reintentaremos automáticamente en unos segundos.':(e.message||'No se pudo calcular el transporte');
+      const message=Number(e?.status)===429?'RutaFV está temporalmente saturado. Espera unos segundos; volveremos a calcular al actualizar la dirección.':(e.message||'No se pudo calcular el transporte');
       if(box){box.style.display='block';box.className='routeQuote error';box.textContent=message}
       renderCart();return false
     }).finally(()=>{window.fvmRutaFVInFlight=null});
