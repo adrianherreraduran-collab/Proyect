@@ -46,6 +46,20 @@ const RUTAFV_QUOTE_PATH = String(process.env.RUTAFV_QUOTE_PATH || '/api/integrat
 const RUTAFV_DELIVERY_PATH = String(process.env.RUTAFV_DELIVERY_PATH || '/api/integrations/fvmarket/deliveries').trim();
 const RUTAFV_CLIENT_PATH = String(process.env.RUTAFV_CLIENT_PATH || '/api/integrations/fvmarket/client').trim();
 const FVMARKET_FISCAL_ORIGIN = String(process.env.FVMARKET_FISCAL_ORIGIN || '').trim();
+const RUTAFV_QUOTE_CACHE_TTL_MS = 120000;
+const RUTAFV_QUOTE_MIN_INTERVAL_MS = 3500;
+const rutafvQuoteCache = new Map();
+const rutafvQuoteInflight = new Map();
+const rutafvQuoteLastExternal = new Map();
+function rutafvQuoteKey(userId, origin, destination, items){
+  const normalizedItems=(items||[]).map(x=>({id:String(x.id||''),qty:Math.max(1,Number(x.qty)||1)})).sort((a,b)=>a.id.localeCompare(b.id));
+  return crypto.createHash('sha256').update(JSON.stringify({userId,origin,destination,items:normalizedItems})).digest('hex');
+}
+function pruneRutaFVQuoteState(now=Date.now()){
+  for(const [key,value] of rutafvQuoteCache)if(!value||value.expiresAt<=now)rutafvQuoteCache.delete(key);
+  for(const [userId,value] of rutafvQuoteLastExternal)if(now-value>RUTAFV_QUOTE_CACHE_TTL_MS)rutafvQuoteLastExternal.delete(userId);
+  if(rutafvQuoteCache.size>250){const oldest=[...rutafvQuoteCache.entries()].sort((a,b)=>a[1].expiresAt-b[1].expiresAt).slice(0,rutafvQuoteCache.size-200);for(const [key] of oldest)rutafvQuoteCache.delete(key);}
+}
 app.post('/api/stripe/webhook',express.raw({type:'application/json'}),async(req,res)=>{
   if(!stripe||!STRIPE_WEBHOOK_SECRET)return res.status(503).json({error:'Webhook de Stripe no configurado'});
   const signature=String(req.headers['stripe-signature']||'');let event;
@@ -377,7 +391,11 @@ async function rutaFVRequest(pathname,payload){
   const headers={'Content-Type':'application/json'};if(RUTAFV_API_KEY)headers.Authorization='Bearer '+RUTAFV_API_KEY;
   const timeoutMs=pathname===RUTAFV_QUOTE_PATH?60000:30000;const r=await fetch(RUTAFV_API_URL+pathname,{method:'POST',headers,body:JSON.stringify(payload),signal:AbortSignal.timeout(timeoutMs)});
   let data={};try{data=await r.json()}catch{}
-  if(!r.ok)throw new Error(rutaFVErrorMessage(data.error??data.detail??data.message,`RutaFV HTTP ${r.status}`));return data;
+  if(!r.ok){
+    const error=new Error(rutaFVErrorMessage(data.error??data.detail??data.message,`RutaFV HTTP ${r.status}`));
+    error.status=r.status;error.retryAfter=Number(r.headers.get('retry-after')||0)||0;throw error;
+  }
+  return data;
 }
 async function rutaFVGet(pathname,params={}){
   if(!RUTAFV_API_URL)throw new Error('RutaFV no está configurado');
@@ -1084,7 +1102,50 @@ app.get('/admin',(req,res)=>res.sendFile(path.join(__dirname,'public','admin.htm
 
 app.get('/api/admin/catalog-taxonomy',catalogEditor,(req,res)=>{const d=read();ensureCatalogSettings(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
 app.put('/api/admin/catalog-taxonomy',catalogEditor,(req,res)=>{const d=read();ensureCatalogSettings(d);d.settings.categories=['Construcción','Bricolaje','Herramientas','Reformas'];d.settings.subcategories=req.body.subcategories&&typeof req.body.subcategories==='object'?req.body.subcategories:d.settings.subcategories;const r=Array.isArray(d.settings.subcategories['Reformas'])?d.settings.subcategories['Reformas']:[];d.settings.subcategories['Reformas']=[...new Set([...r,'Baño','Cocina'])];save(d);res.json({categories:d.settings.categories,subcategories:d.settings.subcategories})});
-app.post('/api/rutafv/quote',auth,async(req,res)=>{try{const d=read();const u=d.users.find(x=>x.id===req.user.id)||{};const c=req.body.customer||{};const customer={name:String(c.name||u.name||''),email:String(c.email||u.email||req.user.email||''),phone:String(c.phone||req.body.phone||u.phone||'')};const destination={address:String(c.address||req.body.address||''),city:String(c.city||req.body.city||''),postalCode:String(c.postalCode||req.body.postalCode||''),notes:String(c.notes||req.body.notes||'')};if(!customer.name||!customer.email||!customer.phone||!destination.address||!destination.city||!destination.postalCode)return res.status(400).json({error:'Faltan datos del cliente o de entrega'});if(String(req.body.deliveryMode||'normal').toLowerCase()==='express'||req.body.express===true)return res.status(422).json({error:'Los productos de FVMarket no admiten envío exprés: FVMarket no tiene stock físico.'});const items=[];for(const x of req.body.items||[]){const p=d.products.find(y=>y.id===x.id);if(p)items.push({id:p.id,ref:p.ref,title:p.title,qty:Math.max(1,Number(x.qty)||1),weightKg:Number(p.weightKg||0),supplierId:String(p.supplierId||''),sourceProvider:p.sourceProvider||'',sourceUrl:p.sourceUrl||''})}if(!items.length)return res.status(400).json({error:'No hay productos válidos para calcular el transporte'});const payload={clientCode:d.settings.rutaFVClientCode||RUTAFV_CLIENT_CODE,customer,origin:fvmarketOrigin(d),originDetails:fvmarketOriginSnapshot(d),destination:[destination.address,destination.city,destination.postalCode].filter(Boolean).join(', '),destinationText:[destination.address,destination.city,destination.postalCode].filter(Boolean).join(', '),items,orderSource:'FVMarket',fulfillmentModel:'sin_stock_fisico',deliveryMode:'normal',express:false};const q=await rutaFVRequest(RUTAFV_QUOTE_PATH,payload);res.json(decorateTransportQuote(q,req.user.id,req.body.items||items,destination))}catch(e){res.status(503).json({error:(e.name==='TimeoutError'||e.name==='AbortError')?'RutaFV no respondió dentro del tiempo esperado':rutaFVErrorMessage(e?.message||e,'No se pudo calcular el transporte')})}});
+app.post('/api/rutafv/quote',auth,async(req,res)=>{
+  let cacheKey='';
+  try{
+    const d=read(),u=d.users.find(x=>x.id===req.user.id)||{},c=req.body.customer||{};
+    const customer={name:String(c.name||u.name||''),email:String(c.email||u.email||req.user.email||''),phone:String(c.phone||req.body.phone||u.phone||'')};
+    const destination={address:String(c.address||req.body.address||''),city:String(c.city||req.body.city||''),postalCode:String(c.postalCode||req.body.postalCode||''),notes:String(c.notes||req.body.notes||'')};
+    if(!customer.name||!customer.email||!customer.phone||!destination.address||!destination.city||!destination.postalCode)return res.status(400).json({error:'Faltan datos del cliente o de entrega'});
+    if(String(req.body.deliveryMode||'normal').toLowerCase()==='express'||req.body.express===true)return res.status(422).json({error:'Los productos de FVMarket no admiten envío exprés: FVMarket no tiene stock físico.'});
+    const items=[];
+    for(const x of req.body.items||[]){
+      const p=d.products.find(y=>y.id===x.id);
+      if(p)items.push({id:p.id,ref:p.ref,title:p.title,qty:Math.max(1,Number(x.qty)||1),weightKg:Number(p.weightKg||0),supplierId:String(p.supplierId||''),sourceProvider:p.sourceProvider||'',sourceUrl:p.sourceUrl||''});
+    }
+    if(!items.length)return res.status(400).json({error:'No hay productos válidos para calcular el transporte'});
+    const origin=fvmarketOrigin(d),originDetails=fvmarketOriginSnapshot(d);
+    const destinationText=[destination.address,destination.city,destination.postalCode].filter(Boolean).join(', ');
+    cacheKey=rutafvQuoteKey(req.user.id,origin,destinationText,req.body.items||items);
+    const now=Date.now();pruneRutaFVQuoteState(now);
+    const cached=rutafvQuoteCache.get(cacheKey);
+    if(cached&&cached.expiresAt>now)return res.json(decorateTransportQuote(cached.quote,req.user.id,req.body.items||items,destination));
+    const lastExternal=rutafvQuoteLastExternal.get(req.user.id)||0;
+    if(now-lastExternal<RUTAFV_QUOTE_MIN_INTERVAL_MS){
+      const retryAfter=Math.max(1,Math.ceil((RUTAFV_QUOTE_MIN_INTERVAL_MS-(now-lastExternal))/1000));
+      res.set('Retry-After',String(retryAfter));
+      return res.status(429).json({error:'El cálculo de transporte está temporalmente limitado. Reintentaremos en unos segundos.'});
+    }
+    let pending=rutafvQuoteInflight.get(cacheKey);
+    if(!pending){
+      rutafvQuoteLastExternal.set(req.user.id,now);
+      const payload={clientCode:d.settings.rutaFVClientCode||RUTAFV_CLIENT_CODE,customer,origin,originDetails,destination:destinationText,destinationText,items,orderSource:'FVMarket',fulfillmentModel:'sin_stock_fisico',deliveryMode:'normal',express:false};
+      pending=rutaFVRequest(RUTAFV_QUOTE_PATH,payload).then(q=>{rutafvQuoteCache.set(cacheKey,{quote:q,expiresAt:Date.now()+RUTAFV_QUOTE_CACHE_TTL_MS});return q}).finally(()=>rutafvQuoteInflight.delete(cacheKey));
+      rutafvQuoteInflight.set(cacheKey,pending);
+    }
+    const q=await pending;
+    return res.json(decorateTransportQuote(q,req.user.id,req.body.items||items,destination));
+  }catch(e){
+    if(Number(e?.status)===429){
+      const retryAfter=Math.max(1,Number(e.retryAfter)||5);
+      res.set('Retry-After',String(retryAfter));
+      return res.status(429).json({error:'RutaFV está recibiendo demasiadas solicitudes. Reintentaremos automáticamente en unos segundos.'});
+    }
+    return res.status(503).json({error:(e.name==='TimeoutError'||e.name==='AbortError')?'RutaFV no respondió dentro del tiempo esperado':rutaFVErrorMessage(e?.message||e,'No se pudo calcular el transporte')});
+  }
+});
 app.get('/api/rutafv/address-search',auth,async(req,res)=>{try{const q=String(req.query.q||'').trim();if(q.length<3)return res.json({results:[]});const data=await rutaFVGet('/api/integrations/fvmarket/address-search',{q,limit:'5'});res.json(data)}catch(e){res.status(503).json({error:e.message})}});
 function orderReadyForRutaFV(o={}){if(o.fulfillment?.readyForRutaFV===true||o.readyForRutaFV===true)return true;const ready=new Set(['available','available_at_supplier','received','recibido','listo','ready']);const items=Array.isArray(o.items)?o.items:[];return items.length>0&&items.every(x=>ready.has(String(x.procurement?.status||x.fulfillmentStatus||'').toLowerCase()))}
 async function createRutaFVDelivery(d,o){if(!o?.transport?.requested)return null;if(!paidOrderStatus(o.status))throw new Error('El pedido aún no está pagado');if(!orderReadyForRutaFV(o))throw new Error('El pedido aún no está listo: faltan productos por recibir del proveedor');if(o.transport.deliveryId)return {id:o.transport.deliveryId,reused:true};const u=d.users.find(x=>x.id===o.userId)||{},address=String(o.customer?.address||o.address||'').trim(),city=String(o.customer?.city||o.city||'').trim(),postalCode=String(o.customer?.postalCode||o.postalCode||'').trim(),notes=String(o.customer?.notes||o.notes||'').trim(),destination=[address,city,postalCode].filter(Boolean).join(', ');if(!address||!city||!postalCode)throw new Error('El pedido no tiene una dirección de entrega completa');const payload={clientCode:RUTAFV_CLIENT_CODE,externalOrderId:o.id,externalOrderNumber:o.number,customer:{name:o.customer?.name||u.name||'',email:o.customer?.email||u.email||'',phone:o.customer?.phone||o.phone||'',city,postalCode,notes},origin:fvmarketOrigin(d),destination,transportAmount:o.delivery,transportPaid:true,items:(o.items||[]).map(x=>({ref:x.ref,title:x.title,qty:x.qty,weightKg:Number(x.weightKg||x.procurement?.weightKg||0),supplierId:x.procurement?.supplierId||'',sourceProvider:x.procurement?.provider||''}))};const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');o.transport.status=o.transport.deliveryId?'creado_en_rutafv':'pendiente_planificacion';o.transport.syncedAt=new Date().toISOString();o.transport.syncResponse={status:r.status||'',provider:r.provider||'RutaFV'};o.status=o.transport.deliveryId?'enviado_a_rutafv':o.status;return r}
