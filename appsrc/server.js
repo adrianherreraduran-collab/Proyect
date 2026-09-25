@@ -194,12 +194,12 @@ function fvmarketOrigin(d){
   return String(s.rutaFVOrigin||[s.fiscalAddress,s.fiscalCity,s.fiscalPostalCode].filter(Boolean).join(', ')||FVMARKET_FISCAL_ORIGIN||'').trim();
 }
 function fvmarketOriginSnapshot(d){
-  const s=d.settings||{};
+  const s=d.settings||{},auto=s.rutaFVOriginAuto!==false,label=fvmarketOrigin(d);
   return {
-    label:fvmarketOrigin(d),
-    address:String(s.fiscalAddress||'').trim(),
-    city:String(s.fiscalCity||'').trim(),
-    postalCode:String(s.fiscalPostalCode||'').trim(),
+    label,
+    address:auto?String(s.fiscalAddress||'').trim():label,
+    city:auto?String(s.fiscalCity||'').trim():'',
+    postalCode:auto?String(s.fiscalPostalCode||'').trim():'',
     source:'FVMarket'
   };
 }
