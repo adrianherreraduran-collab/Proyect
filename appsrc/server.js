@@ -1112,5 +1112,5 @@ app.get('/api/admin/persistence-status',admin,(req,res)=>res.json(persistence.st
 // FVM_PROVIDER_ROUTES_V15 - API routes must be registered before the storefront catch-all.
 registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeItems,guessCategory,cleanProductTitle,normalizeProductImages,prepareImages});
 
-app.get('*',(req,res)=>res.sendFile(path.join(__dirname,'public','index.html')));
+app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');res.sendFile(path.join(__dirname,'public','index.html'));});
 (async()=>{try{await persistence.init();read()}catch(e){console.error('FVMarket persistence bootstrap:',e)}app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`))})();
