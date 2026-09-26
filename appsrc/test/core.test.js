@@ -86,20 +86,26 @@ test('la factura muestra estado pagado, Stripe e IGIC', () => {
   assert.match(html, /pi_test/);
 });
 
-test('correos y páginas legales reflejan Stripe y la validación de disponibilidad', () => {
+test('correos y páginas legales reflejan Stripe, Klarna elegible y la validación de disponibilidad', () => {
   const order = { number: 'FVM-1', total: 20, customer: { name: 'Cliente' }, items: [] };
   assert.match(emails.orderConfirmation(order).html, /validaremos la disponibilidad/i);
   assert.doesNotMatch(emails.orderReceived(order).text, /transferencia/i);
-  assert.match(server.legalPage('condiciones', fixture().settings), /único método de pago online es la tarjeta mediante Stripe/i);
+  assert.match(server.legalPage('condiciones', fixture().settings), /métodos de pago a plazo.*Klarna/i);
 });
 
-test('la tienda conserva la sesión y ofrece solo Stripe con consentimiento', () => {
+test('la tienda inicia sin sesión ni búsqueda y ofrece Stripe con métodos dinámicos', () => {
   const storefront = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-storefront-v2.js'), 'utf8');
   const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
   assert.doesNotMatch(storefront, /removeItem\(['"]fv_session/);
   assert.match(storefront, /termsAccepted:\s*true/);
   assert.match(storefront, /privacyAccepted:\s*true/);
-  assert.match(index, /Pagar con tarjeta mediante Stripe/);
+  assert.match(index, /resetStorefrontStartState/);
+  assert.match(index, /localStorage\.removeItem\('fv_session'\)/);
+  assert.match(index, /Klarna y otros métodos disponibles para tu compra/);
+  assert.doesNotMatch(source, /payment_method_types\s*:/);
+  assert.match(source, /integration_identifier:stripeIntegrationIdentifier\(\)/);
+  assert.match(source, /checkout\.session\.async_payment_succeeded/);
   assert.doesNotMatch(index, /placeTransfer|Pendiente de transferencia/);
   assert.equal((index.match(/<\/body>/g) || []).length, 1);
   assert.equal((index.match(/<\/html>/g) || []).length, 1);
