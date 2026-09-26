@@ -177,6 +177,12 @@ function recordInvoiceIssued(d, order, invoice, actor = {}) {
   if (!d.auditLog.some(x => x.orderId === order.id && x.action === 'factura_emitida')) addAudit(d, order, 'factura_emitida', actor, { note: `Factura ${invoice.number || invoice.id} emitida`, metadata: { invoiceId: invoice.id, invoiceNumber: invoice.number } });
 }
 
+function recordRefund(d, order, refund, actor = {}) {
+  if (!order || !refund || Number(refund.amount || 0) <= 0) return;
+  addLedger(d, order, 'reembolso', -Math.abs(Number(refund.amount)), { description: `Reembolso Stripe: ${order.number || order.id}`, sourceKey: `${order.id}:refund:${refund.id}`, metadata: { refundId: refund.id, providerReference: refund.stripeRefundId || '' } });
+  if (!d.auditLog.some(x => x.orderId === order.id && x.action === 'reembolso_emitido' && x.metadata?.refundId === refund.id)) addAudit(d, order, 'reembolso_emitido', actor, { toStatus: order.status, note: `Reembolso de ${money(refund.amount).toFixed(2)} €`, metadata: { refundId: refund.id, amount: money(refund.amount), providerReference: refund.stripeRefundId || '' } });
+}
+
 function publicOperationOrder(order, d) {
   const tasks = d.procurementTasks.filter(x => x.orderId === order.id).map(x => ({ ...x, items: (x.items || []).map(i => ({ ...i })) }));
   return { ...order, statusLabel: label(order.status), procurementTasks: tasks, timeline: d.auditLog.filter(x => x.orderId === order.id).sort((a, b) => String(a.at).localeCompare(String(b.at))) };
@@ -211,6 +217,7 @@ function registerOperationsRoutes(app, deps) {
     const d = ensureOperationsData(read());
     const order = d.orders.find(x => x.id === req.params.id);
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
+    if (String(req.body?.status || '') === 'pagado') return res.status(409).json({ error: 'El pago solo puede confirmarlo Stripe.' });
     const result = transitionOrder(d, order, req.body?.status, req.user, req.body?.note || '');
     if (!result.ok) return res.status(409).json({ error: result.error });
     let invoice = null;
@@ -223,7 +230,6 @@ function registerOperationsRoutes(app, deps) {
     save(d);
     if (result.changed && result.to === 'en_reparto') scheduleOrderEmail(req, order.id, 'delivery_in_transit');
     if (result.changed && result.to === 'entregado') scheduleOrderEmail(req, order.id, 'delivery_completed');
-    if (result.changed && result.to === 'pagado') { scheduleOrderEmail(req, order.id, 'order_confirmation'); if (invoice) scheduleOrderEmail(req, order.id, 'invoice_issued'); }
     res.json(publicOperationOrder(order, d));
   });
 
@@ -300,4 +306,4 @@ function registerOperationsRoutes(app, deps) {
   });
 }
 
-module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, ensureLedgerForOrder, STATUS_LABELS, _test: { normalizeStatus, label, money, TRANSITIONS } };
+module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, STATUS_LABELS, _test: { normalizeStatus, label, money, TRANSITIONS } };

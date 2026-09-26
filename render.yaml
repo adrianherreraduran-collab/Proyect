@@ -1,13 +1,13 @@
 services:
   - type: web
     runtime: node
-    name: fvmarket-rutafv
+    name: fvmarket-app
     branch: main
     rootDir: appsrc
-    buildCommand: npm install
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: PUBLIC_URL
         sync: false
@@ -21,3 +21,9 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: RUTAFV_API_URL
+        sync: false
+      - key: RUTAFV_API_KEY
+        sync: false
+      - key: RUTAFV_CLIENT_CODE
+        value: FVMarket

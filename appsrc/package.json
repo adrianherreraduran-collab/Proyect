@@ -1,22 +1,26 @@
 {
   "name": "fvmarket-app",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "private": true,
   "type": "commonjs",
+  "engines": {
+    "node": ">=20.18.1 <25"
+  },
   "scripts": {
-    "start": "node apply_catalog_v2.js && node server.js"
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "axios": "^1.7.9",
+    "axios": "^1.20.0",
     "bcryptjs": "^2.4.3",
-    "cheerio": "^1.0.0",
+    "cheerio": "^1.2.0",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
-    "stripe": "^17.5.0",
-    "multer": "^1.4.5-lts.1",
+    "stripe": "^22.6.2",
+    "multer": "^2.0.2",
     "pdf-parse": "^1.1.1",
-    "sharp": "^0.34.3",
-    "pg": "^8.13.1",
+    "sharp": "^0.35.4",
+    "pg": "^8.23.0",
     "tesseract.js": "^7.0.0"
   }
 }

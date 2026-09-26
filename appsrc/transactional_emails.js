@@ -50,7 +50,7 @@ function layout({title, intro, order, body, button}) {
 }
 
 function orderReceived(order) {
-  const text = `Hemos recibido tu pedido ${order.number}. Queda pendiente de completar el pago online.`;
+  const text = `Hemos recibido tu pedido ${order.number}. El pago con tarjeta está pendiente de confirmación por Stripe.`;
   return {
     subject: `Hemos recibido tu pedido ${order.number} · FVMarket`,
     text,
@@ -63,7 +63,7 @@ function orderConfirmation(order, invoiceUrl = '') {
   return {
     subject: `Pedido confirmado ${order.number} · FVMarket`,
     text,
-    html: layout({title: 'Pedido confirmado', intro: `${text} Ya podemos iniciar la preparación y coordinación de la entrega.`, order, body: orderItems(order), button: invoiceUrl ? {url: invoiceUrl, label: 'Ver factura'} : null})
+    html: layout({title: 'Pago confirmado', intro: `${text} Ahora validaremos la disponibilidad con los proveedores antes de coordinar la entrega.`, order, body: orderItems(order), button: invoiceUrl ? {url: invoiceUrl, label: 'Ver factura'} : null})
   };
 }
 
@@ -74,10 +74,10 @@ function paymentLink(order, paymentLinkUrl = '') {
     text: paymentLinkUrl ? `${text} Enlace: ${paymentLinkUrl}` : text,
     html: layout({
       title: 'Enlace de pago',
-      intro: `${text} Utiliza el botón siguiente para completar el pago de forma segura con Stripe.`,
+      intro: `${text} Utiliza el botón siguiente para completar el pago seguro con tarjeta.`,
       order,
       body: orderItems(order),
-      button: paymentLinkUrl ? {url: paymentLinkUrl, label: 'Pagar ahora con Stripe'} : null
+      button: paymentLinkUrl ? {url: paymentLinkUrl, label: 'Pagar con tarjeta'} : null
     })
   };
 }

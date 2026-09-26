@@ -48,6 +48,7 @@ function filterPurchases(d, query = {}) {
   const to = String(query.to || '').trim();
   const rows = [];
   for (const order of d.orders || []) {
+    if (!paid(order.status)) continue;
     for (const task of (d.procurementTasks || []).filter(x => x.orderId === order.id)) {
       const hay = [order.number, order.customer?.name, task.supplierName, ...(task.items || []).flatMap(i => [i.title, i.ref, i.sourceRef])].join(' ').toLowerCase();
       const date = String(order.paidAt || order.createdAt || '').slice(0, 10);
@@ -66,7 +67,7 @@ function registerProcurementRoutes(app, deps) {
   const { read, save, ordersManager, transitionOrder, ensureLedgerForOrder, createRutaFVDelivery, paidOrderStatus } = deps;
   app.get('/api/admin/procurement-board', ordersManager, (req, res) => {
     const d = ensureData(read());
-    const orders = (d.orders || []).filter(o => paidOrderStatus(o.status)).map(o => orderPublic(o, d));
+    const orders = (d.orders || []).map(o => orderPublic(o, d));
     const pending = orders.filter(o => !['entregado', 'cancelado', 'reembolsado'].includes(String(o.status))).length;
     res.json({ orders, pending, statuses: ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'incidencia'] });
   });
@@ -92,24 +93,38 @@ function registerProcurementRoutes(app, deps) {
       if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
       if (!config) return res.status(400).json({ error: 'Acción de aprovisionamiento no válida' });
       if (!paidOrderStatus(order.status) && action !== 'incidencia') return res.status(409).json({ error: 'El pedido debe estar pagado antes de gestionarlo.' });
+      const allowed = {
+        iniciar_compra: ['pagado', 'incidencia'],
+        comprada: ['en_compra_proveedor', 'incidencia'],
+        mercancia_recogida: ['en_compra_proveedor', 'incidencia'],
+        enviar_a_rutafv: ['mercancia_recogida', 'listo_para_rutafv', 'incidencia'],
+        incidencia: ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto']
+      };
+      if (!allowed[action]?.includes(String(order.status))) return res.status(409).json({ error: `La acción «${config.label}» no corresponde al estado actual del pedido.` });
       const tasks = (d.procurementTasks || []).filter(x => x.orderId === order.id);
       const task = req.body?.taskId ? tasks.find(x => x.id === req.body.taskId) : null;
+      if (req.body?.taskId && !task) return res.status(404).json({ error: 'Compra de proveedor no encontrada' });
       const before = order.status;
       if (config.taskStatus) {
         for (const t of task ? [task] : tasks) { t.status = config.taskStatus; t.purchaseReference = String(req.body?.purchaseReference || t.purchaseReference || '').slice(0, 120); t.actualCost = req.body?.actualCost == null ? Number(t.actualCost || t.sourceCost || 0) : money(req.body.actualCost); t.updatedAt = now(); }
       }
+      const readyNow = tasks.length > 0 && tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || '')));
+      order.procurement = { ...(order.procurement || {}), taskIds: tasks.map(x => x.id), allReady: readyNow, sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };
       if (config.status) {
         if (config.status === 'listo_para_rutafv') {
-          for (const t of tasks) if (!['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) t.status = 'lista';
+          if (!tasks.length || !tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || '')))) return res.status(409).json({ error: 'Completa primero la compra y recogida de todos los proveedores.' });
           for (const item of order.items || []) item.procurement = { ...(item.procurement || {}), status: 'ready' };
           order.procurement = { ...(order.procurement || {}), allReady: true };
         }
-        if (config.status === 'mercancia_recogida') for (const item of order.items || []) item.procurement = { ...(item.procurement || {}), status: 'ready' };
-        const result = transitionOrder(d, order, config.status, req.user, req.body?.note || config.label);
-        if (!result.ok) return res.status(409).json({ error: result.error });
+        const allCollected = readyNow;
+        if (config.status !== 'mercancia_recogida' || allCollected) {
+          if (config.status === 'mercancia_recogida') for (const item of order.items || []) item.procurement = { ...(item.procurement || {}), status: 'ready' };
+          const result = transitionOrder(d, order, config.status, req.user, req.body?.note || config.label);
+          if (!result.ok) return res.status(409).json({ error: result.error });
+        }
       }
       if (action === 'enviar_a_rutafv' && createRutaFVDelivery) {
-        try { await createRutaFVDelivery(d, order); } catch (e) { order.transport = order.transport || {}; order.transport.lastError = String(e.message || e); }
+        try { await createRutaFVDelivery(d, order); } catch (e) { throw new Error('RutaFV no aceptó el reparto: ' + String(e.message || e)); }
       }
       order.procurement = { ...(order.procurement || {}), taskIds: tasks.map(x => x.id), allReady: tasks.length > 0 && tasks.every(x => ['recogida', 'recibida', 'lista'].includes(String(x.status || ''))), sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };
       addAction(d, order, action, req.user, { fromStatus: before, taskId: task?.id || '', purchaseReference: String(req.body?.purchaseReference || ''), note: String(req.body?.note || '') });
