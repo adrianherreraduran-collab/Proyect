@@ -50,7 +50,7 @@ function layout({title, intro, order, body, button}) {
 }
 
 function orderReceived(order) {
-  const text = `Hemos recibido tu pedido ${order.number}. Queda pendiente de pago por transferencia.`;
+  const text = `Hemos recibido tu pedido ${order.number}. Queda pendiente de completar el pago online.`;
   return {
     subject: `Hemos recibido tu pedido ${order.number} · FVMarket`,
     text,
