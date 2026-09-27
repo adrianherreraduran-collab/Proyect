@@ -48,11 +48,66 @@ function actorOf(actor = {}) {
   return { id: String(actor.id || 'system'), name: String(actor.name || actor.username || actor.email || 'Sistema'), role: String(actor.role || 'system') };
 }
 
+function addCustomerNotification(d, order, title, message, metadata = {}) {
+  if (!order?.userId) return null;
+  if (!Array.isArray(d.customerNotifications)) d.customerNotifications = [];
+  const key = String(metadata.key || `${order.id}:${title}:${message}`);
+  if (d.customerNotifications.some(x => x.userId === order.userId && x.orderId === order.id && x.metadata?.key === key)) return null;
+  const notification = {
+    id: 'cn_' + Math.random().toString(36).slice(2, 12), userId: String(order.userId), orderId: order.id,
+    orderNumber: order.number || order.id, title: String(title), message: String(message),
+    metadata: { ...metadata, key }, read: false, createdAt: now()
+  };
+  d.customerNotifications.unshift(notification);
+  return notification;
+}
+
+// The customer-facing estimate intentionally contains no supplier identity,
+// address or source data. If an order contains products from more than one
+// island, the longest applicable procurement rule is used.
+function customerDeliveryEstimate(tasks = [], baseAt = new Date()) {
+  const estimates = (tasks || []).map(task => task?.deliveryEstimate).filter(Boolean);
+  if (!estimates.length) return null;
+  if (estimates.some(x => x.rule === 'pendiente_confirmacion')) {
+    return { label: 'Pendiente de confirmar', rule: 'pendiente_confirmacion' };
+  }
+  const remote = estimates.some(x => x.rule === 'fuera_isla');
+  if (remote) {
+    const chosen = estimates.find(x => x.rule === 'fuera_isla');
+    return {
+      label: chosen.label || 'Aproximadamente 7 días',
+      rule: 'fuera_isla',
+      minDays: 7,
+      maxDays: 7,
+      minDate: chosen.minDate,
+      maxDate: chosen.maxDate,
+      minAt: chosen.minAt,
+      maxAt: chosen.maxAt,
+      baseAt: chosen.baseAt || new Date(baseAt).toISOString()
+    };
+  }
+  const local = estimates[0];
+  return {
+    label: local.label || '24–72 h',
+    rule: 'local_fuerteventura',
+    minDays: 1,
+    maxDays: 3,
+    minHours: 24,
+    maxHours: 72,
+    minDate: local.minDate,
+    maxDate: local.maxDate,
+    minAt: local.minAt,
+    maxAt: local.maxAt,
+    baseAt: local.baseAt || new Date(baseAt).toISOString()
+  };
+}
+
 function ensureOperationsData(d) {
   if (!Array.isArray(d.auditLog)) d.auditLog = [];
   if (!Array.isArray(d.accountingEntries)) d.accountingEntries = [];
   if (!Array.isArray(d.procurementTasks)) d.procurementTasks = [];
   if (!Array.isArray(d.suppliers)) d.suppliers = [];
+  if (!Array.isArray(d.customerNotifications)) d.customerNotifications = [];
   for (const supplier of d.suppliers) {
     if (supplier.procurementMode == null) supplier.procurementMode = 'recogida_fvmarket';
     if (supplier.pickupAddress == null) supplier.pickupAddress = '';
@@ -85,6 +140,10 @@ function ensureOperationsData(d) {
       }
     }
     syncProcurementTasks(d, order);
+    if (order.paidAt || ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia'].includes(order.status)) {
+      const estimate = order.deliveryEstimate?.label || 'Pendiente de confirmar';
+      addCustomerNotification(d, order, 'Pedido recibido', `Hemos recibido tu pedido. Entrega estimada: ${estimate}.`, { key: `${order.id}:payment_received` });
+    }
     ensureLedgerForOrder(d, order);
   }
   return d;
@@ -104,6 +163,7 @@ function supplierRecord(supplier, name = '') {
 
 function syncProcurementTasks(d, order) {
   const grouped = new Map();
+  const baseAt = order.paidAt || order.createdAt || now();
   for (const item of order.items || []) {
     const s = itemSupplier(item, d);
     const key = s.id || s.name.toLowerCase() || 'supplier_pending';
@@ -125,7 +185,6 @@ function syncProcurementTasks(d, order) {
       task.sourceCost = group.sourceCost;
       task.updatedAt = task.updatedAt || now();
     }
-    const baseAt = order.paidAt || order.createdAt || now();
     const location = supplierLocation(group.supplier);
     task.supplierIsland = location.island;
     task.supplierAddress = location.address;
@@ -135,6 +194,7 @@ function syncProcurementTasks(d, order) {
   }
   const tasks = d.procurementTasks.filter(x => x.orderId === order.id);
   order.procurement = { taskIds: tasks.map(x => x.id), allReady: tasks.length > 0 && tasks.every(x => ['recogida', 'recibida', 'lista'].includes(String(x.status || ''))), sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };
+  order.deliveryEstimate = customerDeliveryEstimate(tasks, baseAt);
 }
 
 function addAudit(d, order, action, actor, details = {}) {
@@ -180,6 +240,8 @@ function transitionOrder(d, order, nextStatus, actor = {}, note = '') {
   if (next === 'en_reparto') order.workflow.inTransitAt = at;
   if (next === 'entregado') order.workflow.deliveredAt = at;
   addAudit(d, order, 'estado_cambiado', actor, { fromStatus: current, toStatus: next, note });
+  const eta = order.deliveryEstimate?.label || 'Pendiente de confirmar';
+  addCustomerNotification(d, order, `Pedido: ${label(next)}`, `${note ? `${note} ` : ''}Plazo estimado: ${eta}.`, { key: `${order.id}:status:${next}` });
   ensureLedgerForOrder(d, order);
   return { ok: true, changed: true, from: current, to: next };
 }
@@ -187,6 +249,8 @@ function transitionOrder(d, order, nextStatus, actor = {}, note = '') {
 function recordPaymentConfirmation(d, order, actor = {}) {
   if (!order || !order.id) return;
   if (!d.auditLog.some(x => x.orderId === order.id && x.action === 'pago_confirmado')) addAudit(d, order, 'pago_confirmado', actor, { toStatus: order.status, note: 'Pago confirmado por el proveedor de pagos' });
+  const estimate = order.deliveryEstimate?.label || 'Pendiente de confirmar';
+  addCustomerNotification(d, order, 'Pedido recibido', `Hemos recibido tu pedido. Entrega estimada: ${estimate}.`, { key: `${order.id}:payment_received` });
   ensureLedgerForOrder(d, order);
 }
 
@@ -203,7 +267,7 @@ function recordRefund(d, order, refund, actor = {}) {
 
 function publicOperationOrder(order, d) {
   const tasks = d.procurementTasks.filter(x => x.orderId === order.id).map(x => ({ ...x, items: (x.items || []).map(i => ({ ...i })) }));
-  return { ...order, statusLabel: label(order.status), procurementTasks: tasks, timeline: d.auditLog.filter(x => x.orderId === order.id).sort((a, b) => String(a.at).localeCompare(String(b.at))) };
+  return { ...order, statusLabel: label(order.status), deliveryEstimate: order.deliveryEstimate || customerDeliveryEstimate(tasks, order.paidAt || order.createdAt || new Date()), procurementTasks: tasks, timeline: d.auditLog.filter(x => x.orderId === order.id).sort((a, b) => String(a.at).localeCompare(String(b.at))) };
 }
 
 function registerOperationsRoutes(app, deps) {
@@ -317,6 +381,13 @@ function registerOperationsRoutes(app, deps) {
     if (!order) return res.status(404).json({ error: 'Pedido no encontrado' });
     if (!order.transport?.deliveryId) return res.status(409).json({ error: 'El pedido todavía no está enviado a RutaFV.' });
     if (req.body?.transportStatus != null) order.transport.status = String(req.body.transportStatus);
+    const estimated = req.body?.estimatedDeliveryDate || req.body?.deliveryDate || req.body?.estimatedDate;
+    if (estimated) {
+      order.transport.estimatedDeliveryDate = String(estimated);
+      order.transport.deliveryDateStatus = 'actualizada';
+      order.deliveryEstimate = { label: `Entrega estimada: ${String(estimated)}`, rule: 'rutafv_actualizada', minDate: String(estimated), maxDate: String(estimated), minAt: String(estimated), maxAt: String(estimated) };
+      addCustomerNotification(d, order, 'Fecha de entrega actualizada', `La fecha estimada de entrega de tu pedido es ${String(estimated)}.`, { key: `${order.id}:eta:${String(estimated)}` });
+    }
     const result = transitionOrder(d, order, req.body?.status, req.user, 'Actualización recibida de RutaFV');
     if (!result.ok) return res.status(409).json({ error: result.error });
     save(d);
@@ -324,4 +395,4 @@ function registerOperationsRoutes(app, deps) {
   });
 }
 
-module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, STATUS_LABELS, _test: { normalizeStatus, label, money, TRANSITIONS } };
+module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, customerDeliveryEstimate, addCustomerNotification, STATUS_LABELS, _test: { normalizeStatus, label, money, TRANSITIONS } };

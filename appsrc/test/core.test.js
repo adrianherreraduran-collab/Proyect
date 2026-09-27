@@ -90,9 +90,9 @@ test('el plazo del proveedor se calcula por isla y conserva dirección y fecha e
   assert.match(local.label, /24–72 h/);
   const remote = supplierDelivery.deliveryEstimate({ island: 'Gran Canaria', address: 'Calle Mayor 2, Las Palmas' }, base);
   assert.equal(remote.isLocal, false);
-  assert.equal(remote.minDays, 5);
-  assert.equal(remote.maxDays, 10);
-  assert.match(remote.label, /5–10 días/);
+  assert.equal(remote.minDays, 7);
+  assert.equal(remote.maxDays, 7);
+  assert.match(remote.label, /aproximadamente 7 días/i);
   const inferred = supplierDelivery.deliveryEstimate({ address: 'Avenida de Canarias, Fuerteventura' }, base);
   assert.equal(inferred.isLocal, true);
 });

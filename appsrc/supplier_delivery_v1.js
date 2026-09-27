@@ -7,8 +7,11 @@
 const LOCAL_ISLAND = 'Fuerteventura';
 const LOCAL_MIN_HOURS = 24;
 const LOCAL_MAX_HOURS = 72;
-const REMOTE_MIN_DAYS = 5;
-const REMOTE_MAX_DAYS = 10;
+// El cliente solo ve un plazo sencillo: los proveedores de otra isla se
+// muestran como aproximadamente 7 días. Conservamos min/max para poder
+// calcular una fecha concreta y actualizarla después si RutaFV la confirma.
+const REMOTE_MIN_DAYS = 7;
+const REMOTE_MAX_DAYS = 7;
 
 function compact(value = '') {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
@@ -52,6 +55,7 @@ function addDays(base, days) { return new Date(new Date(base).getTime() + days *
 
 function deliveryEstimate(supplier = {}, baseAt = new Date()) {
   const location = supplierLocation(supplier);
+  const knownIsland = !!location.island && location.island !== 'Desconocida';
   const minHours = location.isLocal ? LOCAL_MIN_HOURS : REMOTE_MIN_DAYS * 24;
   const maxHours = location.isLocal ? LOCAL_MAX_HOURS : REMOTE_MAX_DAYS * 24;
   const minAt = location.isLocal ? addHours(baseAt, minHours) : addDays(baseAt, REMOTE_MIN_DAYS);
@@ -59,7 +63,11 @@ function deliveryEstimate(supplier = {}, baseAt = new Date()) {
   const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
   const minDate = minAt.toLocaleDateString('es-ES', dateOptions);
   const maxDate = maxAt.toLocaleDateString('es-ES', dateOptions);
-  const label = location.isLocal ? `24–72 h · ${minDate}–${maxDate}` : `${REMOTE_MIN_DAYS}–${REMOTE_MAX_DAYS} días · ${minDate}–${maxDate}`;
+  const label = !knownIsland
+    ? 'Pendiente de confirmar'
+    : location.isLocal
+      ? `24–72 h · ${minDate}–${maxDate}`
+      : `Aproximadamente 7 días · ${minDate}`;
   return {
     ...location,
     minHours,
@@ -72,7 +80,7 @@ function deliveryEstimate(supplier = {}, baseAt = new Date()) {
     minDate,
     maxDate,
     label,
-    rule: location.isLocal ? 'local_fuerteventura' : 'fuera_isla'
+    rule: !knownIsland ? 'pendiente_confirmacion' : (location.isLocal ? 'local_fuerteventura' : 'fuera_isla')
   };
 }
 

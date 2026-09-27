@@ -77,4 +77,6 @@
 
   function init(){addCss();hideLegacy();if(!mount()){setTimeout(init,120);return}setTimeout(()=>window.loadProducts&&window.loadProducts(),100)}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(init,120));else setTimeout(init,120);
+  const etaNoticeObserver=new MutationObserver(()=>document.querySelectorAll('.v13Modal .notice').forEach(node=>{if(node.textContent.includes('5–10 días'))node.innerHTML=node.innerHTML.replace(/5–10 días estimados/g,'aproximadamente 7 días')}));
+  etaNoticeObserver.observe(document.body,{childList:true,subtree:true});
 })();

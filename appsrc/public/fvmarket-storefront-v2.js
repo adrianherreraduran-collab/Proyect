@@ -79,7 +79,7 @@
     const quoteButton = document.querySelector('.accountQuoteButton');
     if (quoteButton) quoteButton.style.display = session?.user?.profileComplete ? '' : 'none';
     const hint = document.querySelector('.guestCheckoutHint');
-    if (hint) hint.textContent = session ? 'Tus datos se han precargado; puedes cambiarlos para este pedido.' : 'Puedes comprar directamente, sin crear una cuenta.';
+    if (hint) hint.textContent = session ? 'Tus datos se han precargado; puedes cambiarlos para este pedido.' : 'Para comprar debes iniciar sesión en FVMarket.';
   }
 
   async function calculateTransport() {
@@ -101,7 +101,9 @@
   }
 
   async function payWithStripe() {
-    const message = $('cartMsg'), value = customer(), error = deliveryError(value, true);
+    const message = $('cartMsg');
+    if (!session) { if (message) message.textContent = 'Inicia sesión para realizar el pago.'; if (typeof openAccount === 'function') openAccount(); return; }
+    const value = customer(), error = deliveryError(value, true);
     if (error) { if (message) message.textContent = error; return; }
     if (!$('orderTerms')?.checked || !$('orderPrivacy')?.checked) { if (message) message.textContent = 'Acepta las condiciones de compra y la política de privacidad.'; return; }
     if (!rutaFVQuote && !await calculateTransport()) return;
