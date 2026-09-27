@@ -939,4 +939,41 @@ setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
 <script src="/fvmarket-admin-orders-v1.js?v=1"></script>
 <script src="/fvmarket-admin-database-v1.js?v=1"></script>
 <script src="/fvmarket-admin-live-refresh-v1.js?v=1"></script>
+<script>
+/* FVM_WEIGHT_CAPTURE_V1: expose unit weight in every admin product flow. */
+(function(){
+  function field(id,label){return '<div class="field"><label>'+label+' <span class="privateTag">PARA RUTAFV</span></label><input id="'+id+'" type="number" min="0" step="0.001" placeholder="Ej. 25"></div>'}
+  function ensureLegacyFields(){
+    const sourceUrl=document.getElementById('sourceUrl');
+    if(sourceUrl&&!document.getElementById('weightKg'))sourceUrl.closest('.field')?.insertAdjacentHTML('afterend',field('weightKg','Peso del artículo (kg)'));
+    const sourceEan=document.getElementById('editSourceEan');
+    if(sourceEan&&!document.getElementById('editWeightKg'))sourceEan.closest('.field')?.insertAdjacentHTML('afterend',field('editWeightKg','Peso del artículo (kg)'));
+  }
+  function ensureSupplierField(root){
+    const category=root.querySelector('#v13Category');
+    if(category&&!root.querySelector('#v13WeightKg'))category.closest('.field')?.insertAdjacentHTML('beforebegin',field('v13WeightKg','Peso del artículo (kg)'));
+  }
+  ensureLegacyFields();
+  new MutationObserver(mutations=>mutations.forEach(m=>m.addedNodes.forEach(node=>{if(node.nodeType===1){ensureLegacyFields();if(node.matches?.('.v13Modal,.v13ModalBox'))ensureSupplierField(node.matches('.v13ModalBox')?node:node.querySelector('.v13ModalBox')||node);node.querySelectorAll?.('.v13ModalBox').forEach(ensureSupplierField)}}))).observe(document.body,{childList:true,subtree:true});
+  const nativeFetch=window.fetch.bind(window);
+  window.fetch=async function(input,init={}){
+    const url=String(typeof input==='string'?input:input?.url||'');
+    const method=String(init.method||'GET').toUpperCase();
+    if(init.body&&/\/api\/admin\/(?:products(?:\/|$)|suppliers\/[^/]+\/products$)/.test(url)&&['POST','PUT'].includes(method)){
+      try{
+        const body=JSON.parse(init.body);
+        const id=url.includes('/suppliers/')?'v13WeightKg':method==='PUT'?'editWeightKg':'weightKg';
+        const inputEl=document.getElementById(id);
+        if(inputEl)body.weightKg=Math.max(0,Number(inputEl.value)||0);
+        init={...init,body:JSON.stringify(body)};
+      }catch{}
+    }
+    const response=await nativeFetch(input,init);
+    if(url.includes('/analyze-capture')){
+      try{const copy=response.clone();copy.json().then(data=>{const value=data?.draft?.weightKg;if(value!=null){const el=document.getElementById('v13WeightKg');if(el)el.value=Number(value)||''}}).catch(()=>{})}catch{}
+    }
+    return response;
+  };
+})();
+</script>
 </body></html>
