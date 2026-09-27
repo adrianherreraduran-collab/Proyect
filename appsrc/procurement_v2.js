@@ -1,6 +1,8 @@
 // FVM_PROCUREMENT_CONTROL_V2
 // Admin-only procurement board, payment notifications and supplier accounting filters.
 
+const {deliveryEstimate}=require('./supplier_delivery_v1');
+
 const ACTIONS = {
   iniciar_compra: { label: 'Iniciar compra', status: 'en_compra_proveedor' },
   comprada: { label: 'Comprada', taskStatus: 'comprada' },
@@ -36,9 +38,13 @@ function addAction(d, order, action, user, metadata = {}) {
   return entry;
 }
 function orderPublic(order, d) {
-  const tasks = (d.procurementTasks || []).filter(x => x.orderId === order.id);
+  const tasks = (d.procurementTasks || []).filter(x => x.orderId === order.id).map(task => {
+    const supplier = (d.suppliers || []).find(x => x.id === task.supplierId) || {name: task.supplierName, island: task.supplierIsland, address: task.supplierAddress};
+    const estimate = task.deliveryEstimate || deliveryEstimate(supplier, order.paidAt || order.createdAt || now());
+    return {...task, supplierIsland: estimate.island, supplierAddress: estimate.address, supplierCity: estimate.city, supplierPostalCode: estimate.postalCode, deliveryEstimate: estimate};
+  });
   const actions = (d.procurementActionLog || []).filter(x => x.orderId === order.id).sort((a, b) => String(a.at).localeCompare(String(b.at)));
-  return { ...order, procurementTasks: tasks, procurementActions: actions, supplierSummary: tasks.map(t => ({ id: t.supplierId || t.supplierKey, name: t.supplierName, status: t.status, sourceCost: money(t.sourceCost), actualCost: money(t.actualCost), items: t.items || [] })) };
+  return { ...order, procurementTasks: tasks, procurementActions: actions, supplierSummary: tasks.map(t => ({ id: t.supplierId || t.supplierKey, name: t.supplierName, status: t.status, sourceCost: money(t.sourceCost), actualCost: money(t.actualCost), island: t.supplierIsland, address: t.supplierAddress, deliveryEstimate: t.deliveryEstimate, items: t.items || [] })) };
 }
 function filterPurchases(d, query = {}) {
   const q = String(query.q || '').trim().toLowerCase();
@@ -57,7 +63,9 @@ function filterPurchases(d, query = {}) {
       if (status && String(task.status || '').toLowerCase() !== status) continue;
       if (from && date < from) continue;
       if (to && date > to) continue;
-      rows.push({ orderId: order.id, orderNumber: order.number, paidAt: order.paidAt || null, createdAt: order.createdAt, customer: order.customer?.name || '', status: order.status, taskId: task.id, supplierId: task.supplierId || '', supplierName: task.supplierName || 'Proveedor pendiente', taskStatus: task.status || 'pendiente_compra', sourceCost: money(task.sourceCost), actualCost: money(task.actualCost), pickupAddress: task.pickupAddress || '', purchaseReference: task.purchaseReference || '', notes: task.notes || '', items: task.items || [], delivery: money(order.delivery), total: money(order.total) });
+      const supplierRecord=(d.suppliers||[]).find(x=>x.id===task.supplierId)||{name:task.supplierName,island:task.supplierIsland,address:task.supplierAddress};
+      const estimate=task.deliveryEstimate||deliveryEstimate(supplierRecord,order.paidAt||order.createdAt||now());
+      rows.push({ orderId: order.id, orderNumber: order.number, paidAt: order.paidAt || null, createdAt: order.createdAt, customer: order.customer?.name || '', status: order.status, taskId: task.id, supplierId: task.supplierId || '', supplierName: task.supplierName || 'Proveedor pendiente', supplierIsland: estimate.island, supplierAddress: estimate.address, deliveryEstimate: estimate, taskStatus: task.status || 'pendiente_compra', sourceCost: money(task.sourceCost), actualCost: money(task.actualCost), pickupAddress: task.pickupAddress || '', purchaseReference: task.purchaseReference || '', notes: task.notes || '', items: task.items || [], delivery: money(order.delivery), total: money(order.total) });
     }
   }
   rows.sort((a, b) => String(b.paidAt || b.createdAt).localeCompare(String(a.paidAt || a.createdAt)));
@@ -67,9 +75,9 @@ function registerProcurementRoutes(app, deps) {
   const { read, save, ordersManager, transitionOrder, ensureLedgerForOrder, createRutaFVDelivery, paidOrderStatus } = deps;
   app.get('/api/admin/procurement-board', ordersManager, (req, res) => {
     const d = ensureData(read());
-    const orders = (d.orders || []).map(o => orderPublic(o, d));
-    const pending = orders.filter(o => !['entregado', 'cancelado', 'reembolsado'].includes(String(o.status))).length;
-    res.json({ orders, pending, statuses: ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'incidencia'] });
+    const boardStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia']);
+    const orders = (d.orders || []).filter(o => (paidOrderStatus(o.status) || !!o.paidAt) && boardStatuses.has(String(o.status || ''))).map(o => orderPublic(o, d));
+    res.json({ orders, pending: orders.length, statuses: [...boardStatuses] });
   });
   app.get('/api/admin/purchases', ordersManager, (req, res) => {
     const d = ensureData(read());
@@ -97,20 +105,22 @@ function registerProcurementRoutes(app, deps) {
         iniciar_compra: ['pagado', 'incidencia'],
         comprada: ['en_compra_proveedor', 'incidencia'],
         mercancia_recogida: ['en_compra_proveedor', 'incidencia'],
-        enviar_a_rutafv: ['mercancia_recogida', 'listo_para_rutafv', 'incidencia'],
+        enviar_a_rutafv: ['en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia'],
         incidencia: ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto']
       };
       if (!allowed[action]?.includes(String(order.status))) return res.status(409).json({ error: `La acción «${config.label}» no corresponde al estado actual del pedido.` });
+      if (action === 'incidencia' && !String(req.body?.note || '').trim()) return res.status(400).json({ error: 'La incidencia debe incluir una nota.' });
       const tasks = (d.procurementTasks || []).filter(x => x.orderId === order.id);
       const task = req.body?.taskId ? tasks.find(x => x.id === req.body.taskId) : null;
       if (req.body?.taskId && !task) return res.status(404).json({ error: 'Compra de proveedor no encontrada' });
+      if (action === 'comprada' && !tasks.length) return res.status(409).json({ error: 'El pedido no tiene líneas de proveedor para marcar como compradas.' });
       const before = order.status;
       if (config.taskStatus) {
         for (const t of task ? [task] : tasks) { t.status = config.taskStatus; t.purchaseReference = String(req.body?.purchaseReference || t.purchaseReference || '').slice(0, 120); t.actualCost = req.body?.actualCost == null ? Number(t.actualCost || t.sourceCost || 0) : money(req.body.actualCost); t.updatedAt = now(); }
       }
       const readyNow = tasks.length > 0 && tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || '')));
       order.procurement = { ...(order.procurement || {}), taskIds: tasks.map(x => x.id), allReady: readyNow, sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };
-      if (config.status) {
+      if (config.status && action !== 'enviar_a_rutafv') {
         if (config.status === 'listo_para_rutafv') {
           if (!tasks.length || !tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || '')))) return res.status(409).json({ error: 'Completa primero la compra y recogida de todos los proveedores.' });
           for (const item of order.items || []) item.procurement = { ...(item.procurement || {}), status: 'ready' };
@@ -123,10 +133,16 @@ function registerProcurementRoutes(app, deps) {
           if (!result.ok) return res.status(409).json({ error: result.error });
         }
       }
+      if (action === 'enviar_a_rutafv') {
+        const purchased = tasks.length > 0 && tasks.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || '')));
+        if (!purchased) return res.status(409).json({ error: 'Marca primero como compradas todas las líneas del proveedor.' });
+        for (const item of order.items || []) item.procurement = { ...(item.procurement || {}), status: 'ready' };
+        order.fulfillment = { ...(order.fulfillment || {}), readyForRutaFV: true, readyAt: now(), status: 'listo_para_rutafv' };
+      }
       if (action === 'enviar_a_rutafv' && createRutaFVDelivery) {
         try { await createRutaFVDelivery(d, order); } catch (e) { throw new Error('RutaFV no aceptó el reparto: ' + String(e.message || e)); }
       }
-      order.procurement = { ...(order.procurement || {}), taskIds: tasks.map(x => x.id), allReady: tasks.length > 0 && tasks.every(x => ['recogida', 'recibida', 'lista'].includes(String(x.status || ''))), sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };
+      order.procurement = { ...(order.procurement || {}), taskIds: tasks.map(x => x.id), allReady: tasks.length > 0 && tasks.every(x => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(x.status || ''))), sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };
       addAction(d, order, action, req.user, { fromStatus: before, taskId: task?.id || '', purchaseReference: String(req.body?.purchaseReference || ''), note: String(req.body?.note || '') });
       if (action === 'incidencia') addNotification(d, order, 'procurement_incident', 'Incidencia en aprovisionamiento', `Se ha registrado una incidencia en el pedido ${order.number || order.id}.`);
       ensureLedgerForOrder(d, order); save(d); res.json(orderPublic(order, d));

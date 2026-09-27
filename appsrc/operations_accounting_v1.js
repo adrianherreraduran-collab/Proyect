@@ -1,6 +1,8 @@
 // FVM_OPERATIONS_ACCOUNTING_V1
 // Shared order workflow, procurement tracking, RutaFV hand-off and internal ledger.
 
+const {deliveryEstimate, supplierLocation} = require('./supplier_delivery_v1');
+
 const STATUS_LABELS = {
   pendiente_pago: 'Pendiente de pago',
   pagado: 'Pagado',
@@ -56,6 +58,10 @@ function ensureOperationsData(d) {
     if (supplier.pickupAddress == null) supplier.pickupAddress = '';
     if (supplier.pickupCity == null) supplier.pickupCity = '';
     if (supplier.pickupPostalCode == null) supplier.pickupPostalCode = '';
+    if (supplier.address == null) supplier.address = supplier.pickupAddress || '';
+    if (supplier.city == null) supplier.city = supplier.pickupCity || '';
+    if (supplier.postalCode == null) supplier.postalCode = supplier.pickupPostalCode || '';
+    if (supplier.island == null) supplier.island = '';
   }
   for (const order of d.orders || []) {
     const previous = order.status;
@@ -92,12 +98,17 @@ function itemSupplier(item = {}, d = {}) {
   return { id: supplierId || fromId?.id || fromName?.id || '', name };
 }
 
+function supplierRecord(supplier, name = '') {
+  return supplier || { name, island: '', address: '' };
+}
+
 function syncProcurementTasks(d, order) {
   const grouped = new Map();
   for (const item of order.items || []) {
     const s = itemSupplier(item, d);
     const key = s.id || s.name.toLowerCase() || 'supplier_pending';
-    const current = grouped.get(key) || { supplierId: s.id, supplierName: s.name, items: [], sourceCost: 0 };
+    const supplier = supplierRecord(d.suppliers.find(x => x.id === s.id) || d.suppliers.find(x => String(x.name || '').toLowerCase() === s.name.toLowerCase()), s.name);
+    const current = grouped.get(key) || { supplierId: s.id, supplierName: s.name, supplier, items: [], sourceCost: 0 };
     const qty = Math.max(1, Number(item.qty) || 1);
     const sourcePrice = Number(item.procurement?.sourcePrice || 0);
     current.items.push({ productId: item.productId, title: item.title, ref: item.ref, sourceRef: item.procurement?.sourceRef || '', qty, sourcePrice });
@@ -114,6 +125,13 @@ function syncProcurementTasks(d, order) {
       task.sourceCost = group.sourceCost;
       task.updatedAt = task.updatedAt || now();
     }
+    const baseAt = order.paidAt || order.createdAt || now();
+    const location = supplierLocation(group.supplier);
+    task.supplierIsland = location.island;
+    task.supplierAddress = location.address;
+    task.supplierCity = location.city;
+    task.supplierPostalCode = location.postalCode;
+    task.deliveryEstimate = deliveryEstimate(group.supplier, baseAt);
   }
   const tasks = d.procurementTasks.filter(x => x.orderId === order.id);
   order.procurement = { taskIds: tasks.map(x => x.id), allReady: tasks.length > 0 && tasks.every(x => ['recogida', 'recibida', 'lista'].includes(String(x.status || ''))), sourceCost: money(tasks.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0)) };

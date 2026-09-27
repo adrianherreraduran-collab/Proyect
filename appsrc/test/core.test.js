@@ -7,6 +7,7 @@ const path = require('node:path');
 const server = require('../server')._test;
 const operations = require('../operations_accounting_v1');
 const procurement = require('../procurement_v2');
+const supplierDelivery = require('../supplier_delivery_v1');
 const emails = require('../transactional_emails');
 const databaseBackup = require('../database_backup_v1');
 
@@ -79,6 +80,55 @@ test('el flujo operativo impide saltarse la recogida del proveedor', () => {
   assert.ok(data.auditLog.some(entry => entry.action === 'reembolso_emitido'));
 });
 
+test('el plazo del proveedor se calcula por isla y conserva dirección y fecha estimada', () => {
+  const base = '2026-09-27T12:00:00.000Z';
+  const local = supplierDelivery.deliveryEstimate({ island: 'Fuerteventura', address: 'Calle Primero de Mayo 1, Puerto del Rosario' }, base);
+  assert.equal(local.isLocal, true);
+  assert.equal(local.minHours, 24);
+  assert.equal(local.maxHours, 72);
+  assert.equal(local.address, 'Calle Primero de Mayo 1, Puerto del Rosario');
+  assert.match(local.label, /24–72 h/);
+  const remote = supplierDelivery.deliveryEstimate({ island: 'Gran Canaria', address: 'Calle Mayor 2, Las Palmas' }, base);
+  assert.equal(remote.isLocal, false);
+  assert.equal(remote.minDays, 5);
+  assert.equal(remote.maxDays, 10);
+  assert.match(remote.label, /5–10 días/);
+  const inferred = supplierDelivery.deliveryEstimate({ address: 'Avenida de Canarias, Fuerteventura' }, base);
+  assert.equal(inferred.isLocal, true);
+});
+
+test('el tablero excluye pagos pendientes y permite incidencia y envío a RutaFV tras comprar', async () => {
+  const routes = {};
+  const app = { get(path, ...args) { routes[path] = args.at(-1); }, post(path, ...args) { routes[path] = args.at(-1); } };
+  const data = { orders: [], procurementTasks: [], notifications: [], procurementActionLog: [], auditLog: [], settings: {} };
+  const paidOrder = { id: 'paid-1', number: 'FVM-PAID', status: 'en_compra_proveedor', paidAt: new Date().toISOString(), createdAt: new Date().toISOString(), total: 50, delivery: 10, items: [{ productId: 'p1', title: 'Taladro', qty: 1, procurement: { status: 'available' } }], transport: { requested: true } };
+  const unpaidOrder = { id: 'pending-1', number: 'FVM-PENDING', status: 'pendiente_pago', createdAt: new Date().toISOString() };
+  data.orders.push(paidOrder, unpaidOrder);
+  data.procurementTasks.push({ id: 'task-1', orderId: 'paid-1', supplierName: 'Proveedor Uno', status: 'comprada', sourceCost: 30, items: [] });
+  let createdDelivery = false;
+  procurement.registerProcurementRoutes(app, {
+    read: () => data,
+    save: () => {},
+    ordersManager: (req, res, next) => next(),
+    transitionOrder: (d, order, status) => { order.status = status; return { ok: true }; },
+    ensureLedgerForOrder: () => {},
+    paidOrderStatus: status => ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia'].includes(status),
+    createRutaFVDelivery: async (d, order) => { createdDelivery = true; order.transport.deliveryId = 'rutafv-1'; order.status = 'enviado_a_rutafv'; }
+  });
+  let board;
+  await routes['/api/admin/procurement-board']({}, { json(value) { board = value; } });
+  assert.deepEqual(board.orders.map(order => order.id), ['paid-1']);
+  let incidentResponse;
+  await routes['/api/admin/orders/:id/procurement-action']({ params: { id: 'paid-1' }, body: { action: 'incidencia', note: 'Proveedor sin stock en tienda.' }, user: { id: 'admin', role: 'admin' } }, { json(value) { incidentResponse = value; }, status() { return this; } });
+  assert.equal(incidentResponse.status, 'incidencia');
+  assert.equal(data.procurementActionLog[0].metadata.note, 'Proveedor sin stock en tienda.');
+  let response;
+  await routes['/api/admin/orders/:id/procurement-action']({ params: { id: 'paid-1' }, body: { action: 'enviar_a_rutafv' }, user: { id: 'admin', role: 'admin' } }, { json(value) { response = value; }, status() { return this; } });
+  assert.equal(createdDelivery, true);
+  assert.equal(response.status, 'enviado_a_rutafv');
+  assert.equal(data.procurementActionLog[0].action, 'enviar_a_rutafv');
+});
+
 test('la factura muestra estado pagado, Stripe e IGIC', () => {
   const html = server.professionalInvoiceHtml({ number: 'FVM-FAC-2026-00001', orderNumber: 'FVM-1', issuedAt: new Date().toISOString(), taxName: 'IGIC', taxRate: 7, taxBase: 100, taxAmount: 7, total: 107, paymentReference: 'pi_test', customer: { name: 'Cliente', billingName: 'Cliente', billingAddress: 'Calle A 1', billingCity: 'Morro Jable', billingPostalCode: '35625', deliveryAddress: { address: 'Calle A 1', city: 'Morro Jable', postalCode: '35625' }, email: 'cliente@example.com' }, lines: [{ description: 'Producto', reference: 'REF', quantity: 1, unitPrice: 107, taxableBase: 100, taxAmount: 7, gross: 107 }] }, fixture().settings);
   assert.match(html, /PAGADA/);
@@ -125,4 +175,18 @@ test('las copias de seguridad comprueban su integridad y conservan los administr
   const protectedState = databaseBackup.preserveAdministrators(restored, state.users);
   assert.deepEqual(protectedState.users.map(user => user.id), ['admin-actual']);
   assert.throws(() => databaseBackup.parseBackup({ ...backup, checksum: '0'.repeat(64) }), /integridad/i);
+});
+
+test('el catálogo interno muestra ubicación del proveedor y elimina la forma de adquisición', () => {
+  const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.html'), 'utf8');
+  const suppliers = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-v13.js'), 'utf8');
+  const board = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-control-v2.js'), 'utf8');
+  const ordersUi = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-orders-v1.js'), 'utf8');
+  assert.match(suppliers, /v13SupplierIsland/);
+  assert.match(suppliers, /v13SupplierAddress/);
+  assert.doesNotMatch(suppliers, /Forma de adquisición/);
+  assert.doesNotMatch(admin, /Almacén virtual/);
+  assert.doesNotMatch(admin, /fvmarket-operations-v1\.js/);
+  assert.match(ordersUi, /Entrega estimada proveedor/);
+  assert.match(board, /Entrega estimada del proveedor/);
 });

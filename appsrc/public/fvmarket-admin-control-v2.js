@@ -1,64 +1,132 @@
-// FVM_ADMIN_CONTROL_BOARD_V2
+// FVM_ADMIN_CONTROL_BOARD_V3
 (function () {
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = value => Number(value || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
-  const labels = { pendiente_pago: 'Pendiente de pago', pagado: 'Pagado', en_compra_proveedor: 'Compra al proveedor', mercancia_recogida: 'Mercancía recogida', listo_para_rutafv: 'Listo para RutaFV', enviado_a_rutafv: 'Enviado a RutaFV', en_reparto: 'En reparto', entregado: 'Entregado', incidencia: 'Incidencia', cancelado: 'Cancelado', reembolso_parcial: 'Reembolso parcial', reembolsado: 'Reembolsado' };
+  const labels = { pagado: 'Pagado', en_compra_proveedor: 'Compra al proveedor', mercancia_recogida: 'Mercancía recogida', listo_para_rutafv: 'Listo para RutaFV', incidencia: 'Incidencia' };
+  const paidStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia']);
+  const paymentStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial', 'reembolsado']);
   const actions = [['iniciar_compra', 'Iniciar compra'], ['comprada', 'Comprada'], ['mercancia_recogida', 'Mercancía recogida'], ['enviar_a_rutafv', 'Enviar a RutaFV'], ['incidencia', 'Incidencia']];
   let mounted = false;
-  let lastBoard = null;
-  let purchaseStatusByOrder = {};
+
   function addStyle() {
-    if ($('fvmAdminControlV2Style')) return;
-    const s = document.createElement('style'); s.id = 'fvmAdminControlV2Style';
-    s.textContent = `
-      .fvmBoard{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}.fvmBoardColumn{border-radius:12px;padding:14px;border:1px solid}.fvmBoardColumn.pending{background:#fff6f6;border-color:#efb4b4}.fvmBoardColumn.paid{background:#f3faef;border-color:#b8dda3}.fvmBoardColumn h3{margin:0 0 10px;font-size:15px}.fvmBoardColumn.pending h3{color:#a32929}.fvmBoardColumn.paid h3{color:#397820}.fvmBoardCard{background:#fff;border:1px solid #e1e9ef;border-radius:10px;padding:11px;margin:8px 0}.fvmBoardCard header{background:none;color:inherit;padding:0;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.fvmBoardCard header b{color:var(--navy);font-size:12px}.fvmBoardCard small{color:var(--muted)}.fvmBoardStatus{display:inline-flex;padding:4px 7px;border-radius:999px;background:#eef4f8;color:#48617b;font-size:10px;font-weight:900}.fvmBoardStatus.paid{background:#eaf7e4;color:#397820}.fvmBoardStatus.pending{background:#fff0f0;color:#a32929}.fvmBoardMeta{font-size:11px;line-height:1.5;margin:8px 0}.fvmBoardItems{border-top:1px solid #edf1f4;margin-top:8px;padding-top:7px;font-size:10px}.fvmActionSelect{width:100%;border:1px solid #cbd9e4;border-radius:7px;background:#fff;padding:8px;color:var(--navy);font-weight:800;font-size:11px}.fvmBoardEmpty{padding:16px;text-align:center;color:var(--muted);font-size:12px}.fvmProcurementTable{overflow:auto}.fvmProcurementTable table{min-width:1250px}.fvmProcurementTable .sourceData{font-size:10px;line-height:1.45}.fvmProcurementTable .sourceData b{color:var(--navy)}.fvmFilterBar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.fvmFilterBar input,.fvmFilterBar select{border:1px solid var(--line);border-radius:7px;padding:9px;min-width:150px}.fvmNotification{display:flex;gap:10px;align-items:flex-start;border:1px solid #dfe7ee;border-radius:9px;padding:11px;margin:8px 0;background:#fff}.fvmNotification.unread{border-left:4px solid var(--lime);background:#f8fbf5}.fvmNotification b{color:var(--navy)}.fvmNotification small{display:block;color:var(--muted);margin-top:3px}.fvmNotification button{margin-left:auto;white-space:nowrap}
-      @media(max-width:760px){.fvmBoard{grid-template-columns:1fr}}
-    `; document.head.appendChild(s);
+    if ($('fvmAdminControlV3Style')) return;
+    const s = document.createElement('style'); s.id = 'fvmAdminControlV3Style';
+    s.textContent = `.fvmBoard{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:16px}.fvmBoardColumn{border-radius:12px;padding:14px;border:1px solid}.fvmBoardColumn.paid{background:#f3faef;border-color:#b8dda3}.fvmBoardColumn h3{margin:0 0 10px;font-size:15px;color:#397820}.fvmBoardCard{background:#fff;border:1px solid #e1e9ef;border-radius:10px;padding:11px;margin:8px 0}.fvmBoardCard header{background:none;color:inherit;padding:0;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.fvmBoardCard header b{color:var(--navy);font-size:12px}.fvmBoardCard small{color:var(--muted)}.fvmBoardStatus{display:inline-flex;padding:4px 7px;border-radius:999px;background:#eaf7e4;color:#397820;font-size:10px;font-weight:900}.fvmBoardMeta{font-size:11px;line-height:1.5;margin:8px 0}.fvmBoardItems{border-top:1px solid #edf1f4;margin-top:8px;padding-top:7px;font-size:10px}.fvmActionSelect{width:100%;border:1px solid #cbd9e4;border-radius:7px;background:#fff;padding:8px;color:var(--navy);font-weight:800;font-size:11px}.fvmBoardEmpty{padding:16px;text-align:center;color:var(--muted);font-size:12px}.fvmChecklist{display:grid;gap:4px;margin-top:9px;padding:8px;border:1px solid #edf1f4;border-radius:8px;background:#fbfdff}.fvmChecklist label{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b7787}.fvmChecklist label.done{color:#397820;font-weight:850}.fvmChecklist input{accent-color:#5fa92f;margin:0}.fvmChecklist input:disabled{opacity:1}.fvmIncidentNote{margin-top:6px;padding:7px 8px;border-left:3px solid #d48a22;background:#fff8e8;color:#76500e;border-radius:5px;font-size:10px;line-height:1.4}.fvmNotification{display:flex;gap:10px;align-items:flex-start;border:1px solid #dfe7ee;border-radius:9px;padding:11px;margin:8px 0;background:#fff}.fvmNotification.unread{border-left:4px solid var(--lime);background:#f8fbf5}.fvmNotification b{color:var(--navy)}.fvmNotification small{display:block;color:var(--muted);margin-top:3px}.fvmNotification button{margin-left:auto;white-space:nowrap}`;
+    document.head.appendChild(s);
   }
-  function newTab(id, text) { const nav = document.querySelector('.navin'); if (!nav || nav.querySelector(`[data-view="${id}"]`)) return; const b = document.createElement('button'); b.className = 'tab'; b.dataset.view = id; b.textContent = text; b.onclick = () => show(id); nav.appendChild(b); }
-  function newView(id, html) { if ($('view-' + id)) return; const panel = $('panel'); if (!panel) return; const sec = document.createElement('section'); sec.className = 'view'; sec.id = 'view-' + id; sec.innerHTML = `<div class="card">${html}</div>`; panel.appendChild(sec); }
-  function show(id) { document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.view === id)); document.querySelectorAll('.view').forEach(x => x.classList.toggle('active', x.id === 'view-' + id)); if (id === 'control') loadBoard(); if (id === 'procurement') loadPurchases(); if (id === 'notifications') loadNotifications(); if (id === 'accounting') loadSupplierAccounting(); }
-  function actionSelect(order, taskId = '') { const status=String(order.status||purchaseStatusByOrder[order.id]||''),allowed=taskId?(status==='en_compra_proveedor'?['comprada','mercancia_recogida','incidencia']:status==='incidencia'?['comprada','mercancia_recogida']:[]):({pagado:['iniciar_compra','incidencia'],en_compra_proveedor:['comprada','mercancia_recogida','incidencia'],mercancia_recogida:['enviar_a_rutafv','incidencia'],listo_para_rutafv:['enviar_a_rutafv','incidencia'],enviado_a_rutafv:['incidencia'],en_reparto:['incidencia'],incidencia:['iniciar_compra','comprada','mercancia_recogida','enviar_a_rutafv']}[status]||[]);if(!allowed.length)return '<span class="msg">Sin acciones pendientes</span>';const opts=actions.filter(([value])=>allowed.includes(value)).map(([value,label])=>`<option value="${value}">${label}</option>`).join('');return `<select class="fvmActionSelect" onchange="fvmRunProcurementAction('${esc(order.id)}',this.value,'${esc(taskId)}',this)"><option value="">Seleccionar acción…</option>${opts}</select>`; }
+
+  function removeLegacySections() {
+    ['operations', 'accounting', 'procurement'].forEach(id => {
+      document.querySelector(`[data-view="${id}"]`)?.remove();
+      $('view-' + id)?.remove();
+    });
+  }
+
+  function newTab(id, text) {
+    const nav = document.querySelector('.navin');
+    if (!nav || nav.querySelector(`[data-view="${id}"]`)) return;
+    const b = document.createElement('button'); b.className = 'tab'; b.dataset.view = id; b.textContent = text; b.onclick = () => show(id); nav.appendChild(b);
+  }
+
+  function newView(id, html) {
+    if ($('view-' + id)) return;
+    const panel = $('panel'); if (!panel) return;
+    const sec = document.createElement('section'); sec.className = 'view'; sec.id = 'view-' + id; sec.innerHTML = `<div class="card">${html}</div>`; panel.appendChild(sec);
+  }
+
+  function show(id) {
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.view === id));
+    document.querySelectorAll('.view').forEach(x => x.classList.toggle('active', x.id === 'view-' + id));
+    if (id === 'control') loadBoard();
+    if (id === 'notifications') loadNotifications();
+  }
+
+  function actionSelect(order) {
+    const status = String(order.status || ''), allowed = ({
+      pagado: ['iniciar_compra', 'incidencia'],
+      en_compra_proveedor: ['comprada', 'enviar_a_rutafv', 'mercancia_recogida', 'incidencia'],
+      mercancia_recogida: ['enviar_a_rutafv', 'incidencia'],
+      listo_para_rutafv: ['enviar_a_rutafv', 'incidencia'],
+      incidencia: ['comprada', 'enviar_a_rutafv', 'mercancia_recogida']
+    }[status] || []);
+    if (!allowed.length) return '<span class="msg">Sin acciones pendientes</span>';
+    const opts = actions.filter(([value]) => allowed.includes(value)).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+    return `<select class="fvmActionSelect" onchange="fvmRunProcurementAction('${esc(order.id)}',this.value,'',this)"><option value="">Seleccionar acción…</option>${opts}</select>`;
+  }
+
+  function incidentNote(order) {
+    const rows = Array.isArray(order.procurementActions) ? order.procurementActions.filter(x => x.action === 'incidencia') : [];
+    const last = rows.sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))).pop();
+    return String(last?.metadata?.note || last?.note || '').trim();
+  }
+
+  function checklist(order) {
+    const status = String(order.status || ''), rank = { pagado: 0, en_compra_proveedor: 1, mercancia_recogida: 2, listo_para_rutafv: 3, enviado_a_rutafv: 4, en_reparto: 5, entregado: 6 }[status] ?? -1;
+    const tasks = Array.isArray(order.procurementTasks) ? order.procurementTasks : [];
+    const bought = tasks.length ? tasks.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
+    const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
+    const incident = status === 'incidencia' || (Array.isArray(order.procurementActions) && order.procurementActions.some(x => x.action === 'incidencia'));
+    const steps = [['Pendiente compra al proveedor', true], ['Comprado', bought], ['Incidencia', incident], ['Recogido', collected], ['Reembolsado', ['reembolso_parcial', 'reembolsado'].includes(status)], ['Cancelado', status === 'cancelado']];
+    const note = incidentNote(order);
+    return '<div class="fvmChecklist">' + steps.map(([label, done]) => `<label class="${done ? 'done' : ''}"><input type="checkbox" disabled ${done ? 'checked' : ''}><span>${label}</span></label>`).join('') + (note ? `<div class="fvmIncidentNote"><b>Nota de incidencia:</b> ${esc(note)}</div>` : '') + '</div>';
+  }
+
   function card(order) {
-    const isPaid = !['pendiente_pago', 'cancelado'].includes(String(order.status));
     const items = (order.items || []).map(i => `<div>${esc(i.title || i.ref || 'Producto')} × ${Number(i.qty || 1)} · ${money(i.lineTotal)}</div>`).join('');
-    const supplier = (order.supplierSummary || []).map(t => `${esc(t.name)} (${esc(t.status || 'pendiente')})`).join(', ') || 'Proveedor pendiente';
-    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus ${isPaid ? 'paid' : 'pending'}">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedores:</b> ${supplier}<br><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.delivery)}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div><div style="margin-top:9px">${actionSelect(order)}</div></article>`;
+    const supplierRows = (order.supplierSummary || []).map(t => { const estimate=t.deliveryEstimate||{}; const location=[t.island, t.address].filter(Boolean).join(' · '); return `<div><b>${esc(t.name)}</b> (${esc(t.status || 'pendiente')})${location?` · ${esc(location)}`:''}<br><span>Entrega estimada del proveedor: <b>${esc(estimate.label || 'Pendiente de calcular')}</b></span></div>`; }).join('') || 'Proveedor pendiente';
+    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.delivery)}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}<div style="margin-top:9px">${actionSelect(order)}</div></article>`;
   }
+
   function renderBoard(data) {
-    lastBoard = data; const orders = data.orders || [];
-    const pending = orders.filter(o => o.status === 'pendiente_pago'); const paidOrders = orders.filter(o => o.status !== 'pendiente_pago');
+    const orders = (data.orders || []).filter(order => paymentStatuses.has(String(order.status || '')) && paidStatuses.has(String(order.status || '')));
     const host = $('fvmControlBoard'); if (!host) return;
-    host.innerHTML = `<div class="fvmBoard"><section class="fvmBoardColumn pending"><h3>Pedidos pendientes (${pending.length})</h3>${pending.map(card).join('') || '<div class="fvmBoardEmpty">No hay pedidos pendientes.</div>'}</section><section class="fvmBoardColumn paid"><h3>Pedidos pagados y aprovisionamiento (${paidOrders.length})</h3>${paidOrders.map(card).join('') || '<div class="fvmBoardEmpty">Cuando un cliente pague, el pedido aparecerá aquí.</div>'}</section></div>`;
+    host.innerHTML = `<div class="fvmBoard"><section class="fvmBoardColumn paid"><h3>Pedidos pagados pendientes de compra al proveedor (${orders.length})</h3>${orders.map(card).join('') || '<div class="fvmBoardEmpty">No hay pedidos pagados pendientes de adquirir al proveedor.</div>'}</section></div>`;
   }
-  async function loadBoard() { const host = $('fvmControlBoard'); if (!host) return; host.innerHTML = '<div class="empty">Cargando pedidos…</div>'; try { renderBoard(await api('/api/admin/procurement-board')); } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; } }
-  function renderPurchases(data) {
-    const host = $('fvmPurchasesList'); if (!host) return;
-    const rows = data.rows || [];
-    purchaseStatusByOrder = Object.fromEntries(rows.map(row => [row.orderId, row.status]));
-    host.innerHTML = `<div class="fvmFilterBar"><input id="fvmPurchaseQ" placeholder="Buscar pedido, producto o referencia" value="${esc($('fvmPurchaseQ')?.value || '')}"><input id="fvmPurchaseSupplier" placeholder="Proveedor" value="${esc($('fvmPurchaseSupplier')?.value || '')}"><select id="fvmPurchaseStatus"><option value="">Todos los estados</option>${['pendiente_compra','comprada','recogida','recibida','lista','incidencia'].map(s => `<option ${String($('fvmPurchaseStatus')?.value || '') === s ? 'selected' : ''}>${s}</option>`).join('')}</select><button class="btn navy" id="fvmPurchaseFilter">Filtrar</button></div><p class="sub">${rows.length} compras en seguimiento · Coste registrado: ${money(data.totals?.cost || 0)}</p><div class="fvmProcurementTable"><table><thead><tr><th>Pedido pagado</th><th>Proveedor</th><th>Producto / cantidad</th><th>Origen y referencia</th><th>Coste</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${rows.map(r => `<tr><td><b>${esc(r.orderNumber)}</b><br><small>${r.paidAt ? new Date(r.paidAt).toLocaleString('es-ES') : 'Pago pendiente de fecha'}</small></td><td><b>${esc(r.supplierName)}</b><br><small>${esc(r.supplierId || 'Sin código')}</small></td><td>${(r.items || []).map(i => `${esc(i.title || i.ref)} × ${Number(i.qty || 1)}`).join('<br>')}</td><td class="sourceData">${(r.items || []).map(i => `<b>Ref. FV:</b> ${esc(i.ref || '—')}<br><b>Ref. proveedor:</b> ${esc(i.sourceRef || '—')}`).join('<hr style="border:0;border-top:1px solid #edf1f4">')}</td><td>${money(r.actualCost || r.sourceCost)}<br><small>Origen estimado</small></td><td><span class="fvmBoardStatus ${r.taskStatus === 'incidencia' ? 'pending' : 'paid'}">${esc(r.taskStatus)}</span></td><td>${actionSelect({ id: r.orderId }, r.taskId)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">No hay compras que coincidan.</td></tr>'}</tbody></table></div>`;
-    $('fvmPurchaseFilter').onclick = loadPurchases;
+
+  async function loadBoard() {
+    const host = $('fvmControlBoard'); if (!host) return;
+    host.innerHTML = '<div class="empty">Cargando pedidos pagados…</div>';
+    try { renderBoard(await api('/api/admin/procurement-board')); } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
   }
-  async function loadPurchases() { const host = $('fvmPurchasesList'); if (!host) return; const q = new URLSearchParams({ q: $('fvmPurchaseQ')?.value || '', supplier: $('fvmPurchaseSupplier')?.value || '', status: $('fvmPurchaseStatus')?.value || '' }); try { renderPurchases(await api('/api/admin/purchases?' + q.toString())); } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; } }
-  async function loadSupplierAccounting() { const host = $('fvmSupplierAccounting'); if (!host) return; const q = new URLSearchParams({ q: $('fvmAccountingQ')?.value || '', supplier: $('fvmAccountingSupplier')?.value || '', from: $('fvmAccountingFrom')?.value || '', to: $('fvmAccountingTo')?.value || '' }); try { const d = await api('/api/admin/purchases?' + q.toString()); host.innerHTML = `<div class="fvmFilterBar"><input id="fvmAccountingQ" placeholder="Pedido, producto o referencia" value="${esc($('fvmAccountingQ')?.value || '')}"><input id="fvmAccountingSupplier" placeholder="Proveedor" value="${esc($('fvmAccountingSupplier')?.value || '')}"><input id="fvmAccountingFrom" type="date" value="${esc($('fvmAccountingFrom')?.value || '')}"><input id="fvmAccountingTo" type="date" value="${esc($('fvmAccountingTo')?.value || '')}"><button class="btn navy" id="fvmAccountingFilter">Filtrar</button></div><p class="sub">${d.rows.length} registros · ${money(d.totals?.cost || 0)} de coste de proveedor</p><div class="fvmProcurementTable"><table><thead><tr><th>Fecha</th><th>Proveedor</th><th>Pedido</th><th>Producto</th><th>Estado</th><th>Coste</th></tr></thead><tbody>${d.rows.map(r => `<tr><td>${new Date(r.paidAt || r.createdAt).toLocaleString('es-ES')}</td><td>${esc(r.supplierName)}</td><td>${esc(r.orderNumber)}</td><td>${(r.items || []).map(i => `${esc(i.title)} × ${Number(i.qty || 1)}<br><small>Ref. ${esc(i.sourceRef || i.ref || '—')}</small>`).join('<br>')}</td><td>${esc(r.taskStatus)}</td><td><b>${money(r.actualCost || r.sourceCost)}</b></td></tr>`).join('') || '<tr><td colspan="6" class="empty">No hay compras para esos filtros.</td></tr>'}</tbody></table></div>`; $('fvmAccountingFilter').onclick = loadSupplierAccounting; } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; } }
-  async function loadNotifications() { const host = $('fvmNotifications'); if (!host) return; try { const rows = await api('/api/admin/notifications'); host.innerHTML = rows.map(n => `<div class="fvmNotification ${n.read ? '' : 'unread'}"><div>🔔</div><div><b>${esc(n.title)}</b><small>${esc(n.message)} · ${new Date(n.createdAt).toLocaleString('es-ES')}</small></div>${n.read ? '' : `<button class="btn ghost" onclick="fvmReadNotification('${esc(n.id)}')">Marcar leída</button>`}</div>`).join('') || '<div class="empty">No hay notificaciones.</div>'; } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; } }
-  window.fvmRunProcurementAction = async function (orderId, action, taskId, select) { if (!action) return; if (action === 'incidencia' && !confirm('¿Registrar una incidencia para este pedido?')) { if (select) select.value = ''; return; } const note = action === 'incidencia' ? prompt('Describe brevemente la incidencia:', '') : ''; const cost = action === 'comprada' ? prompt('Coste real de compra (opcional):', '') : ''; try { await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/procurement-action', { method: 'POST', body: JSON.stringify({ action, taskId: taskId || '', note: note || '', actualCost: cost == null || cost === '' ? undefined : Number(String(cost).replace(',', '.')) }) }); await Promise.all([loadBoard(), loadPurchases(), loadNotifications()]); } catch (e) { alert(e.message); if (select) select.value = ''; } };
+
+  async function loadNotifications() {
+    const host = $('fvmNotifications'); if (!host) return;
+    try {
+      const rows = await api('/api/admin/notifications');
+      host.innerHTML = rows.map(n => `<div class="fvmNotification ${n.read ? '' : 'unread'}"><div>🔔</div><div><b>${esc(n.title)}</b><small>${esc(n.message)} · ${new Date(n.createdAt).toLocaleString('es-ES')}</small></div>${n.read ? '' : `<button class="btn ghost" onclick="fvmReadNotification('${esc(n.id)}')">Marcar leída</button>`}</div>`).join('') || '<div class="empty">No hay notificaciones.</div>';
+    } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
+  }
+
+  window.fvmRunProcurementAction = async function (orderId, action, taskId, select) {
+    if (!action) return;
+    if (action === 'incidencia' && !confirm('¿Registrar una incidencia para este pedido?')) { if (select) select.value = ''; return; }
+    const note = action === 'incidencia' ? prompt('Describe la incidencia. Esta nota quedará guardada en la trazabilidad:', '') : '';
+    if (action === 'incidencia' && !String(note || '').trim()) { alert('Debes indicar una nota para la incidencia.'); if (select) select.value = ''; return; }
+    const purchaseReference = action === 'comprada' ? prompt('Referencia, ticket o factura de la compra (opcional):', '') : '';
+    const cost = action === 'comprada' ? prompt('Coste real de compra (opcional):', '') : '';
+    if (action === 'enviar_a_rutafv' && !confirm('¿Crear ahora el reparto en RutaFV para este pedido?')) { if (select) select.value = ''; return; }
+    try {
+      await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/procurement-action', { method: 'POST', body: JSON.stringify({ action, taskId: taskId || '', note: note || '', purchaseReference: purchaseReference || '', actualCost: cost == null || cost === '' ? undefined : Number(String(cost).replace(',', '.')) }) });
+      await Promise.all([loadBoard(), loadNotifications()]);
+    } catch (e) { alert(e.message); if (select) select.value = ''; }
+  };
+
   window.fvmReadNotification = async function (id) { try { await api('/api/admin/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' }); loadNotifications(); } catch (e) { alert(e.message); } };
+
   function mount() {
     if (mounted || !$('panel') || !document.querySelector('.navin')) return;
-    mounted = true; addStyle();
+    mounted = true; addStyle(); removeLegacySections();
     const role = session?.user?.role || 'admin';
     if (!['admin', 'orders_manager'].includes(role)) return;
-    newTab('control', '📋 Tablero'); newTab('procurement', '🛒 Aprovisionamiento'); newTab('notifications', '🔔 Avisos');
-    newView('control', '<div class="bar"><div><h2 style="margin:0">Tablero de pedidos</h2><p class="sub" style="margin:5px 0 0">Los pedidos pagados pasan aquí para que FVMarket gestione la compra al proveedor.</p></div><button class="btn navy" id="fvmBoardRefresh">Actualizar</button></div><div id="fvmControlBoard"></div>');
-    newView('procurement', '<div class="bar"><div><h2 style="margin:0">Compras y trazabilidad</h2><p class="sub" style="margin:5px 0 0">Cada línea conserva proveedor, referencia de origen, coste y estado de compra.</p></div><button class="btn navy" id="fvmPurchasesRefresh">Actualizar</button></div><div id="fvmPurchasesList"></div>');
-    newView('notifications', '<div class="bar"><div><h2 style="margin:0">Avisos al administrador</h2><p class="sub" style="margin:5px 0 0">Los pagos confirmados aparecen aquí para iniciar el aprovisionamiento.</p></div><button class="btn navy" id="fvmNotificationsRefresh">Actualizar</button></div><div id="fvmNotifications"></div>');
-    $('fvmBoardRefresh').onclick = loadBoard; $('fvmPurchasesRefresh').onclick = loadPurchases; $('fvmNotificationsRefresh').onclick = loadNotifications;
-    const accountingTab = document.querySelector('[data-view="accounting"]');
-    if (accountingTab && $('view-accounting')) { const holder = document.createElement('div'); holder.className = 'card'; holder.style.marginTop = '16px'; holder.innerHTML = '<h3>Compras por proveedor</h3><p class="sub">Busca y filtra los costes de aprovisionamiento.</p><div id="fvmSupplierAccounting"></div>'; $('view-accounting').appendChild(holder); }
-    [...document.querySelectorAll('.tab')].filter(x => ['control', 'procurement', 'notifications'].includes(x.dataset.view)).forEach(x => x.onclick = () => show(x.dataset.view));
+    newTab('control', '📋 Tablero'); newTab('notifications', '🔔 Avisos');
+    newView('control', '<div class="bar"><div><h2 style="margin:0">Tablero de pedidos</h2><p class="sub" style="margin:5px 0 0">Aquí solo aparecen pedidos pagados pendientes de adquirir al proveedor de FVMarket.</p></div><button class="btn navy" id="fvmBoardRefresh">Actualizar</button></div><div id="fvmControlBoard"></div>');
+    newView('notifications', '<div class="bar"><div><h2 style="margin:0">Avisos</h2><p class="sub" style="margin:5px 0 0">Pagos confirmados e incidencias internas.</p></div><button class="btn navy" id="fvmNotificationsRefresh">Actualizar</button></div><div id="fvmNotifications"></div>');
+    $('fvmBoardRefresh').onclick = loadBoard; $('fvmNotificationsRefresh').onclick = loadNotifications;
+    [...document.querySelectorAll('.tab')].filter(x => ['control', 'notifications'].includes(x.dataset.view)).forEach(x => x.onclick = () => show(x.dataset.view));
+    loadBoard();
   }
-  const timer = setInterval(() => { if (document.querySelector('[data-view="operations"]') || $('panel')) { mount(); if (mounted) clearInterval(timer); } }, 300);
+
+  const timer = setInterval(() => { if ($('panel')) { mount(); if (mounted) clearInterval(timer); } }, 300);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else setTimeout(mount, 500);
 })();
