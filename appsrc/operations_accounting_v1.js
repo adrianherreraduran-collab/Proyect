@@ -171,7 +171,7 @@ function syncProcurementTasks(d, order) {
     const current = grouped.get(key) || { supplierId: s.id, supplierName: s.name, supplier, items: [], sourceCost: 0 };
     const qty = Math.max(1, Number(item.qty) || 1);
     const sourcePrice = Number(item.procurement?.sourcePrice || 0);
-    current.items.push({ productId: item.productId, title: item.title, ref: item.ref, sourceRef: item.procurement?.sourceRef || '', qty, sourcePrice });
+    current.items.push({ productId: item.productId, title: item.title, ref: item.ref, sourceRef: item.procurement?.sourceRef || '', qty, weightKg: Number(item.weightKg || item.procurement?.weightKg || 0), totalWeightKg: Number(item.totalWeightKg || (Number(item.weightKg || item.procurement?.weightKg || 0) * qty)), sourcePrice });
     current.sourceCost = money(current.sourceCost + sourcePrice * qty);
     grouped.set(key, current);
   }
@@ -359,7 +359,7 @@ function registerOperationsRoutes(app, deps) {
         fulfillmentModel: 'sin_stock_fisico',
         deliveryMode: 'normal',
         express: false,
-        items: (order.items || []).map(x => ({ productId: x.productId, ref: x.ref, title: x.title, qty: x.qty }))
+        items: (order.items || []).map(x => ({ productId: x.productId, ref: x.ref, title: x.title, qty: x.qty, weightKg: Number(x.weightKg || x.procurement?.weightKg || 0), totalWeightKg: Number(x.totalWeightKg || (Number(x.weightKg || x.procurement?.weightKg || 0) * Number(x.qty || 1))) }))
       };
       const response = await rutaFVRequest(RUTAFV_DELIVERY_PATH, payload);
       order.transport.deliveryId = String(response.id || response.deliveryId || response.expeditionId || '');

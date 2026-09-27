@@ -19,7 +19,7 @@ function fixture() {
       id: 'p1', title: 'Taladro profesional', ref: 'FVM-TAL-01', price: 100,
       published: true, sourceProvider: 'Proveedor Uno', sourceRef: 'SRC-42',
       sourceUrl: 'https://supplier.example/item', sourcePrice: 60, margin: 40,
-      supplierId: 'sup1', images: [{ url: 'https://images.example/taladro.jpg', license: 'private' }]
+      supplierId: 'sup1', weightKg: 12.5, images: [{ url: 'https://images.example/taladro.jpg', license: 'private' }]
     }],
     orders: [], quotes: [], invoices: [], suppliers: [{ id: 'sup1', name: 'Proveedor Uno' }]
   };
@@ -60,6 +60,8 @@ test('el pedido conserva trazabilidad privada y separa transporte', () => {
   assert.equal(built.order.subtotal, 200);
   assert.equal(built.order.delivery, 18.5);
   assert.equal(built.order.total, 218.5);
+  assert.equal(built.order.items[0].weightKg, 12.5);
+  assert.equal(built.order.items[0].totalWeightKg, 25);
   assert.equal(built.order.items[0].procurement.sourceRef, 'SRC-42');
   assert.equal(server.publicOrder(built.order).items[0].procurement, undefined);
 });
