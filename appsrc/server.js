@@ -482,7 +482,7 @@ function buildOrderFromQuote(d,q,user){
     const p=(d.products||[]).find(x=>x.id===item.productId)||{};
     const qty=Math.max(1,Math.min(99,Number(item.qty)||1));
     const unit=moneyRound(Number(item.unitPrice||0));
-    return {productId:String(item.productId||p.id||''),title:String(item.title||p.title||'Producto FVMarket'),ref:String(item.ref||p.ref||''),unitPrice:unit,regularUnitPrice:Number(p.price||unit),discountPct:Number(p.discountPct||0),qty,lineTotal:moneyRound(Number(item.lineTotal||unit*qty)),procurement:{supplierId:String(p.supplierId||''),provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0},weightKg:Number(p.weightKg||p.weight||p.shippingWeightKg||0)}};
+    return {productId:String(item.productId||p.id||''),title:String(item.title||p.title||'Producto FVMarket'),ref:String(item.ref||p.ref||''),unitPrice:unit,regularUnitPrice:Number(p.price||unit),discountPct:Number(p.discountPct||0),qty,lineTotal:moneyRound(Number(item.lineTotal||unit*qty)),procurement:{supplierId:String(p.supplierId||''),provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0},weightKg:Number(p.weightKg||p.weight||p.shippingWeightKg||0)};
   }).filter(x=>x.title&&x.qty>0);
   if(!items.length)return {error:'El presupuesto no contiene productos válidos'};
   const name=String(q.customer?.name||user.name||[user.firstName,user.lastName].filter(Boolean).join(' ')||'').trim();
