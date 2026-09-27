@@ -13,6 +13,7 @@ const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
 const {registerProviderSourceRoutes} = require('./supplier_capture_v13');
 const persistence = require('./persistent_store_v17');
+const databaseBackup = require('./database_backup_v1');
 const transactionalEmails = require('./transactional_emails');
 const operations = require('./operations_accounting_v1');
 const procurementV2 = require('./procurement_v2');
@@ -129,6 +130,19 @@ function ensureCatalogData(d){
 }
 function seed(){return {users:[],products:cloneDefaultProducts(),orders:[],quotes:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2));persistence.persist(d)}
+function normalizeState(d){
+  const before=JSON.stringify(d);
+  ensureAdmin(d);ensureCatalogData(d);ensureCatalogProducts(d);
+  ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);
+  return JSON.stringify(d)!==before;
+}
+function writeStateAtomically(raw){const temporary=DATA_FILE+'.next';fs.writeFileSync(temporary,raw);fs.renameSync(temporary,DATA_FILE)}
+async function replaceState(d){
+  const raw=JSON.stringify(d,null,2),previous=fs.existsSync(DATA_FILE)?fs.readFileSync(DATA_FILE,'utf8'):'';
+  writeStateAtomically(raw);
+  try{await persistence.replace(raw)}catch(error){try{if(previous)writeStateAtomically(previous)}catch(rollbackError){console.error('FVMarket database rollback failed:',rollbackError.message)}throw error;}
+  return d;
+}
 function ensureAdmin(d){
   if(!Array.isArray(d.users))d.users=[];
   d.settings=d.settings||{};
@@ -165,15 +179,10 @@ function ensureCatalogProducts(d){
 function read(){
   try{
     const d=JSON.parse(fs.readFileSync(DATA_FILE,'utf8'));
-    const before=JSON.stringify(d);
-    const changedAdmin=ensureAdmin(d);
-    const changedCatalogData=ensureCatalogData(d);
-    const changedCatalog=ensureCatalogProducts(d);
-    ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);
-    if(changedAdmin||changedCatalogData||changedCatalog||JSON.stringify(d)!==before)save(d);
+    if(normalizeState(d))save(d);
     return d;
   }catch(e){
-    const d=seed();ensureAdmin(d);ensureCatalogData(d);ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);save(d);return d;
+    const d=seed();normalizeState(d);save(d);return d;
   }
 }
 function id(prefix){return prefix+'_'+crypto.randomBytes(7).toString('hex')}
@@ -738,6 +747,29 @@ app.put('/api/admin/settings',admin,(req,res)=>{
     d.settings.rutaFVOriginAuto=true;
   }
   save(d);res.json(d.settings)
+});
+app.get('/api/admin/database/export',admin,(req,res)=>{
+  const backup=databaseBackup.createBackup(read());
+  const stamp=backup.exportedAt.replace(/[:.]/g,'-');
+  res.set('Content-Disposition',`attachment; filename="fvmarket-backup-${stamp}.json"`);
+  res.type('application/json').send(JSON.stringify(backup,null,2));
+});
+app.post('/api/admin/database/import',admin,async(req,res)=>{
+  try{
+    const current=read();
+    const imported=databaseBackup.preserveAdministrators(databaseBackup.parseBackup(req.body?.backup),current.users);
+    normalizeState(imported);await replaceState(imported);
+    res.json({ok:true,message:'Copia importada correctamente. Las cuentas administradoras existentes se han mantenido.'});
+  }catch(error){res.status(400).json({error:error.message||'No se pudo importar la copia.'})}
+});
+app.post('/api/admin/database/reset',admin,async(req,res)=>{
+  if(String(req.body?.confirmation||'').trim()!=='REINICIAR')return res.status(400).json({error:'Confirma el reinicio escribiendo REINICIAR.'});
+  try{
+    const current=read();
+    const fresh=databaseBackup.initialState(seed(),current.users);
+    normalizeState(fresh);await replaceState(fresh);
+    res.json({ok:true,message:'La base de datos se ha reiniciado. Se han mantenido las cuentas administradoras.'});
+  }catch(error){res.status(500).json({error:error.message||'No se pudo reiniciar la base de datos.'})}
 });
 app.get('/api/admin/invoices',ordersManager,(req,res)=>{const d=read();res.json(d.invoices.slice().sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice))});
 

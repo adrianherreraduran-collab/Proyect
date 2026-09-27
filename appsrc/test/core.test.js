@@ -8,6 +8,7 @@ const server = require('../server')._test;
 const operations = require('../operations_accounting_v1');
 const procurement = require('../procurement_v2');
 const emails = require('../transactional_emails');
+const databaseBackup = require('../database_backup_v1');
 
 function fixture() {
   return {
@@ -103,10 +104,25 @@ test('la tienda inicia sin sesión ni búsqueda y ofrece Stripe con métodos din
   assert.match(index, /resetStorefrontStartState/);
   assert.match(index, /localStorage\.removeItem\('fv_session'\)/);
   assert.match(index, /Klarna y otros métodos disponibles para tu compra/);
+  assert.doesNotMatch(index, /Productos destacados/);
+  assert.doesNotMatch(index, /Buscar por producto o referencia/);
+  assert.match(index, /Buscar productos, marcas o referencias/);
   assert.doesNotMatch(source, /payment_method_types\s*:/);
   assert.match(source, /integration_identifier:stripeIntegrationIdentifier\(\)/);
   assert.match(source, /checkout\.session\.async_payment_succeeded/);
   assert.doesNotMatch(index, /placeTransfer|Pendiente de transferencia/);
   assert.equal((index.match(/<\/body>/g) || []).length, 1);
   assert.equal((index.match(/<\/html>/g) || []).length, 1);
+});
+
+test('las copias de seguridad comprueban su integridad y conservan los administradores', () => {
+  const state = fixture();
+  state.users = [{ id: 'admin-actual', role: 'admin', username: 'admin', password: 'hash' }, { id: 'customer', role: 'customer' }];
+  const backup = databaseBackup.createBackup(state, '2026-09-27T12:00:00.000Z');
+  const restored = databaseBackup.parseBackup(backup);
+  assert.equal(restored.products[0].id, 'p1');
+  restored.users = [];
+  const protectedState = databaseBackup.preserveAdministrators(restored, state.users);
+  assert.deepEqual(protectedState.users.map(user => user.id), ['admin-actual']);
+  assert.throws(() => databaseBackup.parseBackup({ ...backup, checksum: '0'.repeat(64) }), /integridad/i);
 });
