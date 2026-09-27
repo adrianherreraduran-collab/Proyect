@@ -3,19 +3,6 @@
   const paidStatuses = new Set(['pagado','en_compra_proveedor','mercancia_recogida','listo_para_rutafv','enviado_a_rutafv','en_reparto','entregado','incidencia','reembolso_parcial','reembolsado']);
   const isPaid = order => order?.paymentState === 'paid' || !!order?.paidAt || paidStatuses.has(String(order?.status || ''));
   const isCompleted = order => String(order?.status || '') === 'entregado';
-  const ensurePendingCard = () => {
-    if (document.getElementById('fvmPendingOrdersCard')) return;
-    const view = document.getElementById('view-orders');
-    const first = view?.querySelector('.card');
-    if (!first) return;
-    const card = document.createElement('div');
-    card.id = 'fvmPendingOrdersCard';
-    card.className = 'card';
-    card.style.marginTop = '16px';
-    card.innerHTML = '<div class="bar"><div><h2 style="margin:0">Presupuestos y pedidos pendientes de pago</h2><p class="sub" style="margin:5px 0 0">Mientras el pago no esté confirmado, permanecen aquí y no se mezclan con los pedidos operativos.</p></div><button class="btn navy" type="button" id="fvmPendingOrdersRefresh">Actualizar</button></div><div style="overflow:auto"><table><thead><tr><th>Nº</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="fvmPendingOrders"></tbody></table></div>';
-    first.insertAdjacentElement('afterend', card);
-    document.getElementById('fvmPendingOrdersRefresh').onclick = window.loadOrders;
-  };
   const ensureCompletedCard = () => {
     if (document.getElementById('fvmCompletedOrdersCard')) return;
     const view = document.getElementById('view-orders');
@@ -63,17 +50,13 @@
     return payment + refund;
   };
   const paidRow = order => `<tr><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES')}</td><td>${Number(order.total).toFixed(2)} €</td><td>${esc(order.paymentMethod)}</td><td>${source(order)}${supplierEstimate(order)}</td><td>${checklist(order)}</td><td>${actions(order)}</td></tr>`;
-  const pendingRow = order => `<tr><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES')}</td><td><b>${esc(order.customer?.name || '')}</b><br><small>${esc(order.customer?.email || '')}</small></td><td>${money(order.total)}</td><td><span class="badge">${esc(order.statusLabel || 'Pendiente de pago')}</span></td><td>${actions(order)}</td></tr>`;
   const completedRow = order => `<tr><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES')}</td><td><b>${esc(order.customer?.name || '')}</b><br><small>${esc(order.customer?.email || '')}</small></td><td>${money(order.total)}</td><td><span class="badge">${esc(order.statusLabel || 'Entregado')}</span></td><td>${order.workflow?.deliveredAt ? new Date(order.workflow.deliveredAt).toLocaleString('es-ES') : '—'}</td></tr>`;
   window.loadOrders = async function loadOrders() {
-    ensurePendingCard();
     ensureCompletedCard();
     const all = await api('/api/admin/orders');
-    const paid = all.filter(order => isPaid(order) && !isCompleted(order)), pending = all.filter(order => !isPaid(order)), completed = all.filter(isCompleted);
+    const paid = all.filter(order => isPaid(order) && !isCompleted(order)), completed = all.filter(isCompleted);
     statOrders.textContent = paid.length;
     orders.innerHTML = paid.map(paidRow).join('') || '<tr><td colspan="7" class="empty">No hay pedidos pagados.</td></tr>';
-    const pendingHost = document.getElementById('fvmPendingOrders');
-    if (pendingHost) pendingHost.innerHTML = pending.map(pendingRow).join('') || '<tr><td colspan="6" class="empty">No hay presupuestos pendientes de pago.</td></tr>';
     const completedHost = document.getElementById('fvmCompletedOrders');
     if (completedHost) completedHost.innerHTML = completed.map(completedRow).join('') || '<tr><td colspan="6" class="empty">Todavía no hay pedidos completados.</td></tr>';
   };
