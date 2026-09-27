@@ -177,8 +177,30 @@ test('las copias de seguridad comprueban su integridad y conservan los administr
   assert.throws(() => databaseBackup.parseBackup({ ...backup, checksum: '0'.repeat(64) }), /integridad/i);
 });
 
+test('reiniciar elimina todos los productos incluso tras normalizar y conserva la taxonomía', () => {
+  const current = {
+    users: [{ id: 'admin-actual', role: 'admin' }, { id: 'cliente', role: 'customer' }],
+    products: [{ id: 'p1', published: true }, { id: 'p2', published: false }],
+    orders: [{ id: 'o1' }], quotes: [{ id: 'q1' }],
+    settings: {
+      categories: ['Construcción', 'Categoría creada'],
+      subcategories: { 'Construcción': ['Cemento especial'], 'Categoría creada': ['Subcategoría creada'] }
+    }
+  };
+  const reset = server.resetDatabaseState(current);
+  assert.deepEqual(reset.products, []);
+  assert.deepEqual(reset.users.map(user => user.id), ['admin-actual']);
+  assert.equal(reset.settings.categories.includes('Categoría creada'), true);
+  assert.deepEqual(reset.settings.subcategories['Categoría creada'], ['Subcategoría creada']);
+  server.normalizeState(reset);
+  assert.deepEqual(reset.products, [], 'la normalización no debe reponer productos semilla');
+  assert.equal(reset.settings.categories.includes('Categoría creada'), true);
+  assert.equal(reset.settings.subcategories['Categoría creada'].includes('Subcategoría creada'), true);
+});
+
 test('el catálogo interno muestra ubicación del proveedor y elimina la forma de adquisición', () => {
   const admin = fs.readFileSync(path.join(__dirname, '..', 'public', 'admin.html'), 'utf8');
+  const databaseUi = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-database-v1.js'), 'utf8');
   const suppliers = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-v13.js'), 'utf8');
   const board = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-control-v2.js'), 'utf8');
   const ordersUi = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-orders-v1.js'), 'utf8');
@@ -187,6 +209,7 @@ test('el catálogo interno muestra ubicación del proveedor y elimina la forma d
   assert.doesNotMatch(suppliers, /Forma de adquisición/);
   assert.doesNotMatch(admin, /Almacén virtual/);
   assert.doesNotMatch(admin, /fvmarket-operations-v1\.js/);
+  assert.match(databaseUi, /Elimina todos los pedidos y productos/);
   assert.match(ordersUi, /Entrega estimada proveedor/);
   assert.match(board, /Entrega estimada del proveedor/);
 });

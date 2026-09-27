@@ -111,13 +111,6 @@ function ensureCatalogData(d){
     d.products=validProducts;
     changed=true;
   }
-  if(!d.products.length){
-    d.products=cloneDefaultProducts();
-    d.settings=d.settings||{};
-    d.settings.catalogRecovery='seed_default_products';
-    d.settings.catalogRecoveryAt=new Date().toISOString();
-    changed=true;
-  }
   for(const p of d.products){
     // Products from the pre-publication schema were visible by default. Restore
     // that behavior only when the field never existed; explicit drafts remain drafts.
@@ -128,7 +121,20 @@ function ensureCatalogData(d){
   }
   return changed;
 }
-function seed(){return {users:[],products:cloneDefaultProducts(),orders:[],quotes:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
+function seed({emptyProducts=false}={}){return {users:[],products:emptyProducts?[]:cloneDefaultProducts(),orders:[],quotes:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
+function resetDatabaseState(current={}){
+  const fresh=databaseBackup.initialState(seed({emptyProducts:true}),Array.isArray(current.users)?current.users:[]);
+  const currentSettings=current.settings&&typeof current.settings==='object'?current.settings:{};
+  const categories=Array.isArray(currentSettings.categories)?currentSettings.categories.map(String).map(x=>x.trim()).filter(Boolean):[];
+  const subcategories={};
+  if(currentSettings.subcategories&&typeof currentSettings.subcategories==='object'){
+    for(const [category,values] of Object.entries(currentSettings.subcategories)){
+      if(Array.isArray(values))subcategories[String(category)]=[...new Set(values.map(String).map(x=>x.trim()).filter(Boolean))];
+    }
+  }
+  fresh.settings={...fresh.settings,categories:categories.length?[...new Set(categories)]:fresh.settings.categories,subcategories:Object.keys(subcategories).length?subcategories:fresh.settings.subcategories};
+  return fresh;
+}
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2));persistence.persist(d)}
 function normalizeState(d){
   const before=JSON.stringify(d);
@@ -163,18 +169,10 @@ function ensureAdmin(d){
   return changed;
 }
 function ensureCatalogProducts(d){
-  if(!Array.isArray(d.products))d.products=[];
-  const visible=d.products.some(p=>p&&p.published===true&&p.warehouseStatus!=='retired');
-  if(visible)return false;
-  if(!d.products.length||d.products.every(p=>!p||p.warehouseStatus==='retired')){
-    d.products=defaultProducts.map(p=>({...p}));
-    return true;
-  }
-  let changed=false;
-  for(const p of d.products){
-    if(p&&p.warehouseStatus!=='retired'&&p.published!==true){p.published=true;changed=true}
-  }
-  return changed;
+  // An empty catalog is a valid intentional state (for example after a database
+  // reset). Never recreate seed products or publish drafts automatically.
+  if(!Array.isArray(d.products)){d.products=[];return true}
+  return false;
 }
 function read(){
   try{
@@ -356,7 +354,8 @@ function providerFromUrl(raw=''){
 function ensureCatalogSettings(d){
   d.settings=d.settings||{};
   const main=['Construcción','Herramientas','Fontanería','Electricidad','Pintura','Jardín','Baño y cocina','Bricolaje','Reformas'];
-  d.settings.categories=main.slice();
+  const configuredCategories=Array.isArray(d.settings.categories)?d.settings.categories.map(String).map(x=>x.trim()).filter(Boolean):[];
+  d.settings.categories=[...new Set([...main,...configuredCategories])];
   if(!d.settings.subcategories||typeof d.settings.subcategories!=='object')d.settings.subcategories={};
   const defaults={
     'Construcción':['Cementos y morteros','Bloques y ladrillos','Azulejos y pavimentos','Aislamiento','Madera'],
@@ -766,9 +765,9 @@ app.post('/api/admin/database/reset',admin,async(req,res)=>{
   if(String(req.body?.confirmation||'').trim()!=='REINICIAR')return res.status(400).json({error:'Confirma el reinicio escribiendo REINICIAR.'});
   try{
     const current=read();
-    const fresh=databaseBackup.initialState(seed(),current.users);
+    const fresh=resetDatabaseState(current);
     normalizeState(fresh);await replaceState(fresh);
-    res.json({ok:true,message:'La base de datos se ha reiniciado. Se han mantenido las cuentas administradoras.'});
+    res.json({ok:true,message:'La base de datos se ha reiniciado. Se han eliminado todos los pedidos y productos, y se han mantenido las cuentas administradoras, categorías y subcategorías.'});
   }catch(error){res.status(500).json({error:error.message||'No se pudo reiniciar la base de datos.'})}
 });
 app.get('/api/admin/invoices',ordersManager,(req,res)=>{const d=read();res.json(d.invoices.slice().sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice))});
@@ -1290,4 +1289,4 @@ registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeIte
 app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');res.sendFile(path.join(__dirname,'public','index.html'));});
 async function start(){try{await persistence.init();read()}catch(e){console.error('FVMarket persistence bootstrap:',e)}return app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`))}
 if(require.main===module)start();
-module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound}};
+module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState}};
