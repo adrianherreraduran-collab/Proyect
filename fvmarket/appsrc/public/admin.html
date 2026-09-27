@@ -1,0 +1,942 @@
+<!-- FVM_ADMIN_TABS_AUDIT_V2 -->
+<!-- FVM_ASSISTED_URL_V1 -->
+<!-- FVM_ADMIN_TAXONOMY_V2 -->
+<!-- FVM_ADMIN_FREEZE_FIX_V1 -->
+<!-- FVM_IMAGE_MULTISELECT_V3 -->
+<!-- FVM_IMAGE_MANAGER_V2 -->
+<!-- FVM_PROCUREMENT_ADMIN_UI_V1 -->
+<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FVMarket · Administración</title><script id="fvmAdminGateV14">(()=>{try{if(sessionStorage.getItem('fvm_admin_authorized_tab')!=='1'){location.replace('/?admin=login')}}catch(e){location.replace('/?admin=login')}})();</script><style>
+:root{--navy:#06345f;--navy2:#03264a;--lime:#82c341;--lime2:#5fa92f;--bg:#f4f7f9;--line:#dfe7ee;--ink:#10233f;--muted:#6b7787;--shadow:0 10px 30px rgba(3,52,95,.09)}*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--ink)}button,input,select,textarea{font:inherit}header{background:linear-gradient(120deg,var(--navy2),var(--navy));color:#fff}.top{max-width:1450px;margin:auto;padding:17px 24px;display:flex;align-items:center;gap:18px}.brand{font-size:27px;font-weight:950;letter-spacing:-1px}.brand span{color:var(--lime);font-style:italic}.top small{color:#dbe7f1}.spacer{flex:1}.back{color:#fff;text-decoration:none;border:1px solid #ffffff38;border-radius:9px;padding:9px 13px;font-size:12px;font-weight:800}.adminNav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}.navin{max-width:1450px;margin:auto;padding:0 24px;display:flex;gap:8px;overflow:auto}.tab{border:0;background:transparent;padding:15px 14px;font-size:12px;font-weight:850;color:#48617b;cursor:pointer;border-bottom:3px solid transparent;white-space:nowrap}.tab.active{color:var(--navy);border-color:var(--lime)}main{max-width:1450px;margin:24px auto;padding:0 24px}.heroAdmin{display:flex;gap:18px;justify-content:space-between;align-items:center;background:linear-gradient(120deg,var(--navy),#0c4c7e);color:white;border-radius:15px;padding:24px 26px;margin-bottom:20px;box-shadow:var(--shadow)}.heroAdmin h1{font-size:25px;margin:0 0 5px}.heroAdmin p{margin:0;color:#dbe7f1;font-size:13px}.heroAdmin .pill{background:var(--lime);color:#17320d;font-size:11px;font-weight:950;padding:9px 12px;border-radius:999px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:13px;margin-bottom:20px}.stat{background:white;border:1px solid var(--line);border-radius:12px;padding:17px;box-shadow:var(--shadow)}.stat b{font-size:24px;color:var(--navy);display:block}.stat small{color:var(--muted)}.view{display:none}.view.active{display:block}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:20px;box-shadow:var(--shadow)}.card h2{margin:0 0 7px;font-size:19px}.card .sub{font-size:12px;color:var(--muted);margin:0 0 16px;line-height:1.45}.wide{grid-column:1/-1}.field{margin:11px 0}.field label{display:block;font-size:11px;font-weight:900;margin-bottom:5px}.field input,.field textarea,.field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px;background:#fff;outline:none}.field input:focus,.field textarea:focus,.field select:focus{border-color:var(--lime);box-shadow:0 0 0 3px #82c34120}.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.btn{border:0;background:var(--lime);color:#17320d;padding:11px 15px;border-radius:8px;font-weight:950;cursor:pointer}.btn.navy{background:var(--navy);color:#fff}.btn.ghost{background:#eef4f8;color:var(--navy)}.btn.danger{background:#fff0f0;color:#a32929}.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bar h2{margin-right:auto}.msg{font-size:12px;margin-top:9px;color:#3e5670}.catalogDrop{border:2px dashed #bdd2df;background:#f8fbfd;border-radius:12px;padding:23px;text-align:center}.catalogDrop b{display:block;color:var(--navy);font-size:15px;margin-bottom:5px}.catalogDrop span{font-size:12px;color:var(--muted)}.catalogSteps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.step{background:#f4f8fb;border-radius:9px;padding:10px;font-size:11px}.step b{color:var(--lime2);display:block;margin-bottom:2px}.catalogResult{display:none;margin-top:18px}.catalogResult.show{display:block}.catalogTools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.catalogTable{overflow:auto;max-height:520px;border:1px solid var(--line);border-radius:10px}table{width:100%;border-collapse:collapse;font-size:11px;background:#fff}th,td{text-align:left;border-bottom:1px solid var(--line);padding:9px;vertical-align:middle}th{position:sticky;top:0;background:#f1f6f9;color:#48617b;z-index:1}.miniInput{width:105px!important;padding:7px!important}.miniTitle{min-width:250px!important}.candidateCheck{width:18px;height:18px}.badge{display:inline-block;padding:4px 7px;border-radius:999px;background:#e9f5df;color:#467b20;font-weight:850;font-size:10px}.empty{padding:25px;text-align:center;color:var(--muted)}.notice{background:#edf6e7;border-left:4px solid var(--lime);padding:11px 13px;border-radius:7px;font-size:12px;margin-top:13px}.sourceBox{display:flex;gap:8px}.sourceBox input{flex:1}.productPreview{display:grid;grid-template-columns:100px 1fr;gap:12px;background:#f8fbfd;border-radius:10px;padding:12px;margin-top:12px}.productPreview img{width:100px;height:90px;object-fit:contain;background:white;border-radius:8px}.ordersStatus{padding:5px 7px;border:1px solid var(--line);border-radius:6px}.authGuard{max-width:650px;margin:70px auto}.loginHint{font-size:12px;color:var(--muted)}.aiState{display:inline-flex;align-items:center;gap:7px;background:#eef6ff;border:1px solid #cfe0ef;color:var(--navy);border-radius:999px;padding:7px 10px;font-size:11px;font-weight:850;margin:10px 0}.aiState.ok{background:#edf8e7;border-color:#cfe7bf;color:#3f7421}.aiThumb{width:72px;height:58px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:7px;display:block;margin-top:6px}.aiMeta{font-size:10px;color:var(--muted);max-width:170px;line-height:1.25}.aiImages{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}.aiImage{border:2px solid var(--line);border-radius:9px;padding:7px;background:#f8fbfd;cursor:pointer;position:relative;transition:.15s}.aiImage:hover{border-color:#9fc97f}.aiImage.selected{border-color:var(--lime);background:#eff9e8;box-shadow:0 0 0 3px #82c34126}.aiImage.selected:after{content:"✓ Seleccionada";position:absolute;right:7px;top:7px;background:var(--lime);color:#17320d;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:950}.imagePickCount{grid-column:1/-1;background:#edf6ff;border:1px solid #cfe0ef;border-radius:8px;padding:9px 11px;font-size:11px;font-weight:900;color:var(--navy)}.imagePickCount.ready{background:#edf8e7;border-color:#cfe7bf;color:#3f7421}.aiImage img{width:100%;height:105px;object-fit:contain;background:#fff;border-radius:6px}.aiImage small{display:block;font-size:9px;color:var(--muted);margin-top:4px}.aiBusy{opacity:.55;pointer-events:none}.priceGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;background:#f5f9fc;border:1px solid var(--line);border-radius:10px;padding:11px;margin:12px 0}.priceGrid .field{margin:0}.priceGrid input{font-weight:800}.priceGrid .pvp input{background:#edf8e7;color:#315f19;border-color:#c9dfbb}.editModal{position:fixed;inset:0;background:#03264acc;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}.editBox{width:min(920px,96vw);max-height:92vh;overflow:auto;background:white;border-radius:14px;padding:20px;box-shadow:0 30px 80px #0005}.editTop{display:flex;align-items:center;gap:10px}.editTop h2{margin-right:auto}.closeX{border:0;background:#eef4f8;border-radius:8px;padding:8px 11px;cursor:pointer}.editImages{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.editImages .aiImage img{height:90px}.imgGroupTitle{font-size:11px;font-weight:950;color:var(--navy);margin:12px 0 6px}.manageImage{border:1px solid var(--line);border-radius:9px;padding:7px;background:#f8fbfd}.manageImage.main{outline:2px solid var(--lime)}.manageImage img{width:100%;height:105px;object-fit:contain;background:#fff;border-radius:6px}.manageImage .imgBtns{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}.manageImage .imgBtns button{border:0;border-radius:6px;padding:5px 6px;font-size:9px;cursor:pointer}.imgWarn{font-size:10px;color:#8a5a00;background:#fff8dd;padding:7px;border-radius:7px;margin-top:6px}.procure{background:#fff8e6;border:1px solid #f2d79a;border-radius:9px;padding:10px;font-size:10px;line-height:1.45}.procure b{color:#7b5200}.procure a{color:var(--navy);font-weight:900}.privateTag{display:inline-block;background:#fff1c9;color:#7c5500;padding:3px 6px;border-radius:999px;font-size:9px;font-weight:900}@media(max-width:900px){.priceGrid{grid-template-columns:1fr 1fr}.editImages{grid-template-columns:1fr 1fr}}
+@media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.wide{grid-column:auto}.heroAdmin{display:block}.heroAdmin .pill{display:inline-block;margin-top:12px}.catalogSteps{grid-template-columns:1fr}.row2{grid-template-columns:1fr}}@media(max-width:560px){main,.navin,.top{padding-left:13px;padding-right:13px}.stats{grid-template-columns:1fr 1fr}.stat b{font-size:20px}.brand{font-size:22px}.top small{display:none}}
+</style><style id="fvm-staff-warehouse-v1">.staffRoleNotice{background:#eef6ff;border:1px solid #cfe0ef;border-radius:9px;padding:11px 13px;font-size:12px;line-height:1.45;margin:12px 0}.staffUserForm{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}.staffUserForm .full{grid-column:1/-1}.staffUserForm button{align-self:end}.fvmWarehouse{margin-top:16px}.fvmWarehouse table{min-width:760px}.fvmWarehouse input,.fvmWarehouse select{width:100%;min-width:140px;padding:7px;border:1px solid var(--line);border-radius:6px;background:#fff}.fvmWarehouse small{color:var(--muted)}.rolePill{display:inline-block;margin-top:4px;padding:4px 7px;border-radius:999px;background:#edf8e7;color:#3f7421;font-size:10px;font-weight:900}@media(max-width:700px){.staffUserForm{grid-template-columns:1fr}.staffUserForm .full{grid-column:auto}}</style></head><body>
+<header><div class="top"><div class="brand">FV<span>Market</span></div><small>Panel de administración</small><div class="spacer"></div><a class="back" href="/">← Volver a la tienda</a></div></header>
+<nav class="adminNav"><div class="navin"><button class="tab active" data-view="catalog">📚 Importar catálogo</button><button class="tab" data-view="products">📦 Productos</button><button class="tab" data-view="orders">🛒 Pedidos</button><button class="tab" data-view="invoices">🧾 Facturación</button><button class="tab" data-view="users">👥 Usuarios</button><button class="tab" data-view="settings">⚙ Configuración</button></div></nav>
+<main><div id="guard" class="card authGuard">Comprobando acceso de administrador...</div><div id="panel" style="display:none">
+<section class="heroAdmin"><div><h1>Administración FVMarket</h1><p>Gestiona catálogo, productos, precios, pedidos y clientes desde un único panel.</p></div><span class="pill">FVMarket</span></section>
+<div class="stats"><div class="stat"><b id="statProducts">0</b><small>Productos</small></div><div class="stat"><b id="statPublished">0</b><small>Publicados</small></div><div class="stat"><b id="statOrders">0</b><small>Pedidos</small></div><div class="stat"><b id="statUsers">0</b><small>Usuarios</small></div></div>
+
+<section class="view active" id="view-catalog"><div class="grid">
+<!-- FVM_CATALOG_WORKFLOW_UI_V2 -->
+<div class="card wide fvmCatalogV2">
+  <div class="bar">
+    <div><h2 style="margin:0">Importar catálogo PDF</h2><p class="sub" style="margin:5px 0 0">Analiza el catálogo, selecciona solo los artículos que quieras vender y pásalos a revisión antes de publicar.</p></div>
+    <span class="badge" id="catalogSelectedCount">0 seleccionados</span>
+  </div>
+  <div class="catalogSteps">
+    <div class="step"><b>1 · Analizar</b>Sube el PDF. FVMarket detecta referencia, precio, página y sección.</div>
+    <div class="step"><b>2 · Seleccionar</b>Filtra, marca productos y ajusta margen/PVP si hace falta.</div>
+    <div class="step"><b>3 · Revisar</b>Los seleccionados se guardan como borradores. Añade/revisa imágenes y publica desde Productos.</div>
+  </div>
+  <div class="catalogDrop">
+    <b>Catálogo PDF</b>
+    <span>Para este formato se reconocen referencias como BT, FT, LH, DG, AM, AC, TK, PM, SW y VL, incluso en tablas de variantes.</span>
+    <div class="bar" style="justify-content:center;margin-top:12px">
+      <input id="catalogFile" type="file" accept="application/pdf,.pdf" style="max-width:420px">
+      <button class="btn navy" onclick="analyzeCatalogFile()">Analizar catálogo</button>
+    </div>
+    <div class="msg" id="catalogMsg"></div>
+  </div>
+  <div id="catalogResult" class="catalogResult">
+    <div class="catalogTools">
+      <b id="catalogSummary"></b>
+      <input id="catalogSearch" placeholder="Buscar producto o referencia…" oninput="renderCatalogRows()" style="min-width:230px;padding:9px;border:1px solid var(--line);border-radius:8px">
+      <select id="catalogSectionFilter" onchange="renderCatalogRows()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="">Todas las secciones</option></select>
+      <select id="catalogSelectionFilter" onchange="renderCatalogRows()" style="padding:9px;border:1px solid var(--line);border-radius:8px"><option value="">Todos</option><option value="selected">Seleccionados</option><option value="pending">No seleccionados</option></select>
+      <button class="btn ghost" onclick="selectVisibleCandidates(true)">Seleccionar visibles</button>
+      <button class="btn ghost" onclick="selectVisibleCandidates(false)">Quitar visibles</button>
+    </div>
+    <div class="catalogTable">
+      <table>
+        <thead><tr><th>✓</th><th>Producto detectado</th><th>Ref. origen</th><th>Pág.</th><th>Sección</th><th>Categoría FVMarket</th><th>Origen</th><th>Margen</th><th>PVP</th><th>Revisión</th></tr></thead>
+        <tbody id="catalogRows"></tbody>
+      </table>
+    </div>
+    <div class="bar" style="margin-top:12px">
+      <button class="btn ghost" onclick="aiSelected()">✨ Mejorar seleccionados</button>
+      <button class="btn navy" onclick="importSelected(false)">Importar seleccionados como borrador</button>
+      <button class="btn ghost" onclick="openProductsTab()">Ver borradores</button>
+      <span class="msg">No se publica nada directamente desde el catálogo.</span>
+    </div>
+  </div>
+</div>
+<div class="card"><h2>Importar desde URL de producto</h2><p class="sub">Pega una ficha pública de producto. FVMarket intentará obtener título, descripción y el precio real mostrado por la tienda. Después podrás añadir tu valor y ver el PVP final.</p><div class="field"><label>URL del producto</label><input id="url" placeholder="https://..."></div><button class="btn" onclick="importUrl()">Analizar URL</button><div class="msg" id="importMsg"></div></div>
+<div class="card"><h2>Producto / borrador</h2><div class="field"><label>Título</label><input id="title"></div><div class="row2"><div class="field"><label>Categoría</label><select id="category"><option>Construcción</option><option>Bricolaje</option><option>Herramientas</option><option>Reformas</option></select></div><div class="field"><label>Referencia FVMarket</label><input id="ref"></div></div><div class="notice"><b>Datos internos de aprovisionamiento</b> · Nunca se muestran al cliente.</div><div class="row2"><div class="field"><label>Proveedor / tienda origen</label><input id="sourceProvider" placeholder="Detectado automáticamente"></div><div class="field"><label>Referencia real proveedor / SKU</label><input id="sourceRef" placeholder="Ej. BT3021"></div></div><div class="field"><label>EAN / GTIN origen (opcional)</label><input id="sourceEan"></div><div class="field"><label>URL exacta del producto en origen</label><input id="sourceUrl" readonly placeholder="Se guardará automáticamente al analizar la URL"></div><div class="priceGrid"><div class="field"><label>Precio real origen (€)</label><input id="sourcePrice" type="number" step="0.01" min="0" oninput="recalcSingle('source')"></div><div class="field"><label>Margen (%)</label><input id="margin" type="number" min="0" step="0.1" oninput="recalcSingle('margin')"></div><div class="field"><label>Valor agregado (€)</label><input id="addedValue" type="number" min="0" step="0.01" oninput="recalcSingle('added')"></div><div class="field pvp"><label>PVP FVMarket (€)</label><input id="price" type="number" step="0.01" min="0" oninput="recalcSingle('pvp')"></div></div><div class="field"><label>Imagen URL principal</label><input id="image"></div><div class="row2"><div class="field"><label>Añadir imagen encontrada por ti (URL)</label><input id="manualImageUrl" placeholder="https://..."></div><div class="field"><label>Subir imágenes desde tu equipo</label><input id="manualImageFiles" type="file" accept="image/*" multiple onchange="manualSingleImageFiles(this)"></div></div><div class="bar"><button class="btn ghost" onclick="manualSingleImageUrl()">＋ Añadir URL a la galería</button></div><button class="btn ghost" onclick="enrichSingleAI()">✨ Mejorar + buscar imagen similar</button><div id="imageSuggest" class="aiImages"></div><div class="field"><label>Descripción</label><textarea id="description" rows="3"></textarea></div><label><input type="checkbox" id="featured"> Destacado</label> &nbsp; <label><input type="checkbox" id="published"> Publicar</label><br><br><button class="btn navy" onclick="createProduct()">Guardar producto</button><div class="msg" id="productMsg"></div></div>
+</div></section>
+
+<section class="view" id="view-products"><div class="card"><div class="bar"><h2>Productos de FVMarket</h2><button class="btn navy" onclick="loadProducts()">Actualizar</button></div><div style="overflow:auto"><table><thead><tr><th>Ref.</th><th>Producto</th><th>Categoría</th><th>Origen</th><th>Valor agregado</th><th>PVP</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="products"></tbody></table></div></div></section>
+<section class="view" id="view-orders"><div class="card"><h2>Pedidos</h2><div style="overflow:auto"><table><thead><tr><th>Nº</th><th>Fecha</th><th>Total</th><th>Pago</th><th>Proveedor / compra <span class="privateTag">SOLO ADMIN</span></th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="orders"></tbody></table></div></div><div class="card" style="margin-top:16px"><div class="bar"><div><h2 style="margin:0">Presupuestos y clientes</h2><p class="sub" style="margin:5px 0 0">Consulta presupuestos emitidos y sus datos de cliente.</p></div><button class="btn navy" onclick="loadAdminQuotes()">Actualizar</button></div><div style="overflow:auto"><table><thead><tr><th>Nº</th><th>Cliente</th><th>Artículos</th><th>Total</th><th>Estado</th><th>Fechas</th></tr></thead><tbody id="adminQuotes"></tbody></table></div></div></section>
+<section class="view" id="view-invoices"><div class="card"><div class="bar"><div><h2>Facturación</h2><p class="sub" style="margin:5px 0 0">Las facturas se emiten al marcar un pedido como pagado. El desglose de IGIC es configurable.</p></div><button class="btn navy" onclick="loadInvoices()">Actualizar</button></div><div style="overflow:auto"><table><thead><tr><th>Nº factura</th><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>NIF/NIE</th><th>Base</th><th>IGIC</th><th>Total</th><th></th></tr></thead><tbody id="invoices"></tbody></table></div></div></section>
+<section class="view" id="view-users"><div class="card"><div class="bar"><div><h2 style="margin:0">Usuarios internos</h2><p class="sub" style="margin:5px 0 0">Crea cuentas para organizar el catálogo, los presupuestos, los pedidos y las tareas.</p></div></div><div class="staffRoleNotice"><b>Roles disponibles</b><br>Administrador principal: acceso total.<br>Gestor de catálogo: artículos, precios, márgenes, imágenes y categorías.<br>Gestor de presupuestos y pedidos: clientes, presupuestos y pedidos.<br>Operador: consulta artículos y actualiza tareas asignadas.</div><form id="staffUserForm" class="staffUserForm" onsubmit="createStaffUser(event)"><div class="field"><label>Nombre completo</label><input id="staffUserName" required placeholder="Nombre y apellidos"></div><div class="field"><label>Rol</label><select id="staffRole"><option value="catalog_manager">Gestor de catálogo</option><option value="orders_manager">Gestor de presupuestos y pedidos</option><option value="operator">Operador</option><option value="admin">Administrador principal</option></select></div><div class="field"><label>Usuario para entrar</label><input id="staffUsername" autocomplete="username" placeholder="Ej. almacen"></div><div class="field"><label>Correo electrónico</label><input id="staffEmail" type="email" required autocomplete="email" placeholder="persona@fvmarket.es"></div><div class="field"><label>Contraseña</label><input id="staffPassword" type="password" required minlength="8" autocomplete="new-password" placeholder="Mínimo 8 caracteres"></div><button class="btn navy" type="submit">Crear usuario</button><div id="staffUserMsg" class="msg full"></div></form><hr><h3>Usuarios y roles</h3><div id="users"></div></div></section>
+<section class="view" id="view-settings"><div class="card" style="max-width:650px"><h2>Configuración</h2><div class="field"><label>Entrega base RutaFV (€)</label><input id="deliveryBase" type="number" step="0.01"></div><div class="field"><label>Origen logístico predeterminado de FVMarket para RutaFV</label><input id="rutaFVOrigin" placeholder="Se completa con la dirección de FVMarket; puedes modificarla si cambia el punto real de salida"></div><div class="notice">Se usará como origen predeterminado para calcular el transporte. No es un punto de recogida para clientes: la dirección de entrega se guarda y se puede actualizar en el perfil de cada cliente o en su pedido.</div><h3>Datos fiscales del emisor</h3><div class="field"><label>Nombre fiscal / empresa</label><input id="fiscalName" placeholder="Nombre que aparecerá en las facturas"></div><div class="row2"><div class="field"><label>NIF/CIF del emisor</label><input id="fiscalNif"></div><div class="field"><label>IGIC incluido (%)</label><input id="igicRate" type="number" min="0" max="100" step="0.01"></div></div><div class="field"><label>Dirección fiscal</label><input id="fiscalAddress"></div><div class="row2"><div class="field"><label>Municipio</label><input id="fiscalCity"></div><div class="field"><label>Código postal</label><input id="fiscalPostalCode" inputmode="numeric"></div></div><div class="field"><label>Pie de factura</label><textarea id="invoiceFooter" rows="2"></textarea></div><button class="btn navy" onclick="saveSettings()">Guardar configuración</button><div class="notice">El azul y verde de esta interfaz siguen la línea visual de RutaFV para mantener ambas marcas relacionadas.</div></div></section>
+</div></main>
+<div id="editModal" class="editModal" style="display:none"><div class="editBox"><div class="editTop"><h2>Editar producto</h2><button class="closeX" onclick="closeEdit()">✕ Cerrar</button></div><input id="editId" type="hidden"><div class="field"><label>Título</label><input id="editTitle"></div><div class="row2"><div class="field"><label>Categoría</label><select id="editCategory"><option>Construcción</option><option>Bricolaje</option><option>Herramientas</option><option>Reformas</option></select></div><div class="field"><label>Referencia FVMarket</label><input id="editRef"></div></div><div class="field"><label>URL de origen</label><input id="editSourceUrl"></div><div class="notice"><b>Datos privados de aprovisionamiento</b> · Solo visibles para administración.</div><div class="row2"><div class="field"><label>Proveedor / tienda origen</label><input id="editSourceProvider"></div><div class="field"><label>Referencia real proveedor / SKU</label><input id="editSourceRef"></div></div><div class="field"><label>EAN / GTIN origen</label><input id="editSourceEan"></div><div class="priceGrid"><div class="field"><label>Precio origen (€)</label><input id="editSourcePrice" type="number" step="0.01" oninput="editRecalc('source')"></div><div class="field"><label>Margen (%)</label><input id="editMargin" type="number" step="0.1" oninput="editRecalc('margin')"></div><div class="field"><label>Valor agregado (€)</label><input id="editAddedValue" type="number" step="0.01" oninput="editRecalc('added')"></div><div class="field pvp"><label>PVP (€)</label><input id="editPrice" type="number" step="0.01" oninput="editRecalc('pvp')"></div></div><div class="field"><label>Imagen principal URL</label><input id="editImage" oninput="syncMainImageField()"></div><div class="bar"><button class="btn ghost" onclick="addEditImageUrl()">＋ Añadir imagen por URL</button><label class="btn ghost" style="display:inline-block">⬆ Subir imágenes<input type="file" accept="image/*" multiple onchange="addEditImageFiles(this)" style="display:none"></label><button class="btn ghost" onclick="editAI()">✨ Buscar imágenes relacionadas</button></div><div class="imgWarn">Las imágenes tomadas de la ficha de origen conservan sus derechos/licencia. FVMarket las identifica como imágenes de origen para que puedas revisar su uso antes de publicar.</div><div class="imgGroupTitle">Imágenes del producto</div><div id="editGallery" class="editImages"></div><div class="imgGroupTitle">Propuestas relacionadas</div><div id="editImageSuggest" class="editImages"></div><div class="field"><label>Descripción</label><textarea id="editDescription" rows="4"></textarea></div><label><input id="editFeatured" type="checkbox"> Destacado</label> &nbsp; <label><input id="editPublished" type="checkbox"> Publicado</label><div class="bar" style="margin-top:16px"><button class="btn navy" onclick="saveEdit()">Guardar cambios</button><span id="editMsg" class="msg"></span></div></div></div>
+<script>
+let session=JSON.parse(localStorage.getItem('fv_session')||'null'),draft={},catalogCandidates=[],productCache=[],editDraft={},editImages=[];const $=id=>document.getElementById(id);const guard=$('guard'),panel=$('panel');const FVM_STAFF_ROLES=['admin','catalog_manager','orders_manager','operator'];const FVM_ROLE_LABELS={admin:'Administrador principal',catalog_manager:'Gestor de catálogo',orders_manager:'Gestor de presupuestos y pedidos',operator:'Operador'};function headers(){return {'Content-Type':'application/json','Authorization':'Bearer '+(session?.token||'')}}function fvmAdminErrorText(value,fallback='Error'){if(Array.isArray(value))return value.map(x=>fvmAdminErrorText(x,'')).filter(Boolean).join('; ')||fallback;if(value&&typeof value==='object')return fvmAdminErrorText(value.message??value.detail??value.msg??value.error??JSON.stringify(value),fallback);return String(value??fallback)}async function api(u,o={}){const r=await fetch(u,{...o,headers:{...headers(),...(o.headers||{})}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(fvmAdminErrorText(d.error??d.detail??d.message,'Error'));return d}async function apiForm(u,form){const r=await fetch(u,{method:'POST',body:form,headers:{'Authorization':'Bearer '+(session?.token||'')}});let d={};try{d=await r.json()}catch{}if(!r.ok)throw Error(fvmAdminErrorText(d.error??d.detail??d.message,'Error'));return d}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));t.classList.add('active');$('view-'+t.dataset.view).classList.add('active')});
+function applyRoleUi(role){const allowed={admin:['catalog','products','orders','invoices','users','settings'],catalog_manager:['catalog','products'],orders_manager:['orders','invoices'],operator:['products']}[role]||[];document.querySelectorAll('.tab').forEach(t=>{t.style.display=allowed.includes(t.dataset.view)?'':'none'});const first=[...document.querySelectorAll('.tab')].find(t=>allowed.includes(t.dataset.view));const active=document.querySelector('.tab.active');if(first&&(!active||!allowed.includes(active.dataset.view)))first.click();const badge=document.querySelector('.heroAdmin .pill');if(badge)badge.textContent=FVM_ROLE_LABELS[role]||'FVMarket'}
+function showAdminLogin(message=''){guard.innerHTML='<h2>Acceso interno FVMarket</h2><p class="sub">Introduce tu usuario y contraseña.</p><div class="field"><label>Usuario o correo</label><input id="guardUser" value="admin" autocomplete="username"></div><div class="field"><label>Contraseña / PIN</label><input id="guardPin" type="password" autocomplete="current-password"></div><button class="btn navy" onclick="adminLogin()">Entrar al panel</button><div class="msg">'+(message||'')+'</div>'}
+async function adminLogin(){try{const userEl=document.getElementById('guardUser');const pinEl=document.getElementById('guardPin');const user=(userEl?.value||'').trim();const pin=(pinEl?.value||'').trim();if(!user||!pin)throw Error('Introduce usuario y PIN');const btn=document.querySelector('#guard button');if(btn){btn.disabled=true;btn.textContent='Entrando...'}const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user,pin})});const d=await r.json();if(!r.ok)throw Error(d.error||'Acceso denegado');if(!d.user||!FVM_STAFF_ROLES.includes(d.user.role))throw Error('La cuenta no tiene permisos para el panel');session=d;localStorage.setItem('fv_session',JSON.stringify(session));await init()}catch(e){showAdminLogin(e.message)}}
+async function init(){const guardEl=$('guard'),panelEl=$('panel');if(!session){showAdminLogin();return}try{const me=await api('/api/me');if(!me||!FVM_STAFF_ROLES.includes(me.role))throw Error('Tu cuenta no tiene permisos para el panel');session.user=me;applyRoleUi(me.role);guardEl.style.display='none';panelEl.style.display='block';const jobs=[loadProducts()];if(['admin','orders_manager'].includes(me.role))jobs.push(loadOrders(),loadAdminQuotes(),loadInvoices());if(me.role==='admin')jobs.push(loadUsers(),loadSettings());if(['admin','catalog_manager'].includes(me.role))jobs.push(loadAIStatus());const results=await Promise.allSettled(jobs);const failed=results.filter(x=>x.status==='rejected');if(failed.length){console.error('FVMarket admin: carga parcial',failed);const state=$('aiState');if(state)state.textContent='Panel abierto · algunos datos se están reintentando';}}catch(e){session=null;localStorage.removeItem('fv_session');showAdminLogin(e.message)}}
+function guessCat(t=''){const x=t.toLowerCase();if(/cement|mortero|ladrill|bloque|yeso|hormig|azulej|cerám/.test(x))return'Construcción';if(/taladro|sierra|martillo|atornill|broca|herramient/.test(x))return'Herramientas';if(/grifo|tuber|válvula|fontan|fregadero/.test(x))return'Reformas';if(/cable|enchufe|interruptor|led|lámpara|electric/.test(x))return'Reformas';if(/pintura|esmalte|barniz|rodillo/.test(x))return'Bricolaje';if(/jardín|manguera|carretilla|poda/.test(x))return'Bricolaje';if(/inodoro|ducha|mampara|baño|lavabo|cocina/.test(x))return'Reformas';return'Otros'}
+async function analyzeCatalogFile(){const f=$('catalogFile').files[0];if(!f){catalogMsg.textContent='Selecciona primero un PDF.';return}catalogMsg.textContent='Analizando catálogo...';const fd=new FormData();fd.append('catalog',f);try{const d=await apiForm('/api/admin/import-catalog',fd);showCatalog(d)}catch(e){catalogMsg.textContent=e.message}}
+async function analyzeCatalogUrl(){const u=$('catalogUrl').value.trim();if(!u){catalogMsg.textContent='Pega una URL directa a un PDF.';return}catalogMsg.textContent='Descargando y analizando catálogo...';try{const d=await api('/api/admin/import-catalog-url',{method:'POST',body:JSON.stringify({url:u})});showCatalog(d)}catch(e){catalogMsg.textContent=e.message}}
+function showCatalog(d){catalogCandidates=(d.candidates||[]).map((c,i)=>({...c,selected:true,category:c.category||guessCat(c.title),idx:i}));catalogMsg.textContent='';$('catalogSummary').textContent=`${catalogCandidates.length} candidatos detectados${d.pages?' · '+d.pages+' páginas':''}`;$('catalogResult').classList.add('show');renderCatalogRows()}
+function syncCandidatePrice(i,mode){const c=catalogCandidates[i];const base=Math.max(0,Number(c.sourcePrice)||0);let margin=Math.max(0,Number(c.margin)||0),added=Math.max(0,Number(c.addedValue)||0),pvp=Math.max(0,Number(c.price)||0);if(mode==='margin'){added=base*margin/100;pvp=base+added}else if(mode==='added'){pvp=base+added;margin=base?added/base*100:0}else if(mode==='pvp'){added=Math.max(0,pvp-base);margin=base?added/base*100:0}else{added=base*margin/100;pvp=base+added}c.margin=+margin.toFixed(2);c.addedValue=+added.toFixed(2);c.price=+pvp.toFixed(2);const m=document.getElementById('candMargin'+i),a=document.getElementById('candAdded'+i),p=document.getElementById('candPrice'+i);if(m)m.value=c.margin.toFixed(2);if(a)a.value=c.addedValue.toFixed(2);if(p)p.value=c.price.toFixed(2)}
+function setCandidateMargin(i,v){catalogCandidates[i].margin=Math.max(0,Number(v)||0);syncCandidatePrice(i,'margin')}
+function setCandidateAdded(i,v){catalogCandidates[i].addedValue=Math.max(0,Number(v)||0);syncCandidatePrice(i,'added')}
+function setCandidatePvp(i,v){catalogCandidates[i].price=Math.max(0,Number(v)||0);syncCandidatePrice(i,'pvp')}
+function candidateAiCell(c,i){const imgs=(c.images||[]).slice(0,3);return '<button class="btn ghost" onclick="aiCandidate('+i+')">✨ Mejorar</button><div class="aiMeta">'+(c.aiDone?'Analizado · '+esc(c.ref||''):'Pendiente')+'</div>'+(imgs.length?'<div style="display:flex;gap:4px;flex-wrap:wrap">'+imgs.map((im,j)=>'<img class="aiThumb" src="'+esc(im.url)+'" title="'+esc((im.license||'')+' · '+(im.author||''))+'" onclick="chooseCandidateImage('+i+','+j+')">').join('')+'</div>':(c.image?'<img class="aiThumb" src="'+esc(c.image)+'">':''))}
+function renderCatalogRows(){catalogRows.innerHTML=catalogCandidates.map((c,i)=>{if(c.addedValue==null)c.addedValue=Math.max(0,(Number(c.price)||0)-(Number(c.sourcePrice)||0));return `<tr><td><input class="candidateCheck" type="checkbox" ${c.selected?'checked':''} onchange="catalogCandidates[${i}].selected=this.checked"></td><td><input class="miniTitle" value="${esc(c.title)}" onchange="catalogCandidates[${i}].title=this.value;catalogCandidates[${i}].aiDone=false"></td><td><select onchange="catalogCandidates[${i}].category=this.value;catalogCandidates[${i}].aiDone=false">${['Construcción','Bricolaje','Herramientas','Reformas'].map(x=>`<option ${x===c.category?'selected':''}>${x}</option>`).join('')}</select></td><td>${Number(c.sourcePrice||0).toFixed(2)} €</td><td><input id="candMargin${i}" class="miniInput" type="number" min="0" step="0.1" value="${Number(c.margin||0).toFixed(2)}" oninput="setCandidateMargin(${i},this.value)"></td><td><input id="candAdded${i}" class="miniInput" type="number" min="0" step="0.01" value="${Number(c.addedValue||0).toFixed(2)}" oninput="setCandidateAdded(${i},this.value)"></td><td><input id="candPrice${i}" class="miniInput" type="number" min="0" step="0.01" value="${Number(c.price||0).toFixed(2)}" oninput="setCandidatePvp(${i},this.value)"></td><td>${candidateAiCell(c,i)}</td></tr>`}).join('')||'<tr><td colspan="8" class="empty">No se detectaron productos con precio. Puedes usar la importación por URL o crear productos manualmente.</td></tr>'}
+function esc(s=''){return String(s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function selectAllCandidates(v){catalogCandidates.forEach(c=>c.selected=v);renderCatalogRows()}
+function chooseCandidateImage(i,j){const c=catalogCandidates[i],im=c?.images?.[j];if(!im)return;c.image=im.url;c.imageSource=im.source||'';c.imageLicense=im.license||'';c.imageAuthor=im.author||'';renderCatalogRows()}
+function mergeCandidateAI(i,p){const c=catalogCandidates[i];if(!c)return;const keep={selected:c.selected,margin:c.margin,addedValue:c.addedValue,price:c.price,sourcePrice:c.sourcePrice,sourceUrl:c.sourceUrl};Object.assign(c,p,keep,{aiDone:true});if(!c.image&&p.images?.[0])chooseCandidateImage(i,0)}
+async function aiCandidate(i){catalogMsg.textContent='Mejorando producto y buscando imágenes...';try{const p=await api('/api/admin/ai-product',{method:'POST',body:JSON.stringify(catalogCandidates[i])});mergeCandidateAI(i,p);catalogMsg.textContent=(p.images?.length?'Imagen similar encontrada. ':'No se encontró imagen libre similar. ')+(p.aiMode==='openai'?'IA aplicada.':'Referencia y análisis local aplicados.');renderCatalogRows()}catch(e){catalogMsg.textContent='No se pudo mejorar el producto: '+e.message}}
+async function enhanceCandidateIndexes(indexes){for(let p=0;p<indexes.length;p+=15){const group=indexes.slice(p,p+15);catalogMsg.textContent='Analizando '+(p+1)+'-'+Math.min(p+15,indexes.length)+' de '+indexes.length+'...';const d=await api('/api/admin/ai-catalog',{method:'POST',body:JSON.stringify({products:group.map(i=>catalogCandidates[i])})});(d.products||[]).forEach((x,j)=>mergeCandidateAI(group[j],x));renderCatalogRows()}}
+async function aiSelected(){const idx=catalogCandidates.map((c,i)=>c.selected?i:-1).filter(i=>i>=0);if(!idx.length){catalogMsg.textContent='Selecciona al menos un producto.';return}try{await enhanceCandidateIndexes(idx);catalogMsg.textContent='Análisis terminado. Revisa título, referencia, imagen y PVP.'}catch(e){catalogMsg.textContent='Error del análisis: '+e.message}}
+async function importSelected(publish){const idx=catalogCandidates.map((c,i)=>c.selected?i:-1).filter(i=>i>=0);if(!idx.length){catalogMsg.textContent='Selecciona al menos un producto.';return}try{const selected=idx.map(i=>({...catalogCandidates[i],published:publish,featured:false}));catalogMsg.textContent='Importando productos...';const r=await api('/api/admin/import-catalog-products',{method:'POST',body:JSON.stringify({products:selected,published:publish})});catalogMsg.textContent=`${r.created} productos importados ${publish?'y publicados':'como borrador'}.`;await loadProducts()}catch(e){catalogMsg.textContent=e.message}}
+function recalcSingle(mode='margin'){const base=Math.max(0,Number($('sourcePrice').value)||0);let margin=Math.max(0,Number($('margin').value)||0),added=Math.max(0,Number($('addedValue').value)||0),pvp=Math.max(0,Number($('price').value)||0);if(mode==='source'||mode==='margin'){added=base*margin/100;pvp=base+added}else if(mode==='added'){pvp=base+added;margin=base?added/base*100:0}else if(mode==='pvp'){added=Math.max(0,pvp-base);margin=base?added/base*100:0}$('margin').value=margin.toFixed(2);$('addedValue').value=added.toFixed(2);$('price').value=pvp.toFixed(2);draft.sourcePrice=base;draft.margin=+margin.toFixed(2);draft.addedValue=+added.toFixed(2);draft.price=+pvp.toFixed(2)}
+function renderSingleImages(){const box=$('imageSuggest');if(!box)return;const src=draft.sourceImages||[];const alt=draft.alternativeImages||[];draft.images=Array.isArray(draft.images)?draft.images:[];const selected=new Set(draft.images.map(x=>x.url));const cards=(arr,kind)=>arr.map((im,j)=>'<div class="aiImage '+(selected.has(im.url)?'selected':'')+'" onclick="chooseSingleImage(\''+kind+'\','+j+')"><img src="'+esc(im.url)+'"><small>'+esc(kind==='source'?'Imagen de origen · revisar licencia':(im.license||'Imagen similar'))+'</small></div>').join('');const n=draft.images.length;box.innerHTML='<div class="imagePickCount '+(n>=3?'ready':'')+'">'+n+' imágenes seleccionadas · mínimo 3 para guardar'+(n>=3?' ✓':'')+'</div>'+(src.length?'<div class="imgGroupTitle" style="grid-column:1/-1">Imágenes reales de la ficha de origen</div>'+cards(src,'source'):'')+(alt.length?'<div class="imgGroupTitle" style="grid-column:1/-1">Alternativas más coincidentes</div>'+cards(alt,'similar'):'')+(!src.length&&!alt.length?'<div class="msg">No se encontraron imágenes relacionadas. Puedes introducir una URL manualmente.</div>':'');const btn=document.querySelector('[onclick="createProduct()"]');if(btn){btn.disabled=n<3;btn.style.opacity=n<3?'.5':'1';btn.title=n<3?'Selecciona al menos 3 imágenes':''}}
+function chooseSingleImage(kind,j){const im=(kind==='source'?draft.sourceImages:draft.alternativeImages)?.[j];if(!im)return;draft.images=Array.isArray(draft.images)?draft.images:[];const pos=draft.images.findIndex(x=>x.url===im.url);if(pos>=0){draft.images.splice(pos,1)}else{draft.images.push({...im,origin:kind})}const first=draft.images[0];draft.image=first?.url||'';draft.imageSource=first?.source||'';draft.imageLicense=first?.license||'';draft.imageAuthor=first?.author||'';$('image').value=draft.image;renderSingleImages()}
+
+function manualSingleImageUrl(){const u=String($('manualImageUrl')?.value||'').trim();if(!u)return;draft.images=Array.isArray(draft.images)?draft.images:[];if(!draft.images.some(x=>x.url===u))draft.images.push({url:u,origin:'manual',source:'Añadida manualmente'});if(!$('image').value)$('image').value=u;if(!draft.image)draft.image=u;$('manualImageUrl').value='';renderSingleImages()}
+function compressImageFile(file,maxSide=1400,quality=.84){return new Promise((resolve,reject)=>{if(!file.type.startsWith('image/'))return reject(new Error('Archivo no válido'));const r=new FileReader();r.onload=()=>{const im=new Image();im.onload=()=>{let w=im.width,h=im.height;const scale=Math.min(1,maxSide/Math.max(w,h));w=Math.max(1,Math.round(w*scale));h=Math.max(1,Math.round(h*scale));const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d');ctx.drawImage(im,0,0,w,h);resolve(c.toDataURL('image/jpeg',quality))};im.onerror=reject;im.src=r.result};r.onerror=reject;r.readAsDataURL(file)})}
+async function manualSingleImageFiles(input){const files=[...(input.files||[])].slice(0,8);draft.images=Array.isArray(draft.images)?draft.images:[];for(const f of files){try{const url=await compressImageFile(f);if(!draft.images.some(x=>x.url===url))draft.images.push({url,origin:'manual-upload',source:'Subida por administración'})}catch{}}const first=draft.images[0];draft.image=first?.url||draft.image||'';$('image').value=draft.image;input.value='';renderSingleImages()}
+async function addEditImageFiles(input){const files=[...(input.files||[])].slice(0,8);editDraft.images=Array.isArray(editDraft.images)?editDraft.images:[];for(const f of files){try{const url=await compressImageFile(f);editDraft.images.push({url,origin:'manual-upload',source:'Subida por administración'})}catch{}}input.value='';renderEditImages()}
+
+async function enrichSingleAI(silent=false){const current={...draft,title:$('title').value||draft.title,category:$('category').value||draft.category,description:$('description').value||draft.description,sourcePrice:Number($('sourcePrice').value)||Number(draft.sourcePrice)||0,margin:Number($('margin').value)||0,addedValue:Number($('addedValue').value)||0,price:Number($('price').value)||0,image:$('image').value||''};if(!current.title){if(!silent)importMsg.textContent='Primero analiza una URL o escribe el nombre del producto.';return}if(!silent)importMsg.textContent='Buscando por nombre exacto y características del artículo, y ordenando las imágenes por coincidencia...';try{const p=await api('/api/admin/ai-product',{method:'POST',body:JSON.stringify(current)});draft={...current,...p,sourceImages:p.sourceImages||current.sourceImages||[],alternativeImages:p.alternativeImages||[],sourcePrice:current.sourcePrice,margin:current.margin,addedValue:current.addedValue,price:current.price};$('title').value=draft.title||current.title;$('category').value=draft.category||current.category||'Otros';$('ref').value=draft.ref||'';$('description').value=draft.description||current.description||'';$('image').value=draft.image||'';renderSingleImages();if(!silent)importMsg.textContent=(draft.images?.length?draft.images.length+' imágenes similares encontradas. ':'No se encontró imagen libre similar. ')+(p.aiMode==='openai'?'Texto mejorado con IA.':'Referencia y clasificación aplicadas con el asistente local.')}catch(e){if(!silent)importMsg.textContent='No se pudo mejorar/buscar imagen: '+e.message}}
+async function importUrl(){
+  const u=$('url').value.trim();
+  if(!u){importMsg.textContent='Introduce una URL de producto.';return}
+  importMsg.textContent='Leyendo ficha y precio real...';
+  try{
+    draft=await api('/api/admin/import-url',{method:'POST',body:JSON.stringify({url:u})});
+    $('title').value=draft.title||'';$('category').value=draft.category||'Otros';$('ref').value=draft.ref||'';
+    if($('sourceProvider'))$('sourceProvider').value=draft.sourceProvider||'';
+    if($('sourceRef'))$('sourceRef').value=draft.sourceRef||'';
+    if($('sourceEan'))$('sourceEan').value=draft.sourceEan||'';
+    if($('sourceUrl'))$('sourceUrl').value=draft.sourceUrl||u;
+    $('sourcePrice').value=Number(draft.sourcePrice||0).toFixed(2);$('margin').value='0.00';$('addedValue').value='0.00';$('price').value=Number(draft.sourcePrice||draft.price||0).toFixed(2);
+    $('image').value=draft.image||'';$('description').value=draft.description||'';draft.images=[];draft.alternativeImages=[];renderSingleImages();
+    importMsg.textContent=draft.sourcePrice>0?'Precio real detectado: '+Number(draft.sourcePrice).toFixed(2)+' €. Introduce el margen o el valor agregado para calcular el PVP.':'Ficha leída, pero no se pudo detectar un precio fiable. Puedes escribir el precio origen manualmente.';
+    try{await enrichSingleAI(true)}catch{}
+  }catch(e){
+    let parsed=null;try{parsed=new URL(u)}catch{}
+    const slug=decodeURIComponent((parsed?.pathname||'').split('/').filter(Boolean).pop()||'producto').replace(/[-_]+/g,' ').replace(/\b\d{5,}\b/g,' ').replace(/\s+/g,' ').trim();
+    const titleGuess=slug.replace(/\b\w/g,c=>c.toUpperCase())||'Producto';
+    const host=(parsed?.hostname||'').replace(/^www\./,'');
+    const providers={'leroymerlin.es':'Leroy Merlin','obramat.es':'Obramat','mibricolaje.com':'Mi Bricolaje','bauhaus.es':'BAUHAUS','bricodepot.es':'Brico Depôt','manomano.es':'ManoMano'};
+    const provider=providers[host]||host;
+    draft={title:titleGuess,category:guessCat(titleGuess),description:'',sourceUrl:u,sourceProvider:provider,sourcePrice:0,price:0,margin:0,addedValue:0,images:[],sourceImages:[],alternativeImages:[],assistedImport:true};
+    $('title').value=draft.title;$('category').value=draft.category;$('ref').value='';
+    if($('sourceProvider'))$('sourceProvider').value=provider;if($('sourceRef'))$('sourceRef').value='';if($('sourceEan'))$('sourceEan').value='';if($('sourceUrl'))$('sourceUrl').value=u;
+    $('sourcePrice').value='0.00';$('margin').value='0.00';$('addedValue').value='0.00';$('price').value='0.00';$('image').value='';$('description').value='';renderSingleImages();
+    importMsg.textContent='La tienda bloquea la lectura directa. Activando modo asistido: buscando información e imágenes públicas relacionadas. Revisa título, características y escribe el precio real de origen antes de publicar.';
+    try{
+      await enrichSingleAI(true);
+      if($('sourceUrl'))$('sourceUrl').value=u;if($('sourceProvider'))$('sourceProvider').value=provider;
+      importMsg.textContent='Modo asistido activo. Se han propuesto datos e imágenes a partir de información pública accesible. Revisa todo y escribe el precio real de origen antes de guardar.';
+    }catch(aiErr){
+      importMsg.textContent='Modo asistido activo. No se pudo completar la búsqueda automáticamente; puedes editar los datos, introducir el precio y añadir tus propias imágenes.';
+    }
+  }
+}
+async function createProduct(){try{const body={...draft,title:$('title').value,category:$('category').value,ref:$('ref').value,price:Number($('price').value)||0,sourcePrice:Number($('sourcePrice').value)||0,sourceProvider:$('sourceProvider')?.value||draft.sourceProvider||'',sourceRef:$('sourceRef')?.value||draft.sourceRef||'',sourceEan:$('sourceEan')?.value||draft.sourceEan||'',sourceUrl:$('sourceUrl')?.value||draft.sourceUrl||$('url').value.trim()||'',margin:Number($('margin').value)||0,addedValue:Number($('addedValue').value)||0,image:$('image').value,description:$('description').value,images:draft.images||[],featured:$('featured').checked,published:$('published').checked};if(!body.title.trim())throw Error('El producto necesita un título.');if((body.images||[]).length<3)throw Error('Selecciona al menos 3 imágenes haciendo clic sobre ellas antes de guardar.');if(!body.ref)await enrichSingleAI(true);body.ref=$('ref').value||draft.ref||'';await api('/api/admin/products',{method:'POST',body:JSON.stringify(body)});productMsg.textContent='Producto guardado correctamente';await loadProducts()}catch(e){productMsg.textContent=e.message}}
+async function loadAIStatus(){try{const x=await api('/api/admin/ai-status');if(x.openai){aiState.className='aiState ok';aiState.textContent='✨ IA generativa activa · '+x.model+' · imágenes: '+x.imageSearch}else{aiState.className='aiState';aiState.textContent='⚙ ✓ Referencias automáticas · ✓ Búsqueda inteligente de imágenes · ✓ Catálogo asistido'}}catch(e){aiState.textContent='Asistente inteligente no disponible'}}
+
+function money(v){return Number(v||0).toFixed(2)+' €'}
+async function loadProducts(){const ps=await api('/api/admin/products');productCache=ps;statProducts.textContent=ps.length;statPublished.textContent=ps.filter(p=>p.published).length;const canEdit=['admin','catalog_manager'].includes(session?.user?.role);products.innerHTML=ps.map(p=>{const base=Number(p.sourcePrice||0),added=p.addedValue!=null?Number(p.addedValue):Math.max(0,Number(p.price||0)-base);const actions=canEdit?`<button class="btn navy" onclick="openEdit('${p.id}')">Editar</button> <button class="btn ghost" onclick="quickAI('${p.id}')">✨ Mejorar</button> <button class="btn ghost" onclick="toggle('${p.id}',${!p.published})">${p.published?'Ocultar':'Publicar'}</button> <button class="btn danger" onclick="delp('${p.id}')">Eliminar</button>`:'<span class="badge">Solo consulta</span>';return `<tr><td>${esc(p.ref)}</td><td>${esc(p.title)}</td><td>${esc(p.category)}</td><td>${money(base)}</td><td>${money(added)}</td><td><b>${money(p.price)}</b></td><td><span class="badge">${p.published?'Publicado':'Borrador'}</span></td><td>${actions}</td></tr>`}).join('')||'<tr><td colspan="8" class="empty">No hay productos.</td></tr>';if(document.getElementById('warehouseProducts'))await loadWarehouse()}
+async function toggle(id,v){await api('/api/admin/products/'+id,{method:'PUT',body:JSON.stringify({published:v})});loadProducts()}
+async function delp(id){if(confirm('¿Eliminar producto?')){await api('/api/admin/products/'+id,{method:'DELETE'});loadProducts()}}
+function openEdit(id){const p=productCache.find(x=>x.id===id);if(!p)return;editDraft={...p,images:(Array.isArray(p.images)&&p.images.length?p.images:(p.image?[{url:p.image,source:p.imageSource||'',license:p.imageLicense||'',author:p.imageAuthor||'',origin:'legacy'}]:[]))};editImages=[];$('editId').value=p.id;$('editTitle').value=p.title||'';$('editCategory').value=p.category||'Otros';$('editRef').value=p.ref||'';$('editSourceUrl').value=p.sourceUrl||'';if($('editSourceProvider'))$('editSourceProvider').value=p.sourceProvider||'';if($('editSourceRef'))$('editSourceRef').value=p.sourceRef||'';if($('editSourceEan'))$('editSourceEan').value=p.sourceEan||'';$('editSourcePrice').value=Number(p.sourcePrice||0).toFixed(2);const added=p.addedValue!=null?Number(p.addedValue):Math.max(0,Number(p.price||0)-Number(p.sourcePrice||0));const margin=p.margin!=null?Number(p.margin):(Number(p.sourcePrice||0)?added/Number(p.sourcePrice)*100:0);$('editMargin').value=margin.toFixed(2);$('editAddedValue').value=added.toFixed(2);$('editPrice').value=Number(p.price||0).toFixed(2);$('editImage').value=p.image||'';$('editDescription').value=p.description||'';$('editFeatured').checked=!!p.featured;$('editPublished').checked=!!p.published;$('editMsg').textContent='';$('editImageSuggest').innerHTML='';renderEditGallery();$('editModal').style.display='flex'}
+function closeEdit(){$('editModal').style.display='none'}
+function editRecalc(mode='margin'){const base=Math.max(0,Number($('editSourcePrice').value)||0);let margin=Math.max(0,Number($('editMargin').value)||0),added=Math.max(0,Number($('editAddedValue').value)||0),pvp=Math.max(0,Number($('editPrice').value)||0);if(mode==='source'||mode==='margin'){added=base*margin/100;pvp=base+added}else if(mode==='added'){pvp=base+added;margin=base?added/base*100:0}else if(mode==='pvp'){added=Math.max(0,pvp-base);margin=base?added/base*100:0}$('editMargin').value=margin.toFixed(2);$('editAddedValue').value=added.toFixed(2);$('editPrice').value=pvp.toFixed(2)}
+function renderEditGallery(){const box=$('editGallery');if(!box)return;const imgs=editDraft.images||[];box.innerHTML=imgs.length?imgs.map((im,j)=>'<div class="manageImage '+(j===0?'main':'')+'"><img src="'+esc(im.url)+'"><small>'+(j===0?'★ Principal · ':'')+esc(im.origin==='source'?'Origen':(im.license||'Imagen'))+'</small><div class="imgBtns"><button onclick="makeEditPrimary('+j+')">Principal</button><button onclick="moveEditImage('+j+',-1)">←</button><button onclick="moveEditImage('+j+',1)">→</button><button onclick="editEditImageUrl('+j+')">Editar URL</button><button onclick="deleteEditImage('+j+')">Eliminar</button></div></div>').join(''):'<div class="msg">Este producto no tiene imágenes.</div>';if(imgs[0])$('editImage').value=imgs[0].url;else $('editImage').value=''}
+function makeEditPrimary(j){const a=editDraft.images||[];if(!a[j])return;const [x]=a.splice(j,1);a.unshift(x);renderEditGallery()}
+function moveEditImage(j,dir){const a=editDraft.images||[],n=j+dir;if(!a[j]||n<0||n>=a.length)return;[a[j],a[n]]=[a[n],a[j]];renderEditGallery()}
+function editEditImageUrl(j){const a=editDraft.images||[];if(!a[j])return;const u=prompt('Nueva URL de imagen',a[j].url);if(u&&u.trim()){a[j].url=u.trim();renderEditGallery()}}
+function deleteEditImage(j){const a=editDraft.images||[];if(!a[j])return;if(confirm('¿Eliminar esta imagen del producto?')){a.splice(j,1);renderEditGallery()}}
+function addEditImageUrl(){const u=prompt('URL de la nueva imagen');if(!u||!u.trim())return;editDraft.images=editDraft.images||[];if(!editDraft.images.some(x=>x.url===u.trim()))editDraft.images.push({url:u.trim(),source:'',license:'',author:'',origin:'manual'});renderEditGallery()}
+function syncMainImageField(){const u=$('editImage').value.trim();editDraft.images=editDraft.images||[];if(!u)return;if(editDraft.images.length)editDraft.images[0]={...editDraft.images[0],url:u};else editDraft.images=[{url:u,source:'',license:'',author:'',origin:'manual'}];renderEditGallery()}
+function renderEditImages(){const box=$('editImageSuggest');box.innerHTML=editImages.length?editImages.map((im,j)=>'<div class="aiImage" onclick="chooseEditImage('+j+')"><img src="'+esc(im.url)+'"><small>'+esc(im.origin==='source'?'Imagen de origen · revisar licencia':(im.license||'Imagen similar'))+'</small></div>').join(''):'<div class="msg">No se encontraron imágenes relacionadas.</div>'}
+function chooseEditImage(j){const im=editImages[j];if(!im)return;editDraft.images=editDraft.images||[];if(!editDraft.images.some(x=>x.url===im.url))editDraft.images.push({...im});makeEditPrimary(editDraft.images.findIndex(x=>x.url===im.url));editDraft.imageSource=im.source||'';editDraft.imageLicense=im.license||'';editDraft.imageAuthor=im.author||''}
+
+async function editAI(){editMsg.textContent='Mejorando y buscando imágenes...';try{const current={...editDraft,title:$('editTitle').value,category:$('editCategory').value,description:$('editDescription').value,sourcePrice:Number($('editSourcePrice').value)||0,margin:Number($('editMargin').value)||0,addedValue:Number($('editAddedValue').value)||0,price:Number($('editPrice').value)||0};const p=await api('/api/admin/ai-product',{method:'POST',body:JSON.stringify(current)});$('editTitle').value=p.title||current.title;$('editCategory').value=p.category||current.category;$('editRef').value=p.ref||$('editRef').value;$('editDescription').value=p.description||current.description;editImages=[...(p.sourceImages||[]),...(p.alternativeImages||[])];renderEditImages();editMsg.textContent=(editImages.length?editImages.length+' imágenes relacionadas encontradas. ':'Sin imagen relacionada. ')+(p.aiMode==='openai'?'IA aplicada.':'Análisis local aplicado.')}catch(e){editMsg.textContent='No se pudo mejorar: '+e.message}}
+async function quickAI(id){openEdit(id);await editAI()}
+async function saveEdit(){const id=$('editId').value;const body={title:$('editTitle').value,category:$('editCategory').value,ref:$('editRef').value,sourceUrl:$('editSourceUrl').value,sourceProvider:$('editSourceProvider')?.value||'',sourceRef:$('editSourceRef')?.value||'',sourceEan:$('editSourceEan')?.value||'',sourcePrice:Number($('editSourcePrice').value)||0,margin:Number($('editMargin').value)||0,addedValue:Number($('editAddedValue').value)||0,price:Number($('editPrice').value)||0,image:(editDraft.images?.[0]?.url||$('editImage').value),images:editDraft.images||[],imageSource:(editDraft.images?.[0]?.source||editDraft.imageSource||''),imageLicense:(editDraft.images?.[0]?.license||editDraft.imageLicense||''),imageAuthor:(editDraft.images?.[0]?.author||editDraft.imageAuthor||''),description:$('editDescription').value,featured:$('editFeatured').checked,published:$('editPublished').checked};try{await api('/api/admin/products/'+id,{method:'PUT',body:JSON.stringify(body)});editMsg.textContent='Cambios guardados';await loadProducts();setTimeout(closeEdit,400)}catch(e){editMsg.textContent=e.message}}
+async function loadAdminQuotes(){const qs=await api('/api/admin/quotes');const host=$('adminQuotes');if(!host)return;host.innerHTML=qs.map(q=>{const customer=q.customer||{};const items=(q.items||[]).map(x=>esc((x.title||x.ref||'Artículo')+' × '+Number(x.qty||1))).join('<br>');return `<tr><td>${esc(q.number||'')}</td><td><b>${esc(customer.name||'')}</b><br><small>${esc(customer.email||'')}</small></td><td>${items||'—'}</td><td><b>${money(q.total)}</b></td><td><span class="badge">${esc(q.status||'emitido')}</span></td><td>${new Date(q.createdAt).toLocaleDateString('es-ES')}<br><small>Válido hasta ${new Date(q.validUntil).toLocaleDateString('es-ES')}</small></td></tr>`}).join('')||'<tr><td colspan="6" class="empty">No hay presupuestos.</td></tr>'}
+const FVM_WAREHOUSE_STATUSES={available:'Disponible',review:'En revisión',reserved:'Reservado',unavailable:'No disponible',retired:'Retirado'};
+async function loadWarehouse(){const rows=await api('/api/admin/warehouse');const host=$('warehouseProducts');if(!host)return;const opts=Object.entries(FVM_WAREHOUSE_STATUSES).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');host.innerHTML=rows.map(p=>`<tr><td>${esc(p.ref)}</td><td><b>${esc(p.title)}</b></td><td>${esc(p.category||'')}</td><td><select onchange="updateWarehouse('${p.id}',{warehouseStatus:this.value})">${opts.replace('value="'+p.warehouseStatus+'"','value="'+p.warehouseStatus+'" selected')}</select></td><td><input value="${esc(p.warehouseTask||'')}" placeholder="Tarea o nota interna" onchange="updateWarehouse('${p.id}',{warehouseTask:this.value})"></td><td><small>${esc(p.warehouseAssigneeName||'Sin asignar')}</small></td></tr>`).join('')||'<tr><td colspan="6" class="empty">No hay artículos.</td></tr>'}
+async function updateWarehouse(id,patch){try{await api('/api/admin/warehouse/'+id,{method:'PUT',body:JSON.stringify(patch)});await loadWarehouse()}catch(e){alert(e.message)}}
+async function loadOrders(){const os=await api('/api/admin/orders');statOrders.textContent=os.length;orders.innerHTML=os.map(o=>{const sourcing=(o.items||[]).map(i=>{const s=i.procurement||{};const ref=s.sourceRef?'<b>Ref. origen:</b> '+esc(s.sourceRef):'<b>Ref. origen:</b> no detectada';const ean=s.sourceEan?'<br><b>EAN:</b> '+esc(s.sourceEan):'';const provider=s.provider?'<b>Proveedor:</b> '+esc(s.provider)+'<br>':'';const cost='<br><b>Coste origen:</b> '+money(s.sourcePrice)+' × '+Number(i.qty||1);const link=s.sourceUrl?'<br><a href="'+esc(s.sourceUrl)+'" target="_blank" rel="noopener">Abrir ficha original ↗</a>':'';return '<div class="procure"><b>'+esc(i.title)+'</b><br>'+provider+ref+ean+cost+link+'</div>'}).join('<div style="height:6px"></div>');const paymentLinkButton=!['pagado','preparando','en_reparto','entregado','reembolsado','reembolso_parcial'].includes(String(o.status||''))?`<button class="btn ghost" style="margin-top:5px" onclick="createPaymentLinkOrder('${o.id}')">${o.stripePaymentLinkUrl?'Copiar enlace de pago':'Generar enlace de pago'}</button>`:'';const refundButton=o.paymentMethod==='stripe'&&!['reembolsado'].includes(o.status)?`<button class="btn ghost" style="margin-top:5px" onclick="refundOrder('${o.id}',${Number(o.total||0)})">Reembolsar</button>`:'';return `<tr><td>${esc(o.number)}</td><td>${new Date(o.createdAt).toLocaleString('es-ES')}</td><td>${Number(o.total).toFixed(2)} €</td><td>${esc(o.paymentMethod)}</td><td>${sourcing||'<span class="msg">Pedido antiguo sin datos de origen guardados.</span>'}</td><td><select class="ordersStatus" onchange="setStatus('${o.id}',this.value)">${['pendiente_pago','pagado','preparando','en_reparto','entregado','reembolso_parcial','reembolsado','cancelado'].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join('')}</select></td><td>${paymentLinkButton}${refundButton}</td></tr>`}).join('')||'<tr><td colspan="7" class="empty">No hay pedidos.</td></tr>'}async function setStatus(id,s){await api('/api/admin/orders/'+id,{method:'PUT',body:JSON.stringify({status:s})});await loadOrders();loadInvoices()}async function createPaymentLinkOrder(id){try{const r=await api('/api/admin/orders/'+encodeURIComponent(id)+'/payment-link',{method:'POST'});if(!r.url)throw Error('Stripe no devolvió el enlace');try{await navigator.clipboard.writeText(r.url);alert('Enlace de pago copiado al portapapeles.')}catch{prompt('Copia este enlace de pago:',r.url)}await loadOrders()}catch(e){alert(e.message)}}async function refundOrder(id,total){const raw=prompt(`Importe a reembolsar (vacío = ${Number(total||0).toFixed(2)} € completos):`);if(raw===null)return;const body=raw.trim()===''?{}:{amount:Number(raw.replace(',','.'))};if(body.amount!=null&&!Number.isFinite(body.amount))return alert('Importe no válido');if(!confirm('¿Confirmas ejecutar el reembolso en Stripe?'))return;try{const r=await api('/api/admin/orders/'+id+'/refund',{method:'POST',body:JSON.stringify(body)});alert(`Reembolso de ${Number(r.refundedAmount).toFixed(2)} € realizado.`);await loadOrders();loadInvoices()}catch(e){alert(e.message)}}async function loadInvoices(){const rows=await api('/api/admin/invoices');const host=$('invoices');if(!host)return;host.innerHTML=rows.map(x=>`<tr><td>${esc(x.number)}</td><td>${esc(x.orderNumber)}</td><td>${new Date(x.issuedAt).toLocaleDateString('es-ES')}</td><td>${esc(x.customer?.billingName||x.customer?.name||'')}</td><td>${esc(x.customer?.nifNie||'')}</td><td>${money(x.taxBase)}</td><td>${money(x.taxAmount)}</td><td><b>${money(x.total)}</b></td><td><button class="btn ghost" onclick="openInvoice('${esc(x.id)}')">Ver / imprimir</button></td></tr>`).join('')||'<tr><td colspan="9" class="empty">Aún no hay facturas emitidas.</td></tr>'}async function openInvoice(id){const w=window.open('about:blank','_blank');try{const r=await fetch('/api/invoices/'+encodeURIComponent(id)+'/print',{headers:{Authorization:'Bearer '+(session?.token||'')}});const html=await r.text();if(!r.ok)throw Error(html||'No se pudo abrir la factura');if(!w)throw Error('Permite las ventanas emergentes para ver la factura');w.document.open();w.document.write(html);w.document.close()}catch(e){if(w)w.close();alert(e.message)}}function roleLabel(role){return FVM_ROLE_LABELS[role]||'Cliente'}
+async function createStaffUser(event){event.preventDefault();const msg=$('staffUserMsg');const btn=document.querySelector('#staffUserForm button[type="submit"]');const body={name:$('staffUserName').value.trim(),role:$('staffRole').value,username:$('staffUsername').value.trim(),email:$('staffEmail').value.trim(),password:$('staffPassword').value};msg.textContent='Creando usuario...';if(btn)btn.disabled=true;try{await api('/api/admin/users',{method:'POST',body:JSON.stringify(body)});msg.textContent='Usuario creado correctamente.';$('staffUserForm').reset();await loadUsers()}catch(e){msg.textContent=e.message}finally{if(btn)btn.disabled=false}}
+async function loadUsers(){const us=await api('/api/admin/users');statUsers.textContent=us.length;users.innerHTML=us.map(u=>`<div class="card" style="box-shadow:none;margin:8px 0"><b>${esc(u.name)}</b><br><span class="rolePill">${esc(roleLabel(u.role))}</span><br><span class="msg">${esc(u.username||u.email)} · ${esc(u.email)}${u.active===false?' · Inactivo':''}</span></div>`).join('')||'<div class="empty">No hay usuarios.</div>'}async function loadSettings(){
+  const s=await api('/api/admin/settings');
+  deliveryBase.value=s.deliveryBase||0;
+  const defaultOrigin=[s.fiscalAddress,s.fiscalCity,s.fiscalPostalCode].filter(Boolean).join(', ');
+  window.fvmOriginAuto=s.rutaFVOriginAuto!==false;
+  const originInput=$('rutaFVOrigin');
+  if(originInput){
+    originInput.value=s.rutaFVOrigin||defaultOrigin;
+    originInput.oninput=()=>{window.fvmOriginAuto=false};
+  }
+  if($('fiscalName'))$('fiscalName').value=s.fiscalName||'';
+  if($('fiscalNif'))$('fiscalNif').value=s.fiscalNif||'';
+  if($('fiscalAddress'))$('fiscalAddress').value=s.fiscalAddress||'';
+  if($('fiscalCity'))$('fiscalCity').value=s.fiscalCity||'';
+  if($('fiscalPostalCode'))$('fiscalPostalCode').value=s.fiscalPostalCode||'';
+  if($('igicRate'))$('igicRate').value=s.igic??7;
+  if($('invoiceFooter'))$('invoiceFooter').value=s.invoiceFooter||''
+}
+async function saveSettings(){
+  const fiscalAddress=String($('fiscalAddress')?.value||'').trim();
+  const fiscalCity=String($('fiscalCity')?.value||'').trim();
+  const fiscalPostalCode=String($('fiscalPostalCode')?.value||'').trim();
+  const typedOrigin=String($('rutaFVOrigin')?.value||'').trim();
+  const autoOrigin=window.fvmOriginAuto===true;
+  const origin=autoOrigin?[fiscalAddress,fiscalCity,fiscalPostalCode].filter(Boolean).join(', '):typedOrigin;
+  await api('/api/admin/settings',{method:'PUT',body:JSON.stringify({
+    deliveryBase:Number(deliveryBase.value)||0,
+    rutaFVOrigin:origin,
+    rutaFVOriginAuto:autoOrigin,
+    fiscalName:String($('fiscalName')?.value||'').trim(),
+    fiscalNif:String($('fiscalNif')?.value||'').trim(),
+    fiscalAddress,
+    fiscalCity,
+    fiscalPostalCode,
+    igic:Math.max(0,Math.min(100,Number($('igicRate')?.value??7)||0)),
+    invoiceFooter:String($('invoiceFooter')?.value||'').trim()
+  })});
+  alert('Configuración guardada')
+}
+init();
+</script>
+<style>
+.fvmTax{margin-top:14px}.fvmTaxRow{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}.fvmOffer{display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f6fbf1;border:1px solid #d8eacb;padding:10px;border-radius:9px}.fvmOffer label{font-size:11px;font-weight:900}.fvmChip{display:inline-flex;gap:6px;align-items:center;padding:5px 8px;border-radius:999px;background:#edf8e7;font-size:10px;font-weight:850;margin:3px}.fvmChip button{border:0;background:transparent;cursor:pointer}.fvmRouteBox{background:#edf6ff;border:1px solid #cfe0ef;border-radius:10px;padding:12px;margin-top:12px;font-size:11px}
+.fvmDbHead{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.fvmDbHead h2{margin:0}.fvmDbHead .sub{margin:5px 0 0}.fvmDbActions{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.fvmDbDanger{margin-top:16px;padding:13px;border:1px solid #f2b9b9;border-radius:10px;background:#fff7f7}.fvmDbDanger h3{margin:0 0 5px;color:#a91d1d}.fvmDbDanger p{margin:0 0 12px;font-size:12px;color:#6d3030}.fvmDbDanger .danger{background:#a91d1d;color:#fff;border-color:#a91d1d}@media(max-width:620px){.fvmDbHead{display:block}.fvmDbHead .badge{display:inline-block;margin-top:10px}}
+</style>
+<script>
+// FVM_ADMIN_CATALOG_V1
+const FVM_BASE_CATS=['Construcción','Bricolaje','Herramientas','Reformas'];
+let fvmTax={categories:FVM_BASE_CATS.slice(),subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad']}};
+async function fvmLoadTax(){try{fvmTax=await api('/api/admin/catalog-taxonomy');}catch{};fvmRefreshCategorySelects();fvmRenderTaxAdmin()}
+function fvmRefreshCategorySelects(){document.querySelectorAll('select').forEach(sel=>{const lab=sel.closest('.field')?.querySelector('label')?.textContent||'';if(/categor/i.test(lab)&&!/subcategor/i.test(lab)){const cur=sel.value;sel.innerHTML=fvmTax.categories.map(c=>`<option>${c}</option>`).join('');if(fvmTax.categories.includes(cur))sel.value=cur}})}
+function fvmFindSettings(){return document.getElementById('view-settings')||document.querySelector('[id*=settings]')}
+function fvmRenderTaxAdmin(){const host=fvmFindSettings();if(!host||document.getElementById('fvmTaxAdmin'))return;const box=document.createElement('div');box.id='fvmTaxAdmin';box.className='card wide fvmTax';box.innerHTML=`<h2>Categorías y subcategorías</h2><p class="sub">Categorías principales: Construcción, Bricolaje, Herramientas y Reformas. Baño y Cocina se gestionan como subcategorías de Reformas.</p><div id="fvmCatChips"></div><div class="fvmTaxRow"><div class="field"><label>Categoría</label><select id="fvmSubCatParent"></select></div><div class="field"><label>Nueva subcategoría</label><input id="fvmNewSub" placeholder="Ej. Columnas de ducha"></div><button class="btn" onclick="fvmAddSub()">Agregar</button></div><div id="fvmSubList"></div>`;host.prepend(box);fvmDrawTax()}
+function fvmDrawTax(){const pc=document.getElementById('fvmSubCatParent'),chips=document.getElementById('fvmCatChips'),list=document.getElementById('fvmSubList');if(!pc)return;pc.innerHTML=fvmTax.categories.map(c=>`<option>${c}</option>`).join('');chips.innerHTML=fvmTax.categories.map(c=>`<span class="fvmChip">${c}</span>`).join('');list.innerHTML=Object.entries(fvmTax.subcategories||{}).map(([c,arr])=>`<div style="margin-top:8px"><b>${c}</b><div>${(arr||[]).map(x=>`<span class="fvmChip">${x}<button onclick="fvmRemoveSub('${c.replace(/'/g,"\\'")}','${String(x).replace(/'/g,"\\'")}')">×</button></span>`).join('')||'<small>Sin subcategorías</small>'}</div></div>`).join('')}
+async function fvmSaveTax(){await api('/api/admin/catalog-taxonomy',{method:'PUT',body:JSON.stringify(fvmTax)});fvmRefreshCategorySelects();fvmDrawTax()}
+async function fvmAddSub(){const c=fvmSubCatParent.value,x=fvmNewSub.value.trim();if(!x)return;fvmTax.subcategories[c]=fvmTax.subcategories[c]||[];if(!fvmTax.subcategories[c].includes(x))fvmTax.subcategories[c].push(x);fvmNewSub.value='';await fvmSaveTax()}
+async function fvmRemoveSub(c,x){fvmTax.subcategories[c]=(fvmTax.subcategories[c]||[]).filter(y=>y!==x);await fvmSaveTax()}
+function fvmEnhanceProductForm(){const category=document.getElementById('category');if(!category||document.getElementById('fvmOfferCreate'))return;const wrap=document.createElement('div');wrap.id='fvmOfferCreate';wrap.innerHTML=`<div class="row2"><div class="field"><label>Subcategoría</label><select id="subcategory"><option value="">Sin subcategoría</option></select></div><div class="field"><label>Referencia FVMarket</label><input id="refHint" placeholder="Se genera automáticamente: MPF-0001" readonly></div></div><div class="fvmOffer"><label><input id="onOffer" type="checkbox"> Incluir en Ofertas</label><div class="field" style="margin:0"><label>Descuento %</label><input id="discountPct" type="number" min="0" max="90" step="1" value="0"></div></div>`;category.closest('.row2')?.insertAdjacentElement('afterend',wrap)||category.parentElement.insertAdjacentElement('afterend',wrap);const fill=()=>{const arr=fvmTax.subcategories[category.value]||[];subcategory.innerHTML='<option value="">Sin subcategoría</option>'+arr.map(x=>`<option>${x}</option>`).join('')};category.addEventListener('change',fill);fill()}
+// Añade campos de catálogo al JSON de altas/ediciones sin alterar el resto del panel.
+const fvmOrigFetch=window.fetch;window.fetch=async function(input,init={}){try{const u=String(input);if(/\/api\/admin\/products(?:\/[^/]+)?$/.test(u)&&['POST','PUT'].includes(String(init.method||'GET').toUpperCase())&&init.body){const b=JSON.parse(init.body);const modal=document.querySelector('.editModal');const root=modal||document;b.subcategory=root.querySelector('#subcategory,[name=subcategory]')?.value||b.subcategory||'';b.onOffer=!!(root.querySelector('#onOffer,[name=onOffer]')?.checked??b.onOffer);b.discountPct=Number(root.querySelector('#discountPct,[name=discountPct]')?.value??b.discountPct??0);init={...init,body:JSON.stringify(b)}}}catch{}return fvmOrigFetch(input,init)};
+// Evita un bucle de MutationObserver que podía bloquear el hilo principal y dejar /admin en blanco.
+setTimeout(()=>{fvmLoadTax();fvmEnhanceProductForm()},250);
+// Refresca únicamente cuando se abre/edita un producto o cambia la taxonomía, no ante cada mutación del DOM.
+</script>
+
+
+<style>
+/* FVM_CATALOG_WORKFLOW_UI_V2 */
+.fvmCatalogV2 .catalogDrop{margin-top:12px}
+.fvmCatalogV2 .catalogTable{max-height:610px}
+.fvmCatalogV2 .catalogTable th{white-space:nowrap}
+.fvmCatalogV2 .catalogTable td{min-width:88px}
+.fvmCatalogV2 .catalogTable td:nth-child(2){min-width:280px}
+.fvmCatalogV2 .catalogTable td:nth-child(5){min-width:150px}
+.fvmCatalogV2 .catalogTable select{max-width:155px}
+.fvmCatalogV2 .catalogImported{background:#f2f8ed}
+.fvmCatalogV2 .pageBadge{display:inline-block;min-width:28px;text-align:center;border-radius:999px;background:#eef4f8;padding:4px 7px;font-weight:900;color:var(--navy)}
+@media(max-width:760px){.fvmCatalogV2 .catalogTools input,.fvmCatalogV2 .catalogTools select{width:100%;max-width:none!important}.fvmCatalogV2 .catalogSteps{grid-template-columns:1fr}}
+</style>
+<script>
+(function(){
+  const FVM_CATS_V2=['Construcción','Bricolaje','Herramientas','Reformas'];
+  function el(id){return document.getElementById(id)}
+  window.catalogVisibleIndexes=function(){
+    const q=String(el('catalogSearch')?.value||'').trim().toLowerCase();
+    const section=String(el('catalogSectionFilter')?.value||'');
+    const sel=String(el('catalogSelectionFilter')?.value||'');
+    return catalogCandidates.map((c,i)=>({c,i})).filter(({c})=>{
+      const hay=[c.title,c.sourceRef,c.catalogSection,c.catalogVariant].filter(Boolean).join(' ').toLowerCase();
+      if(q&&!hay.includes(q))return false;
+      if(section&&c.catalogSection!==section)return false;
+      if(sel==='selected'&&!c.selected)return false;
+      if(sel==='pending'&&c.selected)return false;
+      return true;
+    }).map(x=>x.i);
+  };
+  window.updateCatalogSelectedCount=function(){
+    const n=catalogCandidates.filter(c=>c.selected).length;
+    const badge=el('catalogSelectedCount');if(badge)badge.textContent=n+' seleccionado'+(n===1?'':'s');
+  };
+  window.showCatalog=function(d){
+    const defaultMargin=Number(d?.catalog?.defaultMargin??40);
+    catalogCandidates=(d.candidates||[]).map((c,i)=>{
+      const base=Math.max(0,Number(c.sourcePrice)||0);
+      const margin=c.margin==null?defaultMargin:Math.max(0,Number(c.margin)||0);
+      const added=c.addedValue==null?base*margin/100:Math.max(0,Number(c.addedValue)||0);
+      const price=c.price==null?base+added:Math.max(0,Number(c.price)||0);
+      return {...c,idx:i,selected:false,margin:+margin.toFixed(2),addedValue:+added.toFixed(2),price:+price.toFixed(2),category:c.category||guessCat(c.title||''),catalogName:d?.catalog?.name||''};
+    });
+    const secs=[...new Set(catalogCandidates.map(c=>c.catalogSection).filter(Boolean))];
+    const sf=el('catalogSectionFilter');
+    if(sf)sf.innerHTML='<option value="">Todas las secciones</option>'+secs.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
+    const summary=el('catalogSummary');
+    if(summary)summary.textContent=catalogCandidates.length+' productos detectados · '+(d.pages||d?.catalog?.pages||0)+' páginas';
+    el('catalogResult')?.classList.add('show');
+    if(el('catalogMsg'))el('catalogMsg').textContent=catalogCandidates.length?'Análisis terminado. Nada está seleccionado todavía.':'No se pudieron asociar referencias y precios en este PDF.';
+    renderCatalogRows();
+  };
+  window.renderCatalogRows=function(){
+    const body=el('catalogRows');if(!body)return;
+    const visible=catalogVisibleIndexes();
+    body.innerHTML=visible.map(i=>{
+      const c=catalogCandidates[i];
+      if(c.addedValue==null)c.addedValue=Math.max(0,(Number(c.price)||0)-(Number(c.sourcePrice)||0));
+      const opts=FVM_CATS_V2.map(x=>'<option '+(x===c.category?'selected':'')+'>'+x+'</option>').join('');
+      const review=c.imported?'<span class="badge">Importado</span>':(c.aiDone?'<span class="badge">Revisado IA</span>':'<span class="msg">Pendiente</span>');
+      return '<tr class="'+(c.imported?'catalogImported':'')+'">'+
+        '<td><input class="candidateCheck" type="checkbox" '+(c.selected?'checked':'')+' onchange="catalogCandidates['+i+'].selected=this.checked;updateCatalogSelectedCount()"></td>'+
+        '<td><input class="miniTitle" value="'+esc(c.title||'')+'" onchange="catalogCandidates['+i+'].title=this.value;catalogCandidates['+i+'].aiDone=false"></td>'+
+        '<td><b>'+esc(c.sourceRef||'—')+'</b>'+(c.catalogVariant?'<div class="aiMeta">'+esc(c.catalogVariant)+'</div>':'')+'</td>'+
+        '<td><span class="pageBadge">'+esc(c.catalogPage||'—')+'</span></td>'+
+        '<td>'+esc(c.catalogSection||'Otros')+'</td>'+
+        '<td><select onchange="catalogCandidates['+i+'].category=this.value;catalogCandidates['+i+'].aiDone=false">'+opts+'</select></td>'+
+        '<td>'+Number(c.sourcePrice||0).toFixed(2)+' €</td>'+
+        '<td><input id="candMargin'+i+'" class="miniInput" type="number" min="0" step="0.1" value="'+Number(c.margin||0).toFixed(2)+'" oninput="setCandidateMargin('+i+',this.value)"></td>'+
+        '<td><input id="candPrice'+i+'" class="miniInput" type="number" min="0" step="0.01" value="'+Number(c.price||0).toFixed(2)+'" oninput="setCandidatePvp('+i+',this.value)"></td>'+
+        '<td><button class="btn ghost" onclick="aiCandidate('+i+')">✨ Mejorar</button><div style="margin-top:5px">'+review+'</div></td>'+
+      '</tr>';
+    }).join('')||'<tr><td colspan="10" class="empty">No hay productos que coincidan con estos filtros.</td></tr>';
+    updateCatalogSelectedCount();
+  };
+  window.selectVisibleCandidates=function(v){catalogVisibleIndexes().forEach(i=>catalogCandidates[i].selected=!!v);renderCatalogRows()};
+  window.selectAllCandidates=function(v){catalogCandidates.forEach(c=>c.selected=!!v);renderCatalogRows()};
+  window.importSelected=async function(){
+    const idx=catalogCandidates.map((c,i)=>c.selected&&!c.imported?i:-1).filter(i=>i>=0);
+    if(!idx.length){if(el('catalogMsg'))el('catalogMsg').textContent='Selecciona al menos un producto que no haya sido importado.';return}
+    try{
+      const selected=idx.map(i=>({...catalogCandidates[i],published:false,featured:false,reviewStatus:'borrador'}));
+      if(el('catalogMsg'))el('catalogMsg').textContent='Importando '+selected.length+' productos como borradores...';
+      const r=await api('/api/admin/import-catalog-products',{method:'POST',body:JSON.stringify({products:selected,published:false,catalogName:selected[0]?.catalogName||''})});
+      idx.forEach(i=>{catalogCandidates[i].selected=false;catalogCandidates[i].imported=true});
+      if(el('catalogMsg'))el('catalogMsg').textContent=(r.created||0)+' borradores creados'+(r.skipped?' · '+r.skipped+' omitidos por referencia ya existente':'')+'. Revísalos en Productos antes de publicar.';
+      renderCatalogRows();await loadProducts();
+    }catch(e){if(el('catalogMsg'))el('catalogMsg').textContent=e.message}
+  };
+  window.openProductsTab=function(){
+    const b=[...document.querySelectorAll('.tab')].find(x=>x.dataset.view==='products');if(b)b.click();
+  };
+})();
+</script>
+<script>
+/* FVM_CATALOG_REFERENCE_PARSER_V3 */
+(function(){
+  const REF_PREFIXES=['BT','FT','LH','DG','AM','AC','TK','PM','SW','VL'];
+  const REF_RX=new RegExp('\\b(?:'+REF_PREFIXES.join('|')+')\\s*\\d{2,8}\\b','gi');
+  let catalogPdfDoc=null,catalogPdfFile=null,catalogPageCache=new Map(),pdfJsPromise=null;
+
+  function loadPdfJs(){
+    if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+    if(pdfJsPromise)return pdfJsPromise;
+    pdfJsPromise=new Promise((resolve,reject)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload=()=>{try{
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      }catch(e){reject(e)}};
+      s.onerror=()=>reject(new Error('No se pudo cargar el lector PDF.'));
+      document.head.appendChild(s);
+    });
+    return pdfJsPromise;
+  }
+  function normRef(s=''){return String(s).replace(/\s/g,'').toUpperCase()}
+  function parseMoney(s=''){
+    let x=String(s).replace(/[€\s]/g,'').trim();
+    if(!x)return 0;
+    if(/^\d{1,3}(?:\.\d{3})+(?:,\d{2})?$/.test(x))x=x.replace(/\./g,'').replace(',','.');
+    else if(x.includes(',')&&x.includes('.'))x=x.lastIndexOf(',')>x.lastIndexOf('.')?x.replace(/\./g,'').replace(',','.'):x.replace(/,/g,'');
+    else if(x.includes(','))x=x.replace(',','.');
+    else if(/^\d+\.\d{3}$/.test(x))x=x.replace('.','');
+    const n=Number(x);return Number.isFinite(n)&&n>0&&n<50000?n:0;
+  }
+  function textPieces(item,viewport,pdfjs){
+    const str=String(item.str||'');if(!str.trim())return [];
+    const m=pdfjs.Util.transform(viewport.transform,item.transform);
+    const totalW=Math.max(1,Math.abs(Number(item.width||0)*viewport.scale));
+    const h=Math.max(7,Math.hypot(m[2]||0,m[3]||0)||Math.abs(Number(item.height||0)*viewport.scale)||8);
+    const y=m[5]-h;
+    const out=[];let mt;
+    const rx=/\S+/g;
+    while((mt=rx.exec(str))){
+      const a=mt.index/Math.max(1,str.length),b=(mt.index+mt[0].length)/Math.max(1,str.length);
+      const x=m[4]+totalW*a,w=Math.max(2,totalW*(b-a));
+      out.push({text:mt[0],x0:x,y0:y,x1:x+w,y1:y+h,cx:x+w/2,cy:y+h/2,h,w});
+    }
+    return out;
+  }
+  function tokensFromTextContent(tc,viewport,pdfjs){
+    const pieces=[];(tc.items||[]).forEach(it=>pieces.push(...textPieces(it,viewport,pdfjs)));
+    const refs=[],prices=[];
+    for(const p of pieces){
+      const cleaned=String(p.text||'').replace(/[(),;:]/g,'');
+      const rm=cleaned.match(REF_RX);
+      if(rm)for(const r0 of rm){refs.push({...p,ref:normRef(r0)})}
+      if(/€/.test(p.text)){
+        const n=parseMoney(p.text);if(n)prices.push({...p,price:n});
+      }
+    }
+    for(const e of pieces.filter(x=>x.text==='€')){
+      const nums=pieces.filter(n=>/^\d{1,4}(?:[.,]\d{2})?$/.test(n.text)&&Math.abs(n.cy-e.cy)<10&&n.cx<e.cx&&e.cx-n.cx<90);
+      if(nums.length){const n=nums.sort((a,b)=>b.cx-a.cx)[0],v=parseMoney(n.text+'€');if(v)prices.push({...n,x1:e.x1,cx:(n.x0+e.x1)/2,price:v})}
+    }
+    return {pieces,refs:dedupeRefs(refs),prices:dedupePrices(prices)};
+  }
+  function dedupeRefs(a){const seen=new Set();return a.filter(x=>{const k=x.ref+'|'+Math.round(x.cx)+'|'+Math.round(x.cy);if(seen.has(k))return false;seen.add(k);return true})}
+  function dedupePrices(a){const seen=new Set();return a.filter(x=>{const k=x.price+'|'+Math.round(x.cx)+'|'+Math.round(x.cy);if(seen.has(k))return false;seen.add(k);return true})}
+  function findPrice(ref,prices){
+    let best=null,score=1e9;
+    for(const p of prices){
+      const dx=Math.abs(p.cx-ref.cx),dy=Math.abs(p.cy-ref.cy);
+      if(dx>150||dy>115)continue;
+      let s=dx*1.75+dy+(p.cy>ref.cy+8?34:0);
+      if(s<score){score=s;best=p}
+    }
+    return best;
+  }
+  function noiseText(s=''){
+    const x=String(s).trim();
+    REF_RX.lastIndex=0;
+    return !x||/^(?:€|Ref\.?|Precio|NOVE|DAD)$/i.test(x)||/Julio|Agosto|mibricolaje/i.test(x)||REF_RX.test(x);
+  }
+  function isAttribute(s=''){
+    return /^(?:medidas?|alto|altura|ancho|largo|peso|potencia|capacidad|color(?:es)?|diámetro|serie|ref\.?|precio|ø|máx|min)\b/i.test(String(s).trim());
+  }
+  function lineGroups(pieces){
+    const sorted=[...pieces].sort((a,b)=>a.cy-b.cy||a.x0-b.x0),rows=[];
+    for(const p of sorted){
+      let r=rows.find(x=>Math.abs(x.cy-p.cy)<6);
+      if(!r){r={cy:p.cy,items:[]};rows.push(r)}
+      r.items.push(p);r.cy=(r.cy*(r.items.length-1)+p.cy)/r.items.length;
+    }
+    return rows.map(r=>{
+      r.items.sort((a,b)=>a.x0-b.x0);
+      r.x0=Math.min(...r.items.map(x=>x.x0));r.x1=Math.max(...r.items.map(x=>x.x1));
+      r.text=r.items.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim();
+      r.h=Math.max(...r.items.map(x=>x.h||8));return r;
+    });
+  }
+  function productText(ref,allRefs,pieces,pageNo){
+    const sameRow=allRefs.filter(r=>r!==ref&&Math.abs(r.cy-ref.cy)<14).sort((a,b)=>a.cx-b.cx);
+    const left=sameRow.filter(r=>r.cx<ref.cx).pop(),right=sameRow.find(r=>r.cx>ref.cx);
+    let x0=left?(left.cx+ref.cx)/2:Math.max(0,ref.cx-145);
+    let x1=right?(right.cx+ref.cx)/2:ref.cx+145;
+    if(x1-x0<55){x0=ref.cx-45;x1=ref.cx+45}
+    const above=allRefs.filter(r=>r.cy<ref.cy-35&&Math.abs(r.cx-ref.cx)<Math.max(95,(x1-x0)*1.4))
+      .sort((a,b)=>b.cy-a.cy)[0];
+    const y0=above?Math.max(0,(above.cy+ref.cy)/2):Math.max(0,ref.cy-250),y1=ref.cy-4;
+    const rows=lineGroups(pieces.filter(p=>p.cy>=y0&&p.cy<=y1&&p.cx>=x0-18&&p.cx<=x1+18));
+    const cleanRows=rows.filter(r=>!noiseText(r.text)&&!/^[0-9]+$/.test(r.text));
+    let heading='';
+    const headingPool=cleanRows.filter(r=>!isAttribute(r.text)&&!/^\d+(?:[.,]\d+)?\s*(?:kg|g|cm|mm|m|w|v|hp|litros?|piezas?)\b/i.test(r.text)&&r.text.length>=4&&r.text.length<=85);
+    if(headingPool.length){
+      heading=[...headingPool].sort((a,b)=>(b.h-a.h)||((ref.cy-b.cy)-(ref.cy-a.cy)))[0].text;
+    }
+    const dim=cleanRows.map(r=>r.text).filter(x=>/\d+(?:[.,]\d+)?\s*[x×+]\s*\d+/i.test(x)||/\b(?:litros?|kg|w|v|hp|fuegos?|piezas?)\b/i.test(x)).slice(-2).join(' · ');
+    const desc=[heading,...cleanRows.map(r=>r.text)].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' · ').slice(0,850);
+    const title=(heading||('Producto '+ref.ref))+(dim&& !heading.includes(dim)?' · '+dim:'');
+    return {title:title.slice(0,150),description:desc||('Referencia '+ref.ref+' del catálogo, página '+pageNo),bounds:{x0,y0,x1,y1:ref.cy+12}};
+  }
+  function matMul(a,b){
+    return [
+      a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
+      a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
+      a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]
+    ];
+  }
+  function point(m,x,y){return [m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]]}
+  async function imageBoxes(page,viewport,pdfjs){
+    try{
+      const op=await page.getOperatorList(),OPS=pdfjs.OPS;let ctm=[1,0,0,1,0,0],stack=[],boxes=[];
+      for(let i=0;i<op.fnArray.length;i++){
+        const fn=op.fnArray[i],args=op.argsArray[i]||[];
+        if(fn===OPS.save){stack.push(ctm.slice());continue}
+        if(fn===OPS.restore){ctm=stack.pop()||[1,0,0,1,0,0];continue}
+        if(fn===OPS.transform){ctm=matMul(ctm,args);continue}
+        if(fn===OPS.paintImageXObject||fn===OPS.paintInlineImageXObject||fn===OPS.paintJpegXObject){
+          const m=matMul(viewport.transform,ctm),pts=[point(m,0,0),point(m,1,0),point(m,0,1),point(m,1,1)];
+          const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+          const w=x1-x0,h=y1-y0,area=w*h;
+          if(w>24&&h>24&&area>1200)boxes.push({x0,y0,x1,y1,cx:(x0+x1)/2,cy:(y0+y1)/2,w,h,area});
+        }
+      }
+      const seen=new Set();return boxes.filter(b=>{const k=[b.x0,b.y0,b.x1,b.y1].map(v=>Math.round(v/3)*3).join('|');if(seen.has(k))return false;seen.add(k);return true});
+    }catch(e){console.warn('FVMarket image boxes:',e);return []}
+  }
+  function bestImageBox(ref,boxes,viewport){
+    let best=null,score=1e9;const pageArea=viewport.width*viewport.height;
+    for(const b of boxes){
+      if(b.area>pageArea*.48||b.area<1400)continue;
+      const dx=ref.cx<b.x0?b.x0-ref.cx:(ref.cx>b.x1?ref.cx-b.x1:0);
+      if(dx>170)continue;
+      let gap=0;
+      if(b.y1<ref.cy)gap=ref.cy-b.y1;
+      else if(b.y0>ref.cy)gap=(b.y0-ref.cy)+150;
+      if(gap>390)continue;
+      let s=dx*1.7+gap+Math.abs(b.cx-ref.cx)*.12+(b.area>pageArea*.18?80:0);
+      if(s<score){score=s;best=b}
+    }
+    return best;
+  }
+  function fallbackImageBox(c,viewport){
+    const b=c._bounds||{},w=Math.max(100,(b.x1||c._ref.cx+130)-(b.x0||c._ref.cx-130));
+    const x0=Math.max(0,(b.x0??c._ref.cx-w/2)-12),x1=Math.min(viewport.width,(b.x1??c._ref.cx+w/2)+12);
+    const y0=Math.max(0,(b.y0??c._ref.cy-230)-15),y1=Math.min(viewport.height,Math.max(y0+90,c._ref.cy-36));
+    return {x0,y0,x1,y1};
+  }
+  function pageSection(pieces,pageNo){
+    const top=lineGroups(pieces.filter(x=>x.cy<95)).map(r=>r.text).join(' ');
+    const m=top.match(/\b(Baños(?:\s*·\s*Ocio y deporte)?|Electrodoméstico industrial|Pequeño electrodoméstico|Jardín(?:\s*·\s*Ordenación)?|Camping|Agricultura|Herramienta eléctrica(?:\s*·\s*Maquinaria)?|Bricolaje(?:\s*·\s*Soldadura)?|Automoción|Ventilación)\b/i);
+    return m?m[1]:'Catálogo pág. '+pageNo;
+  }
+  function fvCategory(section,title){
+    const s=(section+' '+title).toLowerCase();
+    if(/herramient|soldadura|automoci|taladro|sierra|martillo|soldador|compresor/.test(s))return'Herramientas';
+    if(/baño|ducha|mampara|lavabo|inodoro|grifo|fregadero|electrodoméstico|ventilación|horno|nevera|cocina/.test(s))return'Reformas';
+    if(/jardín|camping|agricultura|césped|barbacoa|carpa|sombrilla|sulfat|estanter/.test(s))return'Bricolaje';
+    return typeof guessCat==='function'?guessCat(title):'Bricolaje';
+  }
+  async function parseCatalogPdf(file){
+    const pdfjs=await loadPdfJs(),buf=await file.arrayBuffer();
+    catalogPdfDoc=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;catalogPdfFile=file;catalogPageCache.clear();
+    const all=[],seen=new Set();
+    for(let pageNo=1;pageNo<=catalogPdfDoc.numPages;pageNo++){
+      if(window.catalogMsg)catalogMsg.textContent='Leyendo referencias: página '+pageNo+' de '+catalogPdfDoc.numPages+'…';
+      const page=await catalogPdfDoc.getPage(pageNo),viewport=page.getViewport({scale:1.25}),tc=await page.getTextContent({normalizeWhitespace:true});
+      const t=tokensFromTextContent(tc,viewport,pdfjs),boxes=await imageBoxes(page,viewport,pdfjs),section=pageSection(t.pieces,pageNo);
+      for(const ref of t.refs){
+        if(seen.has(ref.ref))continue;seen.add(ref.ref);
+        const price=findPrice(ref,t.prices);if(!price)continue;
+        const tx=productText(ref,t.refs,t.pieces,pageNo),imgBox=bestImageBox(ref,boxes,viewport);
+        const sourcePrice=Number(price.price)||0;if(!sourcePrice)continue;
+        const margin=40,addedValue=+(sourcePrice*margin/100).toFixed(2),pricePvp=+(sourcePrice+addedValue).toFixed(2);
+        all.push({
+          title:tx.title,description:tx.description,sourceRef:ref.ref,sourcePrice,margin,addedValue,price:pricePvp,
+          sourceProvider:'Catálogo Mi Bricolaje',sourceUrl:'',ref:'',published:false,featured:false,selected:false,
+          category:fvCategory(section,tx.title),catalogPage:pageNo,catalogSection:section,
+          _ref:ref,_bounds:tx.bounds,_imageBox:imgBox,_viewport:{width:viewport.width,height:viewport.height,scale:1.25}
+        });
+      }
+    }
+    return {pages:catalogPdfDoc.numPages,catalog:{name:file.name,defaultMargin:40},candidates:all};
+  }
+  async function renderPage(pageNo){
+    if(catalogPageCache.has(pageNo))return catalogPageCache.get(pageNo);
+    const page=await catalogPdfDoc.getPage(pageNo),viewport=page.getViewport({scale:1.25}),canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    await page.render({canvasContext:canvas.getContext('2d',{alpha:false}),viewport}).promise;
+    const value={page,viewport,canvas};catalogPageCache.set(pageNo,value);return value;
+  }
+  function cropCanvas(source,b){
+    let x0=Math.max(0,Math.floor(b.x0)),y0=Math.max(0,Math.floor(b.y0)),x1=Math.min(source.width,Math.ceil(b.x1)),y1=Math.min(source.height,Math.ceil(b.y1));
+    let w=Math.max(1,x1-x0),h=Math.max(1,y1-y0),scale=Math.min(1,520/Math.max(w,h));
+    const out=document.createElement('canvas');out.width=Math.max(1,Math.round(w*scale));out.height=Math.max(1,Math.round(h*scale));
+    out.getContext('2d',{alpha:false}).drawImage(source,x0,y0,w,h,0,0,out.width,out.height);
+    return out.toDataURL('image/jpeg',.76);
+  }
+  async function ensureCatalogImage(c){
+    if(c.image&&String(c.image).startsWith('data:image/'))return c.image;
+    const r=await renderPage(c.catalogPage),box=c._imageBox||fallbackImageBox(c,r.viewport),url=cropCanvas(r.canvas,box);
+    c.image=url;c.images=[{url,origin:'catalog-pdf',source:'Catálogo PDF · página '+c.catalogPage,license:'Imagen del catálogo de origen; revisar permiso de uso antes de publicar',author:''}];
+    return url;
+  }
+  window.analyzeCatalogFile=async function(){
+    const f=document.getElementById('catalogFile')?.files?.[0];
+    if(!f){if(window.catalogMsg)catalogMsg.textContent='Selecciona primero un PDF.';return}
+    try{
+      if(window.catalogMsg)catalogMsg.textContent='Analizando únicamente referencias válidas…';
+      const d=await parseCatalogPdf(f);
+      catalogCandidates=(d.candidates||[]).map((c,i)=>({...c,idx:i,selected:false}));
+      const secs=[...new Set(catalogCandidates.map(c=>c.catalogSection).filter(Boolean))];
+      const sf=document.getElementById('catalogSectionFilter');
+      if(sf)sf.innerHTML='<option value="">Todas las secciones</option>'+secs.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');
+      const sm=document.getElementById('catalogSummary');if(sm)sm.textContent=catalogCandidates.length+' referencias válidas detectadas · '+d.pages+' páginas';
+      document.getElementById('catalogResult')?.classList.add('show');
+      if(window.catalogMsg)catalogMsg.textContent='Listo. Solo se han creado productos a partir de referencias '+REF_PREFIXES.join(', ')+'. Nada está seleccionado.';
+      if(typeof renderCatalogRows==='function')renderCatalogRows();
+    }catch(e){console.error(e);if(window.catalogMsg)catalogMsg.textContent='No se pudo analizar el PDF: '+e.message}
+  };
+  window.importSelected=async function(){
+    const idx=catalogCandidates.map((c,i)=>c.selected&&!c.imported?i:-1).filter(i=>i>=0);
+    if(!idx.length){if(window.catalogMsg)catalogMsg.textContent='Selecciona al menos una referencia.';return}
+    try{
+      let done=0;
+      for(let p=0;p<idx.length;p+=12){
+        const group=idx.slice(p,p+12);
+        if(window.catalogMsg)catalogMsg.textContent='Preparando imagen original '+(p+1)+'-'+Math.min(p+12,idx.length)+' de '+idx.length+'…';
+        for(const i of group)await ensureCatalogImage(catalogCandidates[i]);
+        const products=group.map(i=>{
+          const c=catalogCandidates[i];
+          const clean={...c,published:false,featured:false};
+          delete clean._ref;delete clean._bounds;delete clean._imageBox;delete clean._viewport;delete clean.idx;delete clean.selected;delete clean.imported;delete clean.aiDone;
+          return clean;
+        });
+        const r=await api('/api/admin/import-catalog-products',{method:'POST',body:JSON.stringify({products,published:false})});
+        group.forEach(i=>catalogCandidates[i].imported=true);done+=Number(r.created||group.length);
+      }
+      if(window.catalogMsg)catalogMsg.textContent=done+' productos importados como borrador con referencia, precio, descripción e imagen del PDF.';
+      if(typeof renderCatalogRows==='function')renderCatalogRows();
+      if(typeof loadProducts==='function')await loadProducts();
+    }catch(e){console.error(e);if(window.catalogMsg)catalogMsg.textContent='Error al importar: '+e.message}
+  };
+  const oldRender=window.renderCatalogRows;
+  window.renderCatalogRows=function(){
+    if(typeof oldRender==='function')oldRender();
+    const rows=document.querySelectorAll('#catalogRows tr');
+    rows.forEach((tr,ix)=>{
+      const btn=tr.querySelector('button[onclick^="aiCandidate"]');
+      if(btn&&!tr.querySelector('.fvmSourceImgBtn')){
+        const m=btn.getAttribute('onclick')?.match(/\((\d+)\)/),i=m?Number(m[1]):-1;
+        if(i>=0){
+          const b=document.createElement('button');b.className='btn ghost fvmSourceImgBtn';b.style.marginTop='5px';b.textContent='🖼 Imagen PDF';
+          b.onclick=async()=>{b.disabled=true;b.textContent='Cargando…';try{await ensureCatalogImage(catalogCandidates[i]);const w=window.open();if(w)w.document.write('<img style="max-width:100%;height:auto" src="'+catalogCandidates[i].image+'">')}finally{b.disabled=false;b.textContent='🖼 Imagen PDF'}};
+          btn.parentElement.appendChild(b);
+        }
+      }
+    });
+  };
+})();
+</script>
+
+
+<script>
+/* FVM_CATALOG_REFERENCE_PARSER_V4 */
+(function(){
+  const PREFIXES=['BT','FT','LH','DG','AM','AC','TK','PM','SW','VL'];
+  const REF_RE=new RegExp('^(?:'+PREFIXES.join('|')+')\\d{2,8}$','i');
+  let pdfDoc4=null,pageCache4=new Map(),pdfJs4Promise=null;
+
+  function getPdfJs4(){
+    if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+    if(pdfJs4Promise)return pdfJs4Promise;
+    pdfJs4Promise=new Promise((resolve,reject)=>{
+      const sc=document.createElement('script');
+      sc.src='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      sc.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';resolve(window.pdfjsLib)};
+      sc.onerror=()=>reject(new Error('No se pudo cargar PDF.js'));
+      document.head.appendChild(sc);
+    });
+    return pdfJs4Promise;
+  }
+  function money4(s=''){
+    let x=String(s).replace(/[€\s]/g,'').trim(); if(!x)return 0;
+    if(/^\\d{1,3}(?:\\.\\d{3})+(?:,\\d{2})?$/.test(x))x=x.replace(/\\./g,'').replace(',','.');
+    else if(x.includes(',')&&x.includes('.'))x=x.lastIndexOf(',')>x.lastIndexOf('.')?x.replace(/\\./g,'').replace(',','.'):x.replace(/,/g,'');
+    else if(x.includes(','))x=x.replace(',','.');
+    else if(/^\d+\.\d{3}$/.test(x))x=x.replace('.','');
+    const n=Number(x);return Number.isFinite(n)&&n>0&&n<50000?n:0;
+  }
+  function recFromItem(it,viewport,pdfjs){
+    const text=String(it.str||'').trim(); if(!text)return null;
+    const m=pdfjs.Util.transform(viewport.transform,it.transform);
+    const w=Math.max(1,Math.abs(Number(it.width||0)*viewport.scale));
+    const h=Math.max(6,Math.hypot(m[2]||0,m[3]||0)||Math.abs(Number(it.height||0)*viewport.scale)||8);
+    const x0=m[4],y0=m[5]-h;
+    return {text,x0,y0,x1:x0+w,y1:y0+h,cx:x0+w/2,cy:y0+h/2,w,h,fontName:it.fontName||''};
+  }
+  /* FVM_CATALOG_REGEX_FIX_V6 */
+  function piecesFromRec(r){
+    const out=[];let m;const rx=/\S+/g;
+    while((m=rx.exec(r.text))){
+      const a=m.index/Math.max(1,r.text.length),b=(m.index+m[0].length)/Math.max(1,r.text.length);
+      const x0=r.x0+r.w*a,x1=r.x0+r.w*b;
+      out.push({...r,text:m[0],x0,x1,cx:(x0+x1)/2,w:x1-x0});
+    }
+    return out;
+  }
+  /* FVM_CATALOG_REFERENCE_TOKEN_FIX_V5 */
+  function refValue5(raw=''){
+    const z=String(raw).toUpperCase().replace(/[^A-Z0-9]/g,'');
+    for(const pre of PREFIXES){
+      if(z.startsWith(pre)){
+        const digits=z.slice(pre.length);
+        if(digits.length>=2&&digits.length<=8&&digits.split('').every(ch=>ch>='0'&&ch<='9'))return pre+digits;
+      }
+    }
+    return '';
+  }
+  function pageText4(tc,viewport,pdfjs){
+    const records=[],pieces=[];let seq4=0;
+    for(const it of tc.items||[]){
+      const r=recFromItem(it,viewport,pdfjs);
+      if(r){
+        r._seq=seq4*100;
+        const ps=piecesFromRec(r);
+        ps.forEach((x,k)=>x._seq=seq4*100+k);
+        records.push(r);pieces.push(...ps);seq4++;
+      }
+    }
+
+    const refs=[];
+    const addRef=(arr,ref)=>{
+      if(!ref||!arr.length)return;
+      const x0=Math.min(...arr.map(x=>x.x0)),x1=Math.max(...arr.map(x=>x.x1));
+      const y0=Math.min(...arr.map(x=>x.y0)),y1=Math.max(...arr.map(x=>x.y1));
+      refs.push({...arr[0],text:arr.map(x=>x.text).join(' '),ref,x0,x1,y0,y1,cx:(x0+x1)/2,cy:(y0+y1)/2,w:x1-x0,h:y1-y0});
+    };
+
+    // 1) Referencia contenida en un item completo del PDF.
+    for(const r of records){
+      const ref=refValue5(r.text);
+      if(ref)addRef([r],ref);
+    }
+    // 2) Referencia contenida en una pieza individual.
+    for(const p of pieces){
+      const ref=refValue5(p.text);
+      if(ref)addRef([p],ref);
+    }
+    // 3) PDF que separa FT + 1533, F + T + 1533 o incluso los digitos.
+    const rowList=[];
+    for(const p of [...pieces].sort((a,b)=>a.cy-b.cy||a.x0-b.x0)){
+      let row=rowList.find(r=>Math.abs(r.cy-p.cy)<7);
+      if(!row){row={cy:p.cy,items:[]};rowList.push(row)}
+      row.items.push(p);
+    }
+    for(const row of rowList){
+      row.items.sort((a,b)=>a.x0-b.x0);
+      const a=row.items;
+      for(let i=0;i<a.length;i++){
+        let joined='';
+        const group=[];
+        for(let j=i;j<Math.min(a.length,i+7);j++){
+          if(group.length){
+            const gap=a[j].x0-group[group.length-1].x1;
+            if(gap>35)break;
+          }
+          group.push(a[j]);
+          joined+=String(a[j].text).replace(/[^A-Za-z0-9]/g,'');
+          const ref=refValue5(joined);
+          if(ref){addRef(group,ref);break}
+          if(joined.length>12)break;
+        }
+      }
+    }
+
+    const prices=[];
+    for(const p of pieces){
+      if(/€/.test(p.text)){
+        const v=money4(p.text);
+        if(v)prices.push({...p,price:v});
+      }
+    }
+    const euros=pieces.filter(p=>String(p.text).trim()==='€');
+    const nums=pieces.filter(p=>/^\d{1,4}(?:[.,]\d{1,3})?$/.test(String(p.text).trim()));
+    for(const e of euros){
+      const c=nums.filter(n=>Math.abs(n.cy-e.cy)<12&&n.cx<e.cx&&e.x0-n.x1<95);
+      if(c.length){
+        const n=c.sort((a,b)=>b.cx-a.cx)[0],v=money4(n.text+'€');
+        if(v)prices.push({...n,x1:e.x1,cx:(n.x0+e.x1)/2,price:v});
+      }
+    }
+    return {
+      records,pieces,
+      refs:dedupe4(refs,x=>x.ref+'|'+Math.round(x.cx/3)+'|'+Math.round(x.cy/3)),
+      prices:dedupe4(prices,x=>x.price+'|'+Math.round(x.cx)+'|'+Math.round(x.cy))
+    };
+  }
+  function dedupe4(a,key){const seen=new Set();return a.filter(x=>{const k=key(x);if(seen.has(k))return false;seen.add(k);return true})}
+  function colInfo4(ref,allRefs,W){
+    const cw=W/8,col=Math.max(0,Math.min(7,Math.floor(ref.cx/cw)));let x0=col*cw,x1=(col+1)*cw;
+    const same=allRefs.filter(r=>r!==ref&&Math.abs(r.cy-ref.cy)<18&&Math.floor(r.cx/cw)===col).sort((a,b)=>a.cx-b.cx);
+    const left=same.filter(r=>r.cx<ref.cx).pop(),right=same.find(r=>r.cx>ref.cx);
+    let sx0=left?(left.cx+ref.cx)/2:x0,sx1=right?(right.cx+ref.cx)/2:x1;
+    if(sx1-sx0<28){sx0=Math.max(x0,ref.cx-22);sx1=Math.min(x1,ref.cx+22)}
+    return {cw,col,x0,x1,sx0,sx1};
+  }
+  function priceFor4(ref,prices,allRefs,W){
+    const c=colInfo4(ref,allRefs,W);
+    let pool=prices.filter(p=>p.cx>=c.x0-8&&p.cx<=c.x1+8&&Math.abs(p.cy-ref.cy)<180);
+    const sl=pool.filter(p=>p.cx>=c.sx0-12&&p.cx<=c.sx1+12);if(sl.length)pool=sl;
+    if(!pool.length)pool=prices.filter(p=>Math.abs(p.cx-ref.cx)<180&&Math.abs(p.cy-ref.cy)<180);
+    if(!pool.length)return null;
+    return pool.sort((a,b)=>scorePrice4(a,ref)-scorePrice4(b,ref))[0];
+  }
+  function scorePrice4(p,r){return Math.abs(p.cx-r.cx)*2+Math.abs(p.cy-r.cy)+(p.cy>r.cy+14?90:0)}
+  function rows4(records){
+    const rows=[];
+    for(const r of [...records].sort((a,b)=>a.cy-b.cy||a.x0-b.x0)){
+      let row=rows.find(q=>Math.abs(q.cy-r.cy)<5.5);
+      if(!row){row={cy:r.cy,items:[]};rows.push(row)} row.items.push(r);
+    }
+    return rows.map(row=>{row.items.sort((a,b)=>a.x0-b.x0);row.x0=Math.min(...row.items.map(x=>x.x0));row.x1=Math.max(...row.items.map(x=>x.x1));row.h=Math.max(...row.items.map(x=>x.h));row.text=row.items.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim();return row});
+  }
+  function noisy4(s=''){
+    const x=String(s).trim();if(!x)return true;
+    if(/^(?:NOVE|DAD|REF\\.?|PRECIO|€)$/i.test(x)||/Julio|Agosto|mibricolaje/i.test(x))return true;
+    const z=x.replace(/^[^A-Z0-9]+|[^A-Z0-9]+$/gi,'').replace(/\s/g,'').toUpperCase();return REF_RE.test(z);
+  }
+  function attr4(s=''){return /^(?:medidas?|alto|altura|ancho|largo|peso|potencia|capacidad|color(?:es)?|diámetro|serie|ref\.?|precio|ø|max|min|rango)\b/i.test(String(s).trim())}
+  function headingOk4(s=''){
+    const x=String(s).trim();if(noisy4(x)||x.length<4||x.length>100||attr4(x))return false;
+    if(/^[\d(].*(?:cm|mm|kg|w|v|hp|litros?|piezas?|toneladas?|€)/i.test(x))return false;
+    if(!/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{3}/.test(x))return false;
+    return true;
+  }
+  function textFor4(ref,allRefs,records,pieces,W,pageNo){
+    const c=colInfo4(ref,allRefs,W),cellRecords=records.filter(r=>r.cx>=c.x0-4&&r.cx<=c.x1+4),allRows=rows4(cellRecords);
+    const pool=allRows.filter(r=>r.cy<ref.cy-3&&ref.cy-r.cy<360&&Math.max(0,Math.min(r.x1,c.x1)-Math.max(r.x0,c.x0))>14&&headingOk4(r.text));
+    let seed=pool.sort((a,b)=>((ref.cy-a.cy)-a.h*5)-((ref.cy-b.cy)-b.h*5))[0]||null;
+    let title='Producto '+ref.ref,titleY=Math.max(0,ref.cy-220);
+    if(seed){
+      const linked=allRows.filter(r=>Math.abs(r.cy-seed.cy)<=18&&r.x1>=c.x0&&r.x0<=c.x1&&!noisy4(r.text)&&!/[€]/.test(r.text)).sort((a,b)=>a.cy-b.cy||a.x0-b.x0);
+      let tt=linked.map(r=>r.text).join(' ').replace(/\s+/g,' ').trim();
+      if(tt.length>120)tt=seed.text; title=tt||seed.text;titleY=Math.min(...linked.map(r=>r.cy),seed.cy);
+    }
+    const local=pieces.filter(p=>p.cy>=Math.max(0,titleY-8)&&p.cy<=ref.cy+70&&p.cx>=c.sx0-5&&p.cx<=c.sx1+5&&!noisy4(p.text)&&!/[€]/.test(p.text));
+    const localRows=rows4(local.map(p=>({...p,text:p.text}))).map(r=>r.text).filter(x=>x&&!/^\d+(?:[.,]\d+)?$/.test(x));
+    const general=allRows.filter(r=>r.cy>=Math.max(0,titleY-5)&&r.cy<=ref.cy+55&&r.x0>=c.x0-5&&r.x1<=c.x1+5&&!noisy4(r.text)&&!/[€]/.test(r.text)&&r.text.length<150).map(r=>r.text);
+    const desc=[title,...general,...localRows].map(x=>String(x).trim()).filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(' · ').slice(0,900);
+    return {title:title.slice(0,150),description:desc||('Referencia '+ref.ref+' · página '+pageNo),bounds:{x0:c.x0,x1:c.x1,sx0:c.sx0,sx1:c.sx1,y0:Math.max(0,titleY-20),y1:ref.cy+20}};
+  }
+  function section4(records,pageNo){const t=records.filter(r=>r.cy<105).map(r=>r.text).join(' ');const m=t.match(/(Baños(?:\s*·\s*Ocio y deporte)?|Electrodoméstico industrial|Pequeño electrodoméstico|Jardín(?:\s*·\s*Ordenación)?|Camping|Agricultura|Herramienta eléctrica(?:\s*·\s*Maquinaria)?|Bricolaje(?:\s*·\s*Soldadura)?|Automoción|Ventilación)/i);return m?m[1]:'Catálogo pág. '+pageNo}
+  function cat4(section,title){const s=(section+' '+title).toLowerCase();if(/herramient|soldadura|automoci|taladro|sierra|martillo|soldador|compresor|gato|neumát/.test(s))return'Herramientas';if(/baño|ducha|mampara|lavabo|inodoro|grifo|fregadero|electrodoméstico|ventilación|horno|nevera|cocina/.test(s))return'Reformas';if(/jardín|camping|agricultura|césped|barbacoa|carpa|sombrilla|sulfat|estanter/.test(s))return'Bricolaje';return typeof guessCat==='function'?guessCat(title):'Bricolaje'}
+
+  function mm4(a,b){return[a[0]*b[0]+a[2]*b[1],a[1]*b[0]+a[3]*b[1],a[0]*b[2]+a[2]*b[3],a[1]*b[2]+a[3]*b[3],a[0]*b[4]+a[2]*b[5]+a[4],a[1]*b[4]+a[3]*b[5]+a[5]]}
+  function pt4(m,x,y){return[m[0]*x+m[2]*y+m[4],m[1]*x+m[3]*y+m[5]]}
+  async function imageBoxes4(page,viewport,pdfjs){
+    try{const op=await page.getOperatorList(),OPS=pdfjs.OPS;let ctm=[1,0,0,1,0,0],stack=[],out=[];
+      for(let i=0;i<op.fnArray.length;i++){const fn=op.fnArray[i],a=op.argsArray[i]||[];if(fn===OPS.save){stack.push(ctm.slice());continue}if(fn===OPS.restore){ctm=stack.pop()||[1,0,0,1,0,0];continue}if(fn===OPS.transform){ctm=mm4(ctm,a);continue}if(fn===OPS.paintImageXObject||fn===OPS.paintInlineImageXObject||fn===OPS.paintJpegXObject){const m=mm4(viewport.transform,ctm),q=[pt4(m,0,0),pt4(m,1,0),pt4(m,0,1),pt4(m,1,1)],xs=q.map(x=>x[0]),ys=q.map(x=>x[1]),x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys),w=x1-x0,h=y1-y0,area=w*h;if(w>22&&h>22&&area>900)out.push({x0,x1,y0,y1,cx:(x0+x1)/2,cy:(y0+y1)/2,w,h,area})}}
+      return dedupe4(out,b=>[b.x0,b.y0,b.x1,b.y1].map(v=>Math.round(v/3)*3).join('|'));
+    }catch(e){console.warn('imageBoxes4',e);return[]}
+  }
+  function imageFor4(ref,boxes,bounds,viewport){
+    const pageArea=viewport.width*viewport.height,cellX0=bounds.x0,cellX1=bounds.x1;let pool=boxes.filter(b=>b.area<pageArea*.42&&b.area>900&&b.x1>cellX0-15&&b.x0<cellX1+15&&b.y0<ref.cy+25&&b.y1>Math.max(0,bounds.y0-120));
+    if(!pool.length)pool=boxes.filter(b=>b.area<pageArea*.42&&b.area>900&&Math.abs(b.cx-ref.cx)<220&&b.y0<ref.cy+25);
+    if(!pool.length)return null;
+    return pool.sort((a,b)=>{const da=(a.cx<cellX0?cellX0-a.cx:a.cx>cellX1?a.cx-cellX1:0)+Math.max(0,ref.cy-a.y1)*.7+Math.abs(a.cx-ref.cx)*.12;const db=(b.cx<cellX0?cellX0-b.cx:b.cx>cellX1?b.cx-cellX1:0)+Math.max(0,ref.cy-b.y1)*.7+Math.abs(b.cx-ref.cx)*.12;return da-db})[0];
+  }
+  /* FVM_CATALOG_PAIRING_V7 */
+  function pairPrices7(refs,prices){
+    const result=new Map(),used=new Set();
+    const rlist=[...refs].sort((a,b)=>(a._seq??0)-(b._seq??0));
+    const plist=[...prices].sort((a,b)=>(a._seq??0)-(b._seq??0));
+    const markers=[...rlist.map(x=>({type:'r',x,seq:x._seq??0})),...plist.map(x=>({type:'p',x,seq:x._seq??0}))].sort((a,b)=>a.seq-b.seq);
+    const runs=[];
+    for(const m of markers){
+      const last=runs[runs.length-1];
+      if(last&&last.type===m.type&&m.seq-last.items[last.items.length-1].seq<700)last.items.push(m);
+      else runs.push({type:m.type,items:[m]});
+    }
+    const nearGroup=(a,b)=>{
+      const aa=a.map(z=>z.x),bb=b.map(z=>z.x);
+      const ax=aa.reduce((q,z)=>q+(z.cx||0),0)/Math.max(1,aa.length),ay=aa.reduce((q,z)=>q+(z.cy||0),0)/Math.max(1,aa.length);
+      const bx=bb.reduce((q,z)=>q+(z.cx||0),0)/Math.max(1,bb.length),by=bb.reduce((q,z)=>q+(z.cy||0),0)/Math.max(1,bb.length);
+      return Math.abs(ax-bx)<520&&Math.abs(ay-by)<240;
+    };
+    for(let i=0;i<runs.length-1;i++){
+      const a=runs[i],b=runs[i+1];
+      if(!nearGroup(a.items,b.items))continue;
+      if(a.type==='p'&&b.type==='r'&&a.items.length===b.items.length&&a.items.length>1){
+        a.items.forEach((m,k)=>{result.set(b.items[k].x,m.x);used.add(m.x)});
+      }else if(a.type==='r'&&b.type==='p'&&a.items.length===b.items.length&&a.items.length>1){
+        a.items.forEach((m,k)=>{result.set(m.x,b.items[k].x);used.add(b.items[k].x)});
+      }else if(a.type==='r'&&b.type==='p'&&a.items.length>1&&b.items.length===1){
+        a.items.forEach(m=>result.set(m.x,b.items[0].x));used.add(b.items[0].x);
+      }else if(a.type==='p'&&b.type==='r'&&a.items.length===1&&b.items.length>1){
+        b.items.forEach(m=>result.set(m.x,a.items[0].x));used.add(a.items[0].x);
+      }
+    }
+    for(let i=0;i<rlist.length;i++){
+      const r=rlist[i];if(result.has(r))continue;
+      const prevSeq=i?(rlist[i-1]._seq??-Infinity):-Infinity;
+      const cand=plist.filter(p=>!used.has(p)&&(p._seq??0)<(r._seq??0)&&(p._seq??0)>prevSeq);
+      if(cand.length){
+        const p=[...cand].sort((a,b)=>(b._seq??0)-(a._seq??0))[0];
+        const dx=Math.abs((p.cx||0)-(r.cx||0)),dy=Math.abs((p.cy||0)-(r.cy||0));
+        if(dx<190&&dy<125){result.set(r,p);used.add(p);continue}
+      }
+    }
+    const edges=[];
+    for(const r of rlist){
+      if(result.has(r))continue;
+      for(const p of plist){
+        if(used.has(p))continue;
+        const dx=Math.abs((p.cx||0)-(r.cx||0)),dy=Math.abs((p.cy||0)-(r.cy||0));
+        if(dx<190&&dy<150)edges.push([dx*1.35+dy,r,p]);
+      }
+    }
+    edges.sort((a,b)=>a[0]-b[0]);
+    for(const [,r,p] of edges){if(result.has(r)||used.has(p))continue;result.set(r,p);used.add(p)}
+    return result;
+  }
+  async function parse4(file){
+    const pdfjs=await getPdfJs4(),buf=await file.arrayBuffer();pdfDoc4=await pdfjs.getDocument({data:new Uint8Array(buf)}).promise;pageCache4.clear();const out=[],seen=new Set();
+    for(let n=1;n<=pdfDoc4.numPages;n++){
+      if(window.catalogMsg)catalogMsg.textContent='Leyendo página '+n+' de '+pdfDoc4.numPages+' por referencia y celda…';
+      const page=await pdfDoc4.getPage(n),viewport=page.getViewport({scale:1.25}),tc=await page.getTextContent({normalizeWhitespace:true}),t=pageText4(tc,viewport,pdfjs),boxes=await imageBoxes4(page,viewport,pdfjs),sec=section4(t.records,n),priceMap7=pairPrices7(t.refs,t.prices);
+      for(const ref of t.refs){if(seen.has(ref.ref))continue;const pr=priceMap7.get(ref)||priceFor4(ref,t.prices,t.refs,viewport.width);if(!pr)continue;const tx=textFor4(ref,t.refs,t.records,t.pieces,viewport.width,n);seen.add(ref.ref);const sp=Number(pr.price)||0,margin=40,added=+(sp*.4).toFixed(2);out.push({title:tx.title,description:tx.description,sourceRef:ref.ref,sourcePrice:sp,margin,addedValue:added,price:+(sp+added).toFixed(2),sourceProvider:'Catálogo Mi Bricolaje',sourceUrl:'',ref:'',published:false,featured:false,selected:false,category:cat4(sec,tx.title),catalogPage:n,catalogSection:sec,_r4:ref,_b4:tx.bounds,_img4:imageFor4(ref,boxes,tx.bounds,viewport)})}
+    }
+    return {pages:pdfDoc4.numPages,catalog:{name:file.name,defaultMargin:40},candidates:out};
+  }
+  async function pageCanvas4(n){if(pageCache4.has(n))return pageCache4.get(n);const p=await pdfDoc4.getPage(n),v=p.getViewport({scale:1.25}),c=document.createElement('canvas');c.width=Math.ceil(v.width);c.height=Math.ceil(v.height);await p.render({canvasContext:c.getContext('2d',{alpha:false}),viewport:v}).promise;const z={p,v,c};pageCache4.set(n,z);return z}
+  function crop4(src,b){let x0=Math.max(0,Math.floor(b.x0)),y0=Math.max(0,Math.floor(b.y0)),x1=Math.min(src.width,Math.ceil(b.x1)),y1=Math.min(src.height,Math.ceil(b.y1)),w=Math.max(1,x1-x0),h=Math.max(1,y1-y0),sc=Math.min(1,520/Math.max(w,h));const o=document.createElement('canvas');o.width=Math.max(1,Math.round(w*sc));o.height=Math.max(1,Math.round(h*sc));o.getContext('2d',{alpha:false}).drawImage(src,x0,y0,w,h,0,0,o.width,o.height);return o.toDataURL('image/jpeg',.82)}
+  async function image4(c){if(c.image&&String(c.image).startsWith('data:image/'))return c.image;const r=await pageCanvas4(c.catalogPage);let b=c._img4;if(!b){const q=c._b4||{},x0=Math.max(0,q.x0||0),x1=Math.min(r.v.width,q.x1||r.v.width),y0=Math.max(0,(q.y0||0)-10),y1=Math.min(r.v.height,Math.max(y0+90,(c._r4?.cy||q.y1||200)-35));b={x0,y0,x1,y1}}const url=crop4(r.c,b);c.image=url;c.images=[{url,origin:'catalog-pdf',source:'Catálogo PDF · página '+c.catalogPage,license:'Imagen del catálogo de origen; revisar permiso de uso antes de publicar',author:''}];return url}
+
+  window.analyzeCatalogFile=async function(){const f=document.getElementById('catalogFile')?.files?.[0];if(!f){if(window.catalogMsg)catalogMsg.textContent='Selecciona primero un PDF.';return}try{if(window.catalogMsg)catalogMsg.textContent='Analizando referencias exactas y su celda…';const d=await parse4(f);catalogCandidates=(d.candidates||[]).map((c,i)=>({...c,idx:i,selected:false}));const sf=document.getElementById('catalogSectionFilter'),secs=[...new Set(catalogCandidates.map(c=>c.catalogSection).filter(Boolean))];if(sf)sf.innerHTML='<option value="">Todas las secciones</option>'+secs.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('');const sm=document.getElementById('catalogSummary');if(sm)sm.textContent=catalogCandidates.length+' referencias válidas · '+d.pages+' páginas';document.getElementById('catalogResult')?.classList.add('show');if(window.catalogMsg)catalogMsg.textContent='Listo. Cada referencia está asociada únicamente a su propia celda, precio, descripción e imagen.';if(typeof renderCatalogRows==='function')renderCatalogRows()}catch(e){console.error(e);if(window.catalogMsg)catalogMsg.textContent='Error al analizar PDF: '+e.message}};
+  window.importSelected=async function(){const idx=catalogCandidates.map((c,i)=>c.selected&&!c.imported?i:-1).filter(i=>i>=0);if(!idx.length){if(window.catalogMsg)catalogMsg.textContent='Selecciona al menos una referencia.';return}try{let done=0;for(let p=0;p<idx.length;p+=10){const g=idx.slice(p,p+10);if(window.catalogMsg)catalogMsg.textContent='Preparando imágenes '+(p+1)+'-'+Math.min(p+10,idx.length)+' de '+idx.length+'…';for(const i of g)await image4(catalogCandidates[i]);const products=g.map(i=>{const c={...catalogCandidates[i],published:false,featured:false};['_r4','_b4','_img4','idx','selected','imported','aiDone'].forEach(k=>delete c[k]);return c});const r=await api('/api/admin/import-catalog-products',{method:'POST',body:JSON.stringify({products,published:false})});g.forEach(i=>catalogCandidates[i].imported=true);done+=Number(r.created||g.length)}if(window.catalogMsg)catalogMsg.textContent=done+' productos importados como borrador con datos e imagen de su ficha exacta.';renderCatalogRows();if(typeof loadProducts==='function')await loadProducts()}catch(e){console.error(e);if(window.catalogMsg)catalogMsg.textContent='Error al importar: '+e.message}};
+
+  const priorRender4=window.renderCatalogRows;
+  window.renderCatalogRows=function(){if(typeof priorRender4==='function')priorRender4();document.querySelectorAll('#catalogRows tr').forEach(tr=>{const ai=tr.querySelector('button[onclick^="aiCandidate"]');if(!ai||tr.querySelector('.fvmV4Preview'))return;const m=ai.getAttribute('onclick')?.match(/\\((\\d+)\\)/),i=m?Number(m[1]):-1;if(i<0)return;const b=document.createElement('button');b.className='btn ghost fvmV4Preview';b.style.marginTop='5px';b.textContent='🖼 Ficha exacta';b.onclick=async()=>{b.disabled=true;b.textContent='Cargando…';try{const u=await image4(catalogCandidates[i]);const w=window.open();if(w)w.document.write('<title>'+catalogCandidates[i].sourceRef+'</title><img style="max-width:100%;height:auto" src="'+u+'">')}finally{b.disabled=false;b.textContent='🖼 Ficha exacta'}};ai.parentElement.appendChild(b)})};
+})();
+</script>
+
+
+<script>
+/* FVM_MIBRICOLAJE_UI_V8 */
+(function(){
+  let mbProducts=[];
+  function eur(n){return Number(n||0).toLocaleString('es-ES',{minimumFractionDigits:2,maximumFractionDigits:2})+' €'}
+  function esc(v=''){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function mount(){
+    const grid=document.querySelector('#view-catalog .grid');if(!grid||document.getElementById('mbImportCard'))return;
+    const card=document.createElement('div');card.id='mbImportCard';card.className='card wide';
+    card.innerHTML=`<div class="bar"><div><h2 style="margin:0">Importar desde MiBricolaje</h2><p class="sub" style="margin:5px 0 0">Fuente interna de aprovisionamiento. FVMarket conserva referencia/precio origen, crea referencia propia y no copia imágenes ni descripciones literales.</p></div><span class="badge">Método principal</span></div>
+      <div class="notice"><b>Uso independiente:</b> pega referencias (FT1533, FT1526...) o URLs de fichas. Los productos se guardan como <b>borradores</b> y la asociación con MiBricolaje solo es visible en administración.</div>
+      <div class="row2" style="margin-top:12px"><div class="field"><label>Referencias o URLs · una por línea</label><textarea id="mbInputs" rows="5" placeholder="FT1533\nFT1526\nhttps://mibricolaje.com/..." style="width:100%"></textarea></div><div><div class="field"><label>Valor añadido (%)</label><input id="mbMargin" type="number" min="0" max="300" step="0.1" value="40"></div><button class="btn navy" id="mbAnalyzeBtn" type="button">Analizar productos</button><div class="msg" id="mbMsg"></div></div></div>
+      <div id="mbResults" style="margin-top:14px"></div>`;
+    const pdf=grid.querySelector('.fvmCatalogV2');if(pdf)grid.insertBefore(card,pdf);else grid.prepend(card);
+    document.getElementById('mbAnalyzeBtn').onclick=analyze;
+  }
+  async function analyze(){
+    const box=document.getElementById('mbInputs'),msg=document.getElementById('mbMsg'),btn=document.getElementById('mbAnalyzeBtn');
+    const inputs=String(box?.value||'').split(/[\n,;]+/).map(x=>x.trim()).filter(Boolean);if(!inputs.length){msg.textContent='Introduce al menos una referencia o URL.';return}
+    btn.disabled=true;msg.textContent='Consultando fichas públicas y generando fichas propias FVMarket…';
+    try{const r=await api('/api/admin/mibricolaje/analyze',{method:'POST',body:JSON.stringify({inputs,margin:Number(document.getElementById('mbMargin').value)||40})});mbProducts=r.products||[];render(r.errors||[]);msg.textContent=mbProducts.length+' productos preparados para revisión'+((r.errors||[]).length?' · '+r.errors.length+' no encontrados':'')+'.';}catch(e){msg.textContent=e.message||'No se pudo analizar.'}finally{btn.disabled=false}
+  }
+  function render(errors=[]){
+    const el=document.getElementById('mbResults');if(!el)return;if(!mbProducts.length){el.innerHTML=errors.length?'<div class="notice">'+errors.map(x=>esc(x.input)+': '+esc(x.error)).join('<br>')+'</div>':'';return}
+    el.innerHTML=`<div class="catalogTable" style="max-height:560px"><table><thead><tr><th>✓</th><th>Producto FVMarket</th><th>Ref. origen</th><th>Marca</th><th>Precio origen</th><th>Margen</th><th>PVP</th><th>Estado</th></tr></thead><tbody>${mbProducts.map((p,i)=>`<tr><td><input type="checkbox" class="mbSel" data-i="${i}"></td><td><input class="miniTitle mbTitle" data-i="${i}" value="${esc(p.title)}"><div class="aiMeta">Ref. FVMarket se asignará al importar · sin imagen del origen</div></td><td><b>${esc(p.sourceRef)}</b></td><td>${esc(p.sourceBrand||'')}</td><td>${eur(p.sourcePrice)}${p.sourceTaxNote?'<div class="aiMeta">'+esc(p.sourceTaxNote)+'</div>':''}</td><td><input class="miniInput mbMarginRow" data-i="${i}" type="number" min="0" max="300" step="0.1" value="${Number(p.margin||40)}"></td><td class="mbPvp" data-i="${i}"><b>${eur(p.price)}</b></td><td><span class="badge">Borrador</span><div class="aiMeta">${esc(p.sourceAvailability||'')}</div></td></tr>`).join('')}</tbody></table></div>
+      <div class="bar" style="margin-top:10px"><button class="btn ghost" id="mbSelectAll">Seleccionar todos</button><button class="btn navy" id="mbImportSelected">Importar seleccionados como borrador</button><span class="msg" id="mbImportMsg"></span></div>${errors.length?'<div class="notice">No encontrados:<br>'+errors.map(x=>esc(x.input)+': '+esc(x.error)).join('<br>')+'</div>':''}`;
+    el.querySelectorAll('.mbMarginRow').forEach(inp=>inp.oninput=()=>{const i=Number(inp.dataset.i),m=Math.max(0,Number(inp.value)||0);mbProducts[i].margin=m;mbProducts[i].addedValue=+(Number(mbProducts[i].sourcePrice||0)*m/100).toFixed(2);mbProducts[i].price=+(Number(mbProducts[i].sourcePrice||0)+mbProducts[i].addedValue).toFixed(2);el.querySelector('.mbPvp[data-i="'+i+'"]').innerHTML='<b>'+eur(mbProducts[i].price)+'</b>'});
+    el.querySelectorAll('.mbTitle').forEach(inp=>inp.oninput=()=>{mbProducts[Number(inp.dataset.i)].title=inp.value});
+    document.getElementById('mbSelectAll').onclick=()=>el.querySelectorAll('.mbSel').forEach(x=>x.checked=true);
+    document.getElementById('mbImportSelected').onclick=doImport;
+  }
+  async function doImport(){
+    const el=document.getElementById('mbResults'),msg=document.getElementById('mbImportMsg');const chosen=[...el.querySelectorAll('.mbSel:checked')].map(x=>mbProducts[Number(x.dataset.i)]);if(!chosen.length){msg.textContent='Selecciona al menos un producto.';return}
+    msg.textContent='Importando…';try{const r=await api('/api/admin/mibricolaje/import',{method:'POST',body:JSON.stringify({products:chosen})});msg.textContent='Creados '+r.created+' borradores'+(r.skipped?' · '+r.skipped+' omitidos/duplicados':'')+'. Revisa imágenes y ficha desde Productos.';if(typeof loadProducts==='function')loadProducts()}catch(e){msg.textContent=e.message||'Error al importar.'}
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);else setTimeout(mount,0);
+})();
+</script>
+<script src="/fvmarket-admin-v13.js?v=13"></script>
+<script src="/fvmarket-admin-security-v14.js?v=14"></script>
+<script src="/fvmarket-admin-crop-v16.js?v=16"></script>
+<script src="/fvmarket-admin-v17.js?v=17"></script>
+<script src="/fvmarket-admin-control-v2.js?v=2"></script>
+<script src="/fvmarket-admin-orders-v1.js?v=1"></script>
+<script src="/fvmarket-admin-database-v1.js?v=1"></script>
+<script src="/fvmarket-admin-live-refresh-v1.js?v=1"></script>
+</body></html>
