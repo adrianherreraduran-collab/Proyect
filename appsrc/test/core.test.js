@@ -82,6 +82,41 @@ test('el flujo operativo impide saltarse la recogida del proveedor', () => {
   assert.ok(data.auditLog.some(entry => entry.action === 'reembolso_emitido'));
 });
 
+test('la contabilidad separa FVMarket y RutaFV y genera exportación para Holded', () => {
+  const data = fixture();
+  data.orders.push({ id: 'o-accounting', number: 'FVM-ACC-1', status: 'pagado', paidAt: '2026-09-28T08:00:00.000Z', createdAt: '2026-09-28T07:00:00.000Z', subtotal: 100, delivery: 15, total: 115, paymentMethod: 'stripe', customer: { name: 'Cliente contable' }, items: [{ productId: 'p1', title: 'Taladro', qty: 1, procurement: { supplierId: 'sup1', provider: 'Proveedor Uno', sourceRef: 'SRC-42', sourcePrice: 60 } }] });
+  data.invoices = [{ id: 'inv-1', orderId: 'o-accounting', number: 'FVM-FAC-1', taxRate: 7, paymentMethod: 'stripe' }];
+  operations.ensureOperationsData(data);
+  const report = operations.accountingReport(data, { app: 'RutaFV' });
+  assert.equal(report.entries.length, 1);
+  assert.equal(report.entries[0].analyticApp, 'RutaFV');
+  assert.equal(report.totals.byApp.RutaFV.net, 15);
+  const csv = operations.holdedCsv(operations.accountingReport(data, {}).entries);
+  assert.match(csv, /Aplicación/);
+  assert.match(csv, /FVMarket/);
+  assert.match(csv, /RutaFV/);
+  assert.match(csv, /Debe;Haber/);
+});
+
+test('la API de contabilidad acepta filtros y responde la exportación CSV', async () => {
+  const routes = {};
+  const app = { get(path, ...args) { routes[path] = args.at(-1); }, post() {} };
+  const data = { settings: { igic: 7 }, orders: [], invoices: [], accountingEntries: [], procurementTasks: [], auditLog: [] };
+  operations.registerOperationsRoutes(app, {
+    read: () => data,
+    save: () => {},
+    ordersManager: (req, res, next) => next(),
+    paidOrderStatus: status => status === 'pagado'
+  });
+  let csv = '';
+  await routes['/api/admin/accounting/export']({ query: { app: 'FVMarket' } }, { set() {}, send(value) { csv = value; } });
+  assert.match(csv, /Fecha;Documento/);
+  let json;
+  await routes['/api/admin/accounting']({ query: { app: 'RutaFV' } }, { set() {}, json(value) { json = value; } });
+  assert.deepEqual(json.applications, ['FVMarket', 'RutaFV', 'Compartido']);
+  assert.deepEqual(json.entries, []);
+});
+
 test('el plazo del proveedor se calcula por isla y conserva dirección y fecha estimada', () => {
   const base = '2026-09-27T12:00:00.000Z';
   const local = supplierDelivery.deliveryEstimate({ island: 'Fuerteventura', address: 'Calle Primero de Mayo 1, Puerto del Rosario' }, base);
@@ -205,6 +240,7 @@ test('el catálogo interno muestra ubicación del proveedor y elimina la forma d
   const databaseUi = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-database-v1.js'), 'utf8');
   const suppliers = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-v13.js'), 'utf8');
   const board = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-control-v2.js'), 'utf8');
+  const accountingUi = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-accounting-v2.js'), 'utf8');
   const ordersUi = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-admin-orders-v1.js'), 'utf8');
   assert.match(suppliers, /v13SupplierIsland/);
   assert.match(suppliers, /v13SupplierAddress/);
@@ -214,4 +250,7 @@ test('el catálogo interno muestra ubicación del proveedor y elimina la forma d
   assert.match(databaseUi, /Elimina todos los pedidos y productos/);
   assert.match(ordersUi, /Entrega estimada proveedor/);
   assert.match(board, /Entrega estimada del proveedor/);
+  assert.match(accountingUi, /Exportar para Holded/);
+  assert.match(accountingUi, /FVMarket \/ RutaFV/);
+  assert.match(admin, /fvmarket-admin-accounting-v2\.js/);
 });

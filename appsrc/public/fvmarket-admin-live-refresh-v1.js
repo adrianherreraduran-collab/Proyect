@@ -10,7 +10,8 @@
     'button[onclick*="loadInvoices"]',
     '#fvmPendingOrdersRefresh',
     '#fvmBoardRefresh',
-    '#fvmNotificationsRefresh'
+    '#fvmNotificationsRefresh',
+    '#fvmAccRefresh'
   ].join(',');
 
   function addStyles() {
@@ -79,6 +80,8 @@
         $('fvmBoardRefresh')?.click();
       } else if (view.id === 'view-notifications') {
         $('fvmNotificationsRefresh')?.click();
+      } else if (view.id === 'view-accounting' && typeof window.fvmAccountingRefresh === 'function') {
+        await window.fvmAccountingRefresh();
       }
     } catch (error) {
       console.warn('FVMarket admin: actualización automática no disponible', error);

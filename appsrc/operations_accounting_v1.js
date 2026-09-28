@@ -23,6 +23,21 @@ const STATUS_ORDER = [
   'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado'
 ];
 
+// Both products belong to the same legal business for now.  We therefore keep
+// one fiscal ledger and tag every movement with an analytic business unit so it
+// can be reported independently in FVMarket, RutaFV or as a consolidated view.
+const ACCOUNTING_APPS = {
+  FVMARKET: 'FVMarket',
+  RUTAFV: 'RutaFV',
+  SHARED: 'Compartido'
+};
+const ACCOUNTING_META = {
+  venta_productos: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '700000', label: 'Venta de productos' },
+  transporte_cobrado: { analyticApp: ACCOUNTING_APPS.RUTAFV, accountCode: '705000', label: 'Transporte cobrado' },
+  coste_proveedor: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '600000', label: 'Coste de proveedor' },
+  reembolso: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '708000', label: 'Reembolso de cliente' }
+};
+
 const TRANSITIONS = {
   pendiente_pago: new Set(['pagado', 'cancelado']),
   pagado: new Set(['en_compra_proveedor', 'incidencia', 'cancelado', 'reembolso_parcial', 'reembolsado']),
@@ -206,7 +221,20 @@ function addAudit(d, order, action, actor, details = {}) {
 function addLedger(d, order, type, amount, details = {}) {
   const sourceKey = String(details.sourceKey || `${order.id}:${type}`);
   if (d.accountingEntries.some(x => x.sourceKey === sourceKey)) return;
-  d.accountingEntries.push({ id: 'led_' + Math.random().toString(36).slice(2, 12), orderId: order.id, type, amount: money(amount), currency: 'EUR', description: String(details.description || type), sourceKey, at: details.at || now(), metadata: details.metadata || {} });
+  const meta = ACCOUNTING_META[type] || { analyticApp: ACCOUNTING_APPS.SHARED, accountCode: '', label: type };
+  d.accountingEntries.push({
+    id: 'led_' + Math.random().toString(36).slice(2, 12),
+    orderId: order.id,
+    type,
+    analyticApp: String(details.analyticApp || meta.analyticApp),
+    accountCode: String(details.accountCode || meta.accountCode),
+    amount: money(amount),
+    currency: 'EUR',
+    description: String(details.description || meta.label || type),
+    sourceKey,
+    at: details.at || now(),
+    metadata: details.metadata || {}
+  });
 }
 
 function ensureLedgerForOrder(d, order) {
@@ -270,6 +298,154 @@ function publicOperationOrder(order, d) {
   return { ...order, statusLabel: label(order.status), deliveryEstimate: order.deliveryEstimate || customerDeliveryEstimate(tasks, order.paidAt || order.createdAt || new Date()), procurementTasks: tasks, timeline: d.auditLog.filter(x => x.orderId === order.id).sort((a, b) => String(a.at).localeCompare(String(b.at))) };
 }
 
+function orderInvoice(d, order) {
+  return (d.invoices || []).find(invoice => invoice.orderId === order.id) || null;
+}
+
+function accountingRow(entry, d) {
+  const order = (d.orders || []).find(item => item.id === entry.orderId) || {};
+  const invoice = orderInvoice(d, order);
+  const meta = ACCOUNTING_META[entry.type] || {};
+  const analyticApp = String(entry.analyticApp || meta.analyticApp || ACCOUNTING_APPS.SHARED);
+  const amount = money(entry.amount);
+  const gross = Math.abs(amount);
+  const rate = entry.type === 'coste_proveedor'
+    ? Number(entry.metadata?.taxRate || 0)
+    : Number(entry.metadata?.taxRate ?? invoice?.taxRate ?? d.settings?.igic ?? 0);
+  const taxableBase = rate > 0 && entry.type !== 'coste_proveedor' ? money(gross / (1 + rate / 100)) : 0;
+  const taxAmount = rate > 0 && entry.type !== 'coste_proveedor' ? money(gross - taxableBase) : 0;
+  const supplierName = String(entry.metadata?.supplierName || '');
+  return {
+    ...entry,
+    analyticApp,
+    accountCode: String(entry.accountCode || meta.accountCode || ''),
+    accountLabel: String(meta.label || entry.type),
+    orderNumber: String(order.number || entry.orderId || ''),
+    invoiceId: String(invoice?.id || ''),
+    invoiceNumber: String(invoice?.number || ''),
+    status: String(order.status || ''),
+    customerName: String(order.customer?.billingName || order.customer?.name || ''),
+    customerNif: String(order.customer?.nifNie || ''),
+    supplierName,
+    paymentMethod: String(order.paymentMethod || invoice?.paymentMethod || ''),
+    taxName: 'IGIC',
+    taxRate: rate,
+    taxableBase,
+    taxAmount,
+    grossAmount: gross
+  };
+}
+
+function filterAccountingRows(d, query = {}) {
+  const q = String(query.q || '').trim().toLowerCase();
+  const analyticApp = String(query.app || '').trim();
+  const type = String(query.type || '').trim();
+  const status = String(query.status || '').trim();
+  const from = String(query.from || '').trim();
+  const to = String(query.to || '').trim();
+  const rows = (d.accountingEntries || []).map(entry => accountingRow(entry, d)).filter(row => {
+    const date = String(row.at || '').slice(0, 10);
+    const haystack = [row.orderNumber, row.invoiceNumber, row.description, row.customerName, row.supplierName, row.type, row.accountLabel].join(' ').toLowerCase();
+    if (q && !haystack.includes(q)) return false;
+    if (analyticApp && row.analyticApp !== analyticApp) return false;
+    if (type && row.type !== type) return false;
+    if (status && row.status !== status) return false;
+    if (from && date < from) return false;
+    if (to && date > to) return false;
+    return true;
+  });
+  rows.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  return rows;
+}
+
+function accountingTotals(rows) {
+  const byType = {};
+  const byApp = {};
+  for (const row of rows) {
+    byType[row.type] = money((byType[row.type] || 0) + Number(row.amount || 0));
+    const unit = byApp[row.analyticApp] || { income: 0, costs: 0, net: 0 };
+    if (Number(row.amount || 0) >= 0) unit.income = money(unit.income + Number(row.amount || 0));
+    else unit.costs = money(unit.costs + Math.abs(Number(row.amount || 0)));
+    unit.net = money(unit.income - unit.costs);
+    byApp[row.analyticApp] = unit;
+  }
+  const income = money(rows.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0));
+  const costs = money(rows.reduce((sum, row) => sum + Math.abs(Math.min(0, Number(row.amount || 0))), 0));
+  return { byType, byApp, income, costs, net: money(income - costs), entries: rows.length };
+}
+
+function accountingReport(d, query = {}) {
+  const entries = filterAccountingRows(d, query);
+  const orders = (d.orders || []).map(order => ({
+    id: order.id,
+    number: order.number,
+    status: order.status,
+    total: money(order.total),
+    subtotal: money(order.subtotal),
+    transport: money(order.delivery),
+    customer: order.customer?.name || '',
+    createdAt: order.createdAt,
+    paidAt: order.paidAt || null
+  }));
+  const invoices = (d.invoices || []).map(invoice => ({
+    id: invoice.id,
+    number: invoice.number,
+    orderId: invoice.orderId,
+    orderNumber: invoice.orderNumber,
+    issuedAt: invoice.issuedAt,
+    taxBase: money(invoice.taxBase),
+    taxAmount: money(invoice.taxAmount),
+    total: money(invoice.total),
+    paymentMethod: invoice.paymentMethod || ''
+  }));
+  return {
+    entries,
+    orders,
+    invoices,
+    totals: accountingTotals(entries),
+    applications: Object.values(ACCOUNTING_APPS),
+    types: Object.keys(ACCOUNTING_META),
+    statuses: Object.keys(STATUS_LABELS),
+    audit: (d.auditLog || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 500)
+  };
+}
+
+function csvCell(value) {
+  const text = String(value ?? '');
+  return /[;"\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function holdedCsv(rows) {
+  const headers = ['Fecha', 'Documento', 'Número documento', 'Descripción', 'Cuenta', 'Debe', 'Haber', 'Importe', 'Moneda', 'Aplicación', 'Centro de coste', 'Tercero', 'NIF', 'Pedido', 'Factura', 'Método de pago', 'Impuesto', 'Base imponible', 'Cuota impuesto'];
+  const lines = [headers.join(';')];
+  for (const row of rows) {
+    const amount = Number(row.amount || 0);
+    const values = [
+      String(row.at || '').slice(0, 10),
+      row.invoiceNumber || row.orderNumber,
+      row.invoiceNumber || row.orderNumber,
+      row.description,
+      row.accountCode,
+      amount < 0 ? Math.abs(amount).toFixed(2) : '0.00',
+      amount > 0 ? amount.toFixed(2) : '0.00',
+      amount.toFixed(2),
+      row.currency || 'EUR',
+      row.analyticApp,
+      row.analyticApp,
+      row.supplierName || row.customerName,
+      row.customerNif,
+      row.orderNumber,
+      row.invoiceNumber,
+      row.paymentMethod,
+      row.taxRate ? `${row.taxName} ${Number(row.taxRate).toFixed(2)}%` : '',
+      Number(row.taxableBase || 0).toFixed(2),
+      Number(row.taxAmount || 0).toFixed(2)
+    ];
+    lines.push(values.map(csvCell).join(';'));
+  }
+  return '\ufeff' + lines.join('\r\n') + '\r\n';
+}
+
 function registerOperationsRoutes(app, deps) {
   const { read, save, id, ordersManager, admin, rutaFVRequest, RUTAFV_DELIVERY_PATH, RUTAFV_CLIENT_CODE, paidOrderStatus, issueInvoiceForOrder, recordInvoiceIssued, scheduleOrderEmail } = deps;
 
@@ -280,12 +456,19 @@ function registerOperationsRoutes(app, deps) {
     res.json({ statuses: STATUS_LABELS, counts, orders, procurementTasks: d.procurementTasks, fulfillmentModel: d.settings?.fulfillmentModel || 'sin_stock_fisico', deliveryMode: d.settings?.deliveryMode || 'normal_planificado' });
   });
 
+  app.get('/api/admin/accounting/export', ordersManager, (req, res) => {
+    const d = ensureOperationsData(read());
+    const report = accountingReport(d, req.query || {});
+    const filename = `fvmarket-holded-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.set('Content-Type', 'text/csv; charset=utf-8');
+    res.set('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(holdedCsv(report.entries));
+  });
+
   app.get('/api/admin/accounting', ordersManager, (req, res) => {
     const d = ensureOperationsData(read());
-    const entries = (d.accountingEntries || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at)));
-    const orders = (d.orders || []).map(o => ({ id: o.id, number: o.number, status: o.status, total: money(o.total), subtotal: money(o.subtotal), transport: money(o.delivery), customer: o.customer?.name || '', createdAt: o.createdAt }));
-    const totals = entries.reduce((acc, e) => { acc[e.type] = money((acc[e.type] || 0) + Number(e.amount || 0)); return acc; }, {});
-    res.json({ entries, orders, totals, audit: (d.auditLog || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 500) });
+    res.set('Cache-Control', 'no-store');
+    res.json(accountingReport(d, req.query || {}));
   });
 
   app.get('/api/admin/orders/:id/timeline', ordersManager, (req, res) => {
@@ -395,4 +578,4 @@ function registerOperationsRoutes(app, deps) {
   });
 }
 
-module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, customerDeliveryEstimate, addCustomerNotification, STATUS_LABELS, _test: { normalizeStatus, label, money, TRANSITIONS } };
+module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, customerDeliveryEstimate, addCustomerNotification, STATUS_LABELS, ACCOUNTING_APPS, accountingReport, holdedCsv, _test: { normalizeStatus, label, money, TRANSITIONS, accountingRow, accountingTotals } };
