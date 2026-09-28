@@ -328,10 +328,17 @@ function requireCustomerReady(req,res,next){
 }
 
 // FVM_PRIVATE_PROCUREMENT_V1
-function publicProduct(p={}){
+function publicProduct(p={}, d=null){
   const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,sourceStore,sourceSeller,providerKey,supplierId,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
-  safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);return safe;
+  safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);
+  // El cliente solo recibe el plazo, nunca la identidad ni la ubicación del proveedor.
+  if(d){
+    const supplier=(d.suppliers||[]).find(x=>String(x.id||'')===String(p.supplierId||''))||{island:p.supplierIsland||'',address:p.supplierAddress||'',city:p.supplierCity||''};
+    const estimate=customerDeliveryEstimateForItems(d,[{supplierId:p.supplierId||'',procurement:{supplierId:p.supplierId||''},supplierIsland:supplier.island,supplierAddress:supplier.address,supplierCity:supplier.city}],new Date());
+    if(estimate)safe.deliveryEstimate=estimate;
+  }
+  return safe;
 }
 function publicOrder(o={}){
   const {stripeSessionId,stripeSessionUrl,stripeSessionExpiresAt,paymentIntentId,stripePaymentStatus,guestAccessTokenHash,emailEvents,refunds,...safe}=o;
@@ -538,7 +545,16 @@ async function confirmStripePayment(req,session){
 }
 
 app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',paymentProvider:'stripe',stripeConfigured:!!stripe,stripeWebhook:!!(stripe&&STRIPE_WEBHOOK_SECRET),emailConfigured:!!(RESEND_API_KEY&&EMAIL_FROM),billing:true,guestCheckout:false}));
-app.get('/api/products',(req,res)=>{const d=read();const q=(req.query.q||'').toLowerCase();const category=(req.query.category||'').toLowerCase();res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.ref}`.toLowerCase().includes(q)) && (!category || p.category.toLowerCase()===category)).map(publicProduct))});
+app.get('/api/products',(req,res)=>{
+  const d=read(),q=String(req.query.q||'').toLowerCase().trim(),category=String(req.query.category||'').toLowerCase().trim();
+  const aliases={
+    reformas:['reformas','baño y cocina','fontanería','electricidad','pintura'],
+    'baño y cocina':['baño y cocina','reformas'],
+    climatización:['climatización','calefacción','aire acondicionado']
+  };
+  const allowed=category?(aliases[category]||[category]):null;
+  res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.subcategory||''} ${p.ref}`.toLowerCase().includes(q)) && (!allowed || allowed.includes(String(p.category||'').toLowerCase()))).map(p=>publicProduct(p,d)));
+});
 function legalPage(section='condiciones',settings={}){
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const email=String(settings.legalEmail||settings.supportEmail||'contacto.fvmarket@gmail.com'),phone=String(settings.contactPhone||'605 308 154');
@@ -1257,7 +1273,10 @@ app.post('/api/rutafv/quote',optionalAuth,async(req,res)=>{
     cacheKey=rutafvQuoteKey(actorId,origin,destinationText,items);
     const now=Date.now();pruneRutaFVQuoteState(now);
     const cached=rutafvQuoteCache.get(cacheKey);
-    if(cached&&cached.expiresAt>now)return res.json(decorateTransportQuote(cached.quote,actorId,items,destination));
+    if(cached&&cached.expiresAt>now){
+      const customerEstimate=customerDeliveryEstimateForItems(d,items,new Date());
+      return res.json({...decorateTransportQuote(cached.quote,actorId,items,destination),deliveryEstimate:customerEstimate||null});
+    }
     if(rutafvQuoteCircuitOpenUntil>now){
       const retryAfter=Math.max(1,Math.ceil((rutafvQuoteCircuitOpenUntil-now)/1000));
       res.set('Retry-After',String(retryAfter));
@@ -1277,7 +1296,10 @@ app.post('/api/rutafv/quote',optionalAuth,async(req,res)=>{
       rutafvQuoteInflight.set(cacheKey,pending);
     }
     const q=await pending;
-    return res.json(decorateTransportQuote(q,actorId,items,destination));
+    const transportQuote=decorateTransportQuote(q,actorId,items,destination);
+    const customerEstimate=customerDeliveryEstimateForItems(d,items,new Date());
+    // El plazo mostrado en la tienda depende del proveedor, pero no expone sus datos.
+    return res.json({...transportQuote,deliveryEstimate:customerEstimate||null});
   }catch(e){
     if(Number(e?.status)===429){
       const cooldownMs=Math.max(30000,(Number(e.retryAfter)||30)*1000);
