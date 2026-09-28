@@ -17,7 +17,9 @@
   }
 
   function removeLegacySections() {
-    ['operations', 'accounting', 'procurement'].forEach(id => {
+    // Operaciones y aprovisionamiento se han retirado del panel. Contabilidad
+    // queda como vista independiente y la monta fvmarket-admin-accounting-v2.js.
+    ['operations', 'procurement'].forEach(id => {
       document.querySelector(`[data-view="${id}"]`)?.remove();
       $('view-' + id)?.remove();
     });
