@@ -4,6 +4,10 @@ on:
   push:
     paths:
       - appsrc/server.js
+      - appsrc/operations_accounting_v1.js
+      - appsrc/procurement_v2.js
+      - appsrc/supplier_delivery_v1.js
+      - appsrc/test/**
       - appsrc/public/**
       - appsrc/package.json
       - patch_images.py
@@ -65,6 +69,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add appsrc/server.js appsrc/public/admin.html fvmarket-app.tgz.b64
+          git add appsrc/operations_accounting_v1.js appsrc/procurement_v2.js appsrc/supplier_delivery_v1.js appsrc/server.js appsrc/public appsrc/test fvmarket-app.tgz.b64
           git commit -m "Mejorar gestión de imágenes de FVMarket" || exit 0
           git push

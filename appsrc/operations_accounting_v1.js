@@ -1,7 +1,7 @@
 // FVM_OPERATIONS_ACCOUNTING_V1
 // Shared order workflow, procurement tracking, RutaFV hand-off and internal ledger.
 
-const {deliveryEstimate, supplierLocation} = require('./supplier_delivery_v1');
+const {deliveryEstimate, supplierLocation, probableDeliveryDate} = require('./supplier_delivery_v1');
 
 const STATUS_LABELS = {
   pendiente_pago: 'Pendiente de pago',
@@ -61,6 +61,36 @@ function label(status) { return STATUS_LABELS[String(status || '')] || String(st
 function normalizeStatus(status) { return LEGACY_STATUS[String(status || '')] || String(status || 'pendiente_pago'); }
 function actorOf(actor = {}) {
   return { id: String(actor.id || 'system'), name: String(actor.name || actor.username || actor.email || 'Sistema'), role: String(actor.role || 'system') };
+}
+
+function shipmentPackages(items = []) {
+  const grouped = new Map();
+  for (const item of items || []) {
+    const key = String(item.productId || item.ref || item.title || 'linea');
+    const qty = Math.max(1, Number(item.qty) || 1);
+    const weightKg = Number(item.weightKg || item.procurement?.weightKg || 0) || 0;
+    const row = grouped.get(key) || { productId: item.productId || '', ref: item.ref || '', title: item.title || '', quantity: 0, weightKg: 0 };
+    row.quantity += qty;
+    row.weightKg = Math.round((row.weightKg + weightKg * qty) * 1000) / 1000;
+    grouped.set(key, row);
+  }
+  return [...grouped.values()].map(row => ({ ...row, totalWeightKg: row.weightKg }));
+}
+
+function rutaFVClient(d = {}, fallbackCode = 'FVMarket') {
+  const settings = d.settings || {};
+  const code = String(settings.rutaFVClientCode || fallbackCode).trim();
+  return {
+    code,
+    externalId: code,
+    name: String(settings.fiscalName || settings.storeName || 'FVMarket').trim(),
+    nif: String(settings.fiscalNif || '').trim(),
+    email: String(settings.supportEmail || settings.legalEmail || '').trim(),
+    phone: String(settings.contactPhone || '').trim(),
+    address: String(settings.fiscalAddress || '').trim(),
+    city: String(settings.fiscalCity || '').trim(),
+    postalCode: String(settings.fiscalPostalCode || '').trim()
+  };
 }
 
 function addCustomerNotification(d, order, title, message, metadata = {}) {
@@ -269,7 +299,16 @@ function transitionOrder(d, order, nextStatus, actor = {}, note = '') {
   if (next === 'entregado') order.workflow.deliveredAt = at;
   addAudit(d, order, 'estado_cambiado', actor, { fromStatus: current, toStatus: next, note });
   const eta = order.deliveryEstimate?.label || 'Pendiente de confirmar';
-  addCustomerNotification(d, order, `Pedido: ${label(next)}`, `${note ? `${note} ` : ''}Plazo estimado: ${eta}.`, { key: `${order.id}:status:${next}` });
+  const customerEvent = {
+    pagado: ['Pedido recibido', `Hemos recibido tu pedido. Plazo estimado: ${eta}.`, `${order.id}:payment_received`],
+    en_reparto: ['Pedido en reparto', 'Tu pedido está en reparto.', `${order.id}:status:en_reparto`],
+    incidencia: ['Incidencia', note ? `Hemos registrado una incidencia: ${note}` : 'Hemos registrado una incidencia en tu pedido.', `${order.id}:status:incidencia`],
+    entregado: ['Pedido entregado', 'Tu pedido ha sido entregado.', `${order.id}:status:entregado`],
+    reembolso_parcial: ['Pedido reembolsado', 'Se ha emitido un reembolso parcial mediante Stripe.', `${order.id}:status:reembolso_parcial`],
+    reembolsado: ['Pedido reembolsado', 'Se ha emitido el reembolso mediante Stripe.', `${order.id}:status:reembolsado`],
+    cancelado: ['Pedido cancelado', 'Tu pedido ha sido cancelado.', `${order.id}:status:cancelado`]
+  }[next];
+  if (customerEvent) addCustomerNotification(d, order, customerEvent[0], customerEvent[1], { key: customerEvent[2] });
   ensureLedgerForOrder(d, order);
   return { ok: true, changed: true, from: current, to: next };
 }
@@ -291,6 +330,8 @@ function recordRefund(d, order, refund, actor = {}) {
   if (!order || !refund || Number(refund.amount || 0) <= 0) return;
   addLedger(d, order, 'reembolso', -Math.abs(Number(refund.amount)), { description: `Reembolso Stripe: ${order.number || order.id}`, sourceKey: `${order.id}:refund:${refund.id}`, metadata: { refundId: refund.id, providerReference: refund.stripeRefundId || '' } });
   if (!d.auditLog.some(x => x.orderId === order.id && x.action === 'reembolso_emitido' && x.metadata?.refundId === refund.id)) addAudit(d, order, 'reembolso_emitido', actor, { toStatus: order.status, note: `Reembolso de ${money(refund.amount).toFixed(2)} €`, metadata: { refundId: refund.id, amount: money(refund.amount), providerReference: refund.stripeRefundId || '' } });
+  const key = `${order.id}:refund:${order.refundStatus || 'parcial'}`;
+  addCustomerNotification(d, order, 'Pedido reembolsado', order.refundStatus === 'total' ? 'Se ha emitido el reembolso mediante Stripe.' : 'Se ha emitido un reembolso parcial mediante Stripe.', { key });
 }
 
 function publicOperationOrder(order, d) {
@@ -528,21 +569,43 @@ function registerOperationsRoutes(app, deps) {
       if (!['listo_para_rutafv', 'incidencia'].includes(String(order.status))) return res.status(409).json({ error: 'El pedido debe estar listo para enviarlo a RutaFV.' });
       if (order.transport.deliveryId) return res.json(publicOperationOrder(order, d));
       const user = d.users.find(x => x.id === order.userId) || {};
-      const destination = { address: order.customer?.address || order.address || '', city: order.customer?.city || order.city || '', postalCode: order.customer?.postalCode || order.postalCode || '', notes: order.customer?.notes || order.notes || '' };
+      if (!order.procurement?.allReady && !order.fulfillment?.readyForRutaFV) return res.status(409).json({ error: 'Completa primero la compra y recogida de todos los proveedores.' });
+      const destination = order.transport?.destination || { address: order.customer?.address || order.address || '', city: order.customer?.city || order.city || '', postalCode: order.customer?.postalCode || order.postalCode || '', notes: order.customer?.notes || order.notes || '' };
+      const originDetails = order.transport?.originDetails || { label: String(order.transport?.origin || d.settings?.rutaFVOrigin || '').trim(), source: 'FVMarket' };
+      const probableDate = String(order.transport?.estimatedDeliveryDate || probableDeliveryDate(order.deliveryEstimate || {}) || '').trim();
+      const client = rutaFVClient(d, RUTAFV_CLIENT_CODE);
+      const items = (order.items || []).map(x => ({ productId: x.productId, ref: x.ref, title: x.title, qty: x.qty, weightKg: Number(x.weightKg || x.procurement?.weightKg || 0), totalWeightKg: Number(x.totalWeightKg || (Number(x.weightKg || x.procurement?.weightKg || 0) * Number(x.qty || 1))) }));
+      const packages = shipmentPackages(order.items || []);
       const payload = {
-        clientCode: d.settings?.rutaFVClientCode || RUTAFV_CLIENT_CODE,
+        clientCode: client.code,
+        client,
         externalOrderId: order.id,
         externalOrderNumber: order.number,
         customer: { name: order.customer?.name || user.name || '', email: order.customer?.email || user.email || '', phone: order.customer?.phone || order.phone || '' },
+        sourceApplication: 'FVMarket',
+        accountingApplication: 'RutaFV',
+        paymentRequired: false,
+        paymentStatus: 'paid_in_fvmarket',
+        origin: originDetails.label || String(order.transport?.origin || '').trim(),
+        originDetails,
+        pickup: originDetails,
         destination,
         destinationText: [destination.address, destination.city, destination.postalCode].filter(Boolean).join(', '),
+        deliveryAddress: destination,
+        probableDeliveryDate: probableDate,
+        estimatedDeliveryDate: probableDate,
+        deliveryEstimate: { label: order.deliveryEstimate?.label || 'Pendiente de confirmar', minDate: order.deliveryEstimate?.minDate || '', maxDate: order.deliveryEstimate?.maxDate || '', businessDaysOnly: true },
         transportAmount: money(order.delivery),
-        transportPaid: paidOrderStatus(order.status) || !!order.paidAt,
+        transportPaid: true,
         orderSource: 'FVMarket',
         fulfillmentModel: 'sin_stock_fisico',
         deliveryMode: 'normal',
         express: false,
-        items: (order.items || []).map(x => ({ productId: x.productId, ref: x.ref, title: x.title, qty: x.qty, weightKg: Number(x.weightKg || x.procurement?.weightKg || 0), totalWeightKg: Number(x.totalWeightKg || (Number(x.weightKg || x.procurement?.weightKg || 0) * Number(x.qty || 1))) }))
+        photoRequired: false,
+        photoOptional: true,
+        items,
+        packages,
+        packageCount: packages.length
       };
       const response = await rutaFVRequest(RUTAFV_DELIVERY_PATH, payload);
       order.transport.deliveryId = String(response.id || response.deliveryId || response.expeditionId || '');
@@ -578,4 +641,4 @@ function registerOperationsRoutes(app, deps) {
   });
 }
 
-module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, customerDeliveryEstimate, addCustomerNotification, STATUS_LABELS, ACCOUNTING_APPS, accountingReport, holdedCsv, _test: { normalizeStatus, label, money, TRANSITIONS, accountingRow, accountingTotals } };
+module.exports = { registerOperationsRoutes, ensureOperationsData, transitionOrder, recordPaymentConfirmation, recordInvoiceIssued, recordRefund, ensureLedgerForOrder, customerDeliveryEstimate, addCustomerNotification, shipmentPackages, rutaFVClient, STATUS_LABELS, ACCOUNTING_APPS, accountingReport, holdedCsv, _test: { normalizeStatus, label, money, TRANSITIONS, accountingRow, accountingTotals } };

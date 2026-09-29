@@ -6,7 +6,7 @@
   const labels = { pagado: 'Pagado', en_compra_proveedor: 'Compra al proveedor', mercancia_recogida: 'Mercancía recogida', listo_para_rutafv: 'Listo para RutaFV', incidencia: 'Incidencia' };
   const paidStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia']);
   const paymentStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial', 'reembolsado']);
-  const actions = [['iniciar_compra', 'Iniciar compra'], ['comprada', 'Comprada'], ['mercancia_recogida', 'Mercancía recogida'], ['enviar_a_rutafv', 'Enviar a RutaFV'], ['incidencia', 'Incidencia']];
+  const actions = [['comprada', 'Comprado'], ['mercancia_recogida', 'Mercancía recogida'], ['enviar_a_rutafv', 'Enviar a RutaFV'], ['incidencia', 'Incidencia']];
   let mounted = false;
 
   function addStyle() {
@@ -46,14 +46,16 @@
 
   function actionSelect(order) {
     const status = String(order.status || ''), allowed = ({
-      pagado: ['iniciar_compra', 'incidencia'],
+      pagado: ['incidencia'],
       en_compra_proveedor: ['comprada', 'enviar_a_rutafv', 'mercancia_recogida', 'incidencia'],
       mercancia_recogida: ['enviar_a_rutafv', 'incidencia'],
       listo_para_rutafv: ['enviar_a_rutafv', 'incidencia'],
       incidencia: ['comprada', 'enviar_a_rutafv', 'mercancia_recogida']
     }[status] || []);
     if (!allowed.length) return '<span class="msg">Sin acciones pendientes</span>';
-    const opts = actions.filter(([value]) => allowed.includes(value)).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
+    const tasks = Array.isArray(order.procurementTasks) ? order.procurementTasks : [];
+    const bought = tasks.length > 0 && tasks.every(task => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(task.status || '')));
+    const opts = actions.filter(([value]) => allowed.includes(value) && !(value === 'comprada' && bought)).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
     return `<select class="fvmActionSelect" onchange="fvmRunProcurementAction('${esc(order.id)}',this.value,'',this)"><option value="">Seleccionar acción…</option>${opts}</select>`;
   }
 

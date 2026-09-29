@@ -50,16 +50,44 @@ function supplierLocation(supplier = {}) {
   return { island, address, city: compact(supplier.city || supplier.pickupCity), postalCode: compact(supplier.postalCode || supplier.pickupPostalCode), isLocal };
 }
 
-function addHours(base, hours) { return new Date(new Date(base).getTime() + hours * 3600000); }
-function addDays(base, days) { return new Date(new Date(base).getTime() + days * 86400000); }
+function isBusinessDay(value) {
+  const day = new Date(value).getDay();
+  return day !== 0 && day !== 6;
+}
+
+// Supplier lead times are expressed in working days. We intentionally keep
+// the time-of-day from the payment/availability timestamp, but never land an
+// estimate on a Saturday or Sunday.
+function addBusinessDays(base, days) {
+  const result = new Date(base);
+  let remaining = Math.max(0, Number(days) || 0);
+  while (remaining > 0) {
+    result.setDate(result.getDate() + 1);
+    if (isBusinessDay(result)) remaining -= 1;
+  }
+  while (!isBusinessDay(result)) result.setDate(result.getDate() + 1);
+  return result;
+}
+
+function isoDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+}
+
+function probableDeliveryDate(estimate = {}) {
+  // The earliest feasible working-day date is the target to give RutaFV; its
+  // availability/status callbacks can later replace it with a concrete date.
+  if (estimate.rule === 'pendiente_confirmacion') return '';
+  return isoDate(estimate.minAt || estimate.minDate || estimate.maxAt || estimate.maxDate);
+}
 
 function deliveryEstimate(supplier = {}, baseAt = new Date()) {
   const location = supplierLocation(supplier);
   const knownIsland = !!location.island && location.island !== 'Desconocida';
   const minHours = location.isLocal ? LOCAL_MIN_HOURS : REMOTE_MIN_DAYS * 24;
   const maxHours = location.isLocal ? LOCAL_MAX_HOURS : REMOTE_MAX_DAYS * 24;
-  const minAt = location.isLocal ? addHours(baseAt, minHours) : addDays(baseAt, REMOTE_MIN_DAYS);
-  const maxAt = location.isLocal ? addHours(baseAt, maxHours) : addDays(baseAt, REMOTE_MAX_DAYS);
+  const minAt = location.isLocal ? addBusinessDays(baseAt, 1) : addBusinessDays(baseAt, REMOTE_MIN_DAYS);
+  const maxAt = location.isLocal ? addBusinessDays(baseAt, 3) : addBusinessDays(baseAt, REMOTE_MAX_DAYS);
   const dateOptions = { day: '2-digit', month: '2-digit', year: 'numeric' };
   const minDate = minAt.toLocaleDateString('es-ES', dateOptions);
   const maxDate = maxAt.toLocaleDateString('es-ES', dateOptions);
@@ -79,7 +107,10 @@ function deliveryEstimate(supplier = {}, baseAt = new Date()) {
     maxAt: maxAt.toISOString(),
     minDate,
     maxDate,
-    label,
+    // The public UI uses this label and must not reveal supplier identity or
+    // location. Dates remain available internally for the RutaFV hand-off.
+    label: !knownIsland ? label : (location.isLocal ? '24–72 h' : 'Aproximadamente 7 días'),
+    internalLabel: label,
     rule: !knownIsland ? 'pendiente_confirmacion' : (location.isLocal ? 'local_fuerteventura' : 'fuera_isla')
   };
 }
@@ -93,5 +124,8 @@ module.exports = {
   normalizeIsland,
   islandFromAddress,
   supplierLocation,
-  deliveryEstimate
+  deliveryEstimate,
+  isBusinessDay,
+  addBusinessDays,
+  probableDeliveryDate
 };

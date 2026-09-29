@@ -134,6 +134,19 @@ test('el plazo del proveedor se calcula por isla y conserva dirección y fecha e
   assert.equal(inferred.isLocal, true);
 });
 
+test('los plazos solo cuentan días laborables y no exponen la ubicación', () => {
+  const friday = '2026-09-25T12:00:00.000Z';
+  const local = supplierDelivery.deliveryEstimate({ island: 'Fuerteventura', address: 'Calle Primero de Mayo 1' }, friday);
+  assert.equal(new Date(local.minAt).getUTCDay(), 1, '24 h desde viernes debe caer en lunes');
+  assert.equal(new Date(local.maxAt).getUTCDay(), 3, '72 h debe caer en miércoles laborable');
+  assert.equal(local.label, '24–72 h');
+  assert.equal(supplierDelivery.probableDeliveryDate(local), '2026-09-28');
+  const remote = supplierDelivery.deliveryEstimate({ island: 'Gran Canaria' }, friday);
+  assert.equal(new Date(remote.minAt).getUTCDay(), 2, '7 días laborables desde viernes debe caer en martes');
+  assert.equal(remote.label, 'Aproximadamente 7 días');
+  assert.equal(supplierDelivery.probableDeliveryDate(remote), '2026-10-06');
+});
+
 test('el tablero excluye pagos pendientes y permite incidencia y envío a RutaFV tras comprar', async () => {
   const routes = {};
   const app = { get(path, ...args) { routes[path] = args.at(-1); }, post(path, ...args) { routes[path] = args.at(-1); } };
@@ -164,6 +177,45 @@ test('el tablero excluye pagos pendientes y permite incidencia y envío a RutaFV
   assert.equal(createdDelivery, true);
   assert.equal(response.status, 'enviado_a_rutafv');
   assert.equal(data.procurementActionLog[0].action, 'enviar_a_rutafv');
+});
+
+test('el envío a RutaFV crea una expedición con cliente, fechas, direcciones y bultos agrupados', async () => {
+  const routes = {};
+  const app = { get(path, ...args) { routes[path] = args.at(-1); }, post(path, ...args) { routes[path] = args.at(-1); } };
+  const data = {
+    settings: { storeName: 'FVMarket', rutaFVClientCode: 'FVMarket', fiscalAddress: 'Origen logístico 1', fiscalCity: 'Puerto del Rosario', fiscalPostalCode: '35600' },
+    users: [{ id: 'customer-1', name: 'Cliente Prueba', email: 'cliente@example.com' }], suppliers: [{ id: 'sup-1', name: 'Proveedor local', island: 'Fuerteventura', address: 'Proveedor 1' }], orders: [], procurementTasks: [], auditLog: [], accountingEntries: [], customerNotifications: []
+  };
+  const order = {
+    id: 'order-ruta', number: 'FVM-RUTA-1', status: 'listo_para_rutafv', paidAt: '2026-09-25T12:00:00.000Z', createdAt: '2026-09-25T12:00:00.000Z',
+    subtotal: 60, delivery: 12, total: 72, userId: 'customer-1',
+    customer: { name: 'Cliente Prueba', email: 'cliente@example.com', phone: '600123123', address: 'Obra 1', city: 'Puerto del Rosario', postalCode: '35600' },
+    transport: { requested: true, origin: 'Origen logístico 1, Puerto del Rosario, 35600', originDetails: { label: 'Origen logístico 1, Puerto del Rosario, 35600', address: 'Origen logístico 1', city: 'Puerto del Rosario', postalCode: '35600', source: 'FVMarket' }, destination: { address: 'Obra 1', city: 'Puerto del Rosario', postalCode: '35600' } },
+    deliveryEstimate: { label: '24–72 h', rule: 'local_fuerteventura', minDate: '28/09/2026', maxDate: '30/09/2026', minAt: '2026-09-28T12:00:00.000Z', maxAt: '2026-09-30T12:00:00.000Z' },
+    fulfillment: { readyForRutaFV: true }, items: [{ productId: 'p1', title: 'Cemento', ref: 'CEM-1', qty: 3, weightKg: 10, totalWeightKg: 30, procurement: { status: 'ready', supplierId: 'sup-1', provider: 'Proveedor local' } }]
+  };
+  data.orders.push(order);
+  data.procurementTasks.push({ id: 'task-ruta', orderId: order.id, supplierId: 'sup-1', supplierName: 'Proveedor local', supplier: { island: 'Fuerteventura', address: 'Proveedor 1' }, status: 'recogida', items: order.items, sourceCost: 30, actualCost: 30 });
+  let payload;
+  operations.registerOperationsRoutes(app, {
+    read: () => data, save: () => {}, ordersManager: (req, res, next) => next(),
+    rutaFVRequest: async (path, value) => { payload = value; return { id: 'exp-1', status: 'pendiente' }; },
+    RUTAFV_DELIVERY_PATH: '/deliveries', RUTAFV_CLIENT_CODE: 'FVMarket', paidOrderStatus: status => ['pagado', 'listo_para_rutafv'].includes(status),
+    issueInvoiceForOrder: () => null, recordInvoiceIssued: () => {}, scheduleOrderEmail: () => {}
+  });
+  let response;
+  await routes['/api/admin/orders/:id/send-to-rutafv']({ params: { id: order.id }, user: { id: 'admin', role: 'admin' } }, { json(value) { response = value; }, status() { return this; } });
+  assert.equal(response.transport.deliveryId, 'exp-1');
+  assert.equal(payload.client.code, 'FVMarket');
+  assert.equal(payload.sourceApplication, 'FVMarket');
+  assert.equal(payload.paymentRequired, false);
+  assert.equal(payload.originDetails.address, 'Origen logístico 1');
+  assert.equal(payload.destination.address, 'Obra 1');
+  assert.equal(payload.probableDeliveryDate, '2026-09-28');
+  assert.equal(payload.photoRequired, false);
+  assert.equal(payload.packageCount, 1);
+  assert.equal(payload.packages[0].quantity, 3);
+  assert.equal(payload.packages[0].totalWeightKg, 30);
 });
 
 test('la factura muestra estado pagado, Stripe e IGIC', () => {
@@ -250,6 +302,8 @@ test('el catálogo interno muestra ubicación del proveedor y elimina la forma d
   assert.match(databaseUi, /Elimina todos los pedidos y productos/);
   assert.match(ordersUi, /Entrega estimada proveedor/);
   assert.match(board, /Entrega estimada del proveedor/);
+  assert.doesNotMatch(board, /Iniciar compra/);
+  assert.doesNotMatch(suppliers, /Forma de adquisición/);
   assert.match(accountingUi, /Exportar para Holded/);
   assert.match(accountingUi, /FVMarket \/ RutaFV/);
   assert.match(admin, /fvmarket-admin-accounting-v2\.js/);

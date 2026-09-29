@@ -4,8 +4,7 @@
 const {deliveryEstimate}=require('./supplier_delivery_v1');
 
 const ACTIONS = {
-  iniciar_compra: { label: 'Iniciar compra', status: 'en_compra_proveedor' },
-  comprada: { label: 'Comprada', taskStatus: 'comprada' },
+  comprada: { label: 'Comprado', taskStatus: 'comprada' },
   mercancia_recogida: { label: 'Mercancía recogida', status: 'mercancia_recogida', taskStatus: 'recogida' },
   enviar_a_rutafv: { label: 'Enviar a RutaFV', status: 'listo_para_rutafv' },
   incidencia: { label: 'Incidencia', status: 'incidencia' }
@@ -102,7 +101,6 @@ function registerProcurementRoutes(app, deps) {
       if (!config) return res.status(400).json({ error: 'Acción de aprovisionamiento no válida' });
       if (!paidOrderStatus(order.status) && action !== 'incidencia') return res.status(409).json({ error: 'El pedido debe estar pagado antes de gestionarlo.' });
       const allowed = {
-        iniciar_compra: ['pagado', 'incidencia'],
         comprada: ['en_compra_proveedor', 'incidencia'],
         mercancia_recogida: ['en_compra_proveedor', 'incidencia'],
         enviar_a_rutafv: ['en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia'],
