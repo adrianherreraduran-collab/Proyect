@@ -301,7 +301,8 @@ function transitionOrder(d, order, nextStatus, actor = {}, note = '') {
   const eta = order.deliveryEstimate?.label || 'Pendiente de confirmar';
   const customerEvent = {
     pagado: ['Pedido recibido', `Hemos recibido tu pedido. Plazo estimado: ${eta}.`, `${order.id}:payment_received`],
-    en_reparto: ['Pedido en reparto', 'Tu pedido está en reparto.', `${order.id}:status:en_reparto`],
+    en_compra_proveedor: ['Pedido Confirmado', 'Hemos confirmado tu pedido y estamos gestionando la compra.', `${order.id}:status:confirmado`],
+    enviado_a_rutafv: ['Pedido Listo para Entrega', 'Tu pedido está listo para ser entregado por RutaFV.', `${order.id}:status:listo_para_entrega`],
     incidencia: ['Incidencia', note ? `Hemos registrado una incidencia: ${note}` : 'Hemos registrado una incidencia en tu pedido.', `${order.id}:status:incidencia`],
     entregado: ['Pedido entregado', 'Tu pedido ha sido entregado.', `${order.id}:status:entregado`],
     reembolso_parcial: ['Pedido reembolsado', 'Se ha emitido un reembolso parcial mediante Stripe.', `${order.id}:status:reembolso_parcial`],
@@ -609,6 +610,9 @@ function registerOperationsRoutes(app, deps) {
         estimatedDeliveryDate: probableDate,
         deliveryEstimate: { label: order.deliveryEstimate?.label || 'Pendiente de confirmar', minDate: order.deliveryEstimate?.minDate || '', maxDate: order.deliveryEstimate?.maxDate || '', businessDaysOnly: true },
         transportAmount: money(order.delivery),
+        billableDistanceKm: Number(order.billableDistanceKm || order.transport?.billableDistanceKm || order.transport?.distanceKm || 0),
+        distanceKm: Number(order.billableDistanceKm || order.transport?.billableDistanceKm || order.transport?.distanceKm || 0),
+        billableDurationMin: Number(order.billableDurationMin || order.transport?.billableDurationMin || 0),
         transportPaid: true,
         orderSource: 'FVMarket',
         fulfillmentModel: 'sin_stock_fisico',
@@ -616,6 +620,10 @@ function registerOperationsRoutes(app, deps) {
         express: false,
         photoRequired: false,
         photoOptional: true,
+        accounting: { payer: 'FVMarket', paymentStatus: 'paid_in_fvmarket', referenceAmount: money(order.delivery), referenceIncomeAmount: money(order.delivery), includeInRutaFVRevenue: false, revenueRecognized: false, description: 'Importe de transporte cobrado en FVMarket; solo referencia interna en RutaFV' },
+        assignment: order.transport?.assignment || null,
+        vehicleId: String(order.transport?.assignment?.vehicleId || ''),
+        driverId: String(order.transport?.assignment?.driverId || ''),
         items,
         packages,
         packageCount: packages.length
@@ -625,6 +633,14 @@ function registerOperationsRoutes(app, deps) {
       order.transport.status = 'creado_en_rutafv';
       order.transport.syncedAt = now();
       order.transport.rutaFVResponse = response;
+      const returnedVehicle=response.vehicle&&typeof response.vehicle==='object'?response.vehicle:{};
+      const returnedDriver=response.driver&&typeof response.driver==='object'?response.driver:{};
+      order.transport.assignment={
+        vehicleId:String(response.vehicleId||response.vehicle_id||response.assignedVehicleId||returnedVehicle.id||'').trim(),
+        vehicleLabel:String(response.vehicleLabel||response.vehicleName||returnedVehicle.name||returnedVehicle.registration||returnedVehicle.plate||'').trim(),
+        driverId:String(response.driverId||response.driver_id||response.assignedDriverId||returnedDriver.id||'').trim(),
+        driverLabel:String(response.driverLabel||response.driverName||returnedDriver.name||returnedDriver.fullName||'').trim()
+      };
       const transitioned = transitionOrder(d, order, 'enviado_a_rutafv', req.user, 'Reparto creado en RutaFV');
       if (!transitioned.ok) return res.status(409).json({ error: transitioned.error });
       save(d);

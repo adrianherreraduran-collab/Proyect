@@ -284,7 +284,7 @@ function customerProfileComplete(u={}){
   const a=u.deliveryAddress||{};
   return !!(u.emailVerified&&String(u.firstName||'').trim()&&String(u.lastName||'').trim()&&validNifNie(u.nifNie)&&String(u.billingAddress||'').trim()&&String(a.address||'').trim()&&a.validated===true);
 }
-function safeUser(u){return {id:u.id,name:String(u.name||[u.firstName,u.lastName].filter(Boolean).join(' ')).trim(),firstName:u.firstName||'',lastName:u.lastName||'',nifNie:u.nifNie||'',phone:u.phone||'',billingName:u.billingName||'',billingAddress:u.billingAddress||'',billingCity:u.billingCity||'',billingPostalCode:u.billingPostalCode||'',deliveryAddress:u.deliveryAddress||{},email:u.email,username:u.username||'',role:u.role,roleLabel:STAFF_ROLE_LABELS[u.role]||'Cliente',internal:STAFF_ROLE_KEYS.has(u.role),active:u.active!==false,emailVerified:!!u.emailVerified,profileComplete:customerProfileComplete(u),createdAt:u.createdAt}}
+function safeUser(u){return {id:u.id,name:String(u.name||[u.firstName,u.lastName].filter(Boolean).join(' ')).trim(),firstName:u.firstName||'',lastName:u.lastName||'',nifNie:u.nifNie||'',phone:u.phone||'',billingName:u.billingName||'',billingAddress:u.billingAddress||'',billingCity:u.billingCity||'',billingPostalCode:u.billingPostalCode||'',deliveryAddress:u.deliveryAddress||{},email:u.email,username:u.username||'',role:u.role,roleLabel:STAFF_ROLE_LABELS[u.role]||'Cliente',internal:STAFF_ROLE_KEYS.has(u.role),active:u.active!==false,emailVerified:!!u.emailVerified,profileComplete:customerProfileComplete(u),discountPct:customerDiscountPct(u),discountLabel:customerDiscountPct(u)?`-${customerDiscountPct(u)}% aplicado`:'Sin descuento personalizado',createdAt:u.createdAt}}
 function verificationHash(v=''){return crypto.createHash('sha256').update(String(v)).digest('hex')}
 function newVerificationToken(){return crypto.randomBytes(32).toString('hex')}
 function baseUrl(req){return PUBLIC_URL||`${req.protocol}://${req.get('host')}`}
@@ -381,10 +381,10 @@ function reviewEligibility(d={},userId='',productId=''){
   if(!order)return {eligible:false,alreadyReviewed:false,reason:'Podrás valorar este producto después de comprarlo.'};
   return {eligible:true,alreadyReviewed:false,orderId:String(order.id||''),orderNumber:String(order.number||'')};
 }
-function publicProduct(p={}, d=null){
+function publicProduct(p={}, d=null, user=null){
   const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,sourceStore,sourceSeller,providerKey,supplierId,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
-  safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0);
+  safe.regularPrice=Number(safe.price||0);safe.salePrice=offerPrice(safe);safe.customerDiscountPct=customerDiscountPct(user||{});safe.customerPrice=customerPrice(safe,user||{});safe.hasDiscount=!!(safe.onOffer&&Number(safe.discountPct)>0)||safe.customerDiscountPct>0;
   // El cliente solo recibe el plazo, nunca la identidad ni la ubicación del proveedor.
   if(d){
     const supplier=(d.suppliers||[]).find(x=>String(x.id||'')===String(p.supplierId||''))||{island:p.supplierIsland||'',address:p.supplierAddress||'',city:p.supplierCity||''};
@@ -402,11 +402,47 @@ function publicDeliveryEstimate(value){
     maxDate:String(value.maxDate||'')
   };
 }
+function normalizeCustomerOrderState(value=''){
+  return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[\s-]+/g,'_');
+}
+function customerOrderState(order={}){
+  const values=[];
+  const add=value=>{if(value!==undefined&&value!==null&&String(value).trim())values.push(normalizeCustomerOrderState(value))};
+  add(order.status);add(order.deliveryStatus);add(order.rutaFVStatus);add(order.transport?.status);add(order.transport?.rutaFVStatus);
+  for(const entry of (Array.isArray(order.history)?order.history:[])){
+    add(entry?.status);add(entry?.to);add(entry?.action);
+  }
+  const has=keys=>values.some(value=>keys.includes(value));
+  // Los estados finales tienen prioridad para que un callback de RutaFV siga
+  // siendo visible aunque el estado principal llegue con retraso.
+  if(has(['cancelado','cancelada','cancelled']))return {key:'cancelado',label:'Pedido cancelado'};
+  if(has(['reembolsado','reembolsada','reembolso_parcial','refunded','partially_refunded']))return {key:'reembolsado',label:'Pedido reembolsado'};
+  if(has(['incidencia','incident','incidence','fallido','fallida']))return {key:'incidencia',label:'Incidencia'};
+  if(has(['entregado','entregada','delivered','completado','completada']))return {key:'entregado',label:'Pedido entregado'};
+  if(has(['enviado_a_rutafv','listo_para_entrega','listo_para_rutafv','en_reparto','reparto']))return {key:'listo_para_entrega',label:'Pedido Listo para Entrega'};
+  if(has(['comprado','comprada','en_compra_proveedor','mercancia_recogida','recogido','recogida','preparando','pagado','pago_confirmado']))return {key:'confirmado',label:'Pedido Confirmado'};
+  return {key:'recibido',label:'Pedido recibido'};
+}
+function canaryCalendarDate(value){
+  const parsed=new Date(value||'');
+  if(Number.isNaN(parsed.getTime()))return '';
+  return parsed.toLocaleDateString('en-CA',{timeZone:'Atlantic/Canary'});
+}
+function orderDeliveredAt(order={}){
+  return order.deliveredAt||order.transport?.rutaFVDeliveredAt||order.transport?.rutaFVStatusUpdatedAt||order.rutaFVStatusUpdatedAt||order.updatedAt||order.createdAt||'';
+}
+function isStoredDeliveredOrder(order={},now=new Date()){
+  const state=customerOrderState(order);
+  const deliveredDate=canaryCalendarDate(orderDeliveredAt(order));
+  const today=canaryCalendarDate(now);
+  return state.key==='entregado'&&!!deliveredDate&&!!today&&deliveredDate<today;
+}
 function publicOrder(o={}){
   const {stripeSessionId,stripeSessionUrl,stripeSessionExpiresAt,paymentIntentId,stripePaymentStatus,guestAccessTokenHash,emailEvents,refunds,...safe}=o;
   const paymentMethod=String(safe.paymentMethod||'').toLowerCase()==='stripe'?'Pago seguro (Stripe)':(safe.paymentMethod||'');
   const estimate=publicDeliveryEstimate(o.deliveryEstimate);
-  return {...safe,paymentMethod,deliveryEstimate:estimate,refunds:Array.isArray(refunds)?refunds.map(({stripeRefundId,...refund})=>refund):refunds,items:(o.items||[]).map(({procurement,...item})=>item)};
+  const publicState=customerOrderState(o);
+  return {...safe,paymentMethod,deliveryEstimate:estimate,customerStatus:publicState.key,customerStatusLabel:publicState.label,deliveredAt:orderDeliveredAt(o)||null,storedDelivered:isStoredDeliveredOrder(o),refunds:Array.isArray(refunds)?refunds.map(({stripeRefundId,...refund})=>refund):refunds,items:(o.items||[]).map(({procurement,...item})=>item)};
 }
 function customerDeliveryEstimateForItems(d, items = [], baseAt = new Date()) {
   const tasks = (items || []).map(item => {
@@ -487,7 +523,10 @@ function nextProductRef(d,title,category){
   for(const p of d.products||[]){const m=String(p.ref||'').toUpperCase().match(new RegExp('^'+prefix+'(\\d{4})$'));if(m)max=Math.max(max,Number(m[1])||0)}
   return `${prefix}${String(max+1).padStart(4,'0')}`;
 }
-function offerPrice(p){const pct=Math.max(0,Math.min(90,Number(p.discountPct)||0));return p.onOffer&&pct?+(Number(p.price||0)*(1-pct/100)).toFixed(2):Number(p.price||0)}
+function normalizeDiscountPct(value){const pct=Number(String(value??'').replace(',','.'));return Number.isFinite(pct)?Math.max(0,Math.min(90,Math.round(pct*100)/100)):0}
+function customerDiscountPct(user={}){return user&&user.role==='customer'?normalizeDiscountPct(user.discountPct):0}
+function offerPrice(p){const pct=normalizeDiscountPct(p.discountPct);return p.onOffer&&pct?+(Number(p.price||0)*(1-pct/100)).toFixed(2):Number(p.price||0)}
+function customerPrice(p,user={}){const base=offerPrice(p),pct=customerDiscountPct(user);return pct?moneyRound(base*(1-pct/100)):base}
 function rutaFVErrorMessage(value,fallback=''){
   if(Array.isArray(value))return value.map(x=>{
     const message=rutaFVErrorMessage(x,'');
@@ -548,7 +587,7 @@ function professionalInvoiceHtml(invoice={},settings={}){
   return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(invoice.number)} · FVMarket</title><style>body{margin:0;background:#edf2f5;color:#10233f;font:14px/1.45 Arial,sans-serif}.sheet{max-width:900px;margin:26px auto;background:#fff;padding:46px;box-shadow:0 12px 40px #06345f22}.actions{text-align:right;margin-bottom:18px}.actions button{border:0;border-radius:8px;background:#06345f;color:#fff;padding:11px 17px;font-weight:800;cursor:pointer}.head{display:flex;justify-content:space-between;gap:30px;padding-bottom:24px;border-bottom:4px solid #82c341}.brand{font-size:34px;font-weight:950;color:#06345f}.brand span{color:#82c341}.issuer,.meta{color:#5b7084;font-size:12px;line-height:1.6}.meta{text-align:right}.meta h1{margin:0;color:#06345f;font-size:26px}.paid{display:inline-block;margin:8px 0;padding:5px 10px;border-radius:999px;background:#eaf7e4;color:#397820;font-size:11px;font-weight:900}.parties{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:26px 0}.box{border:1px solid #dbe5eb;border-radius:10px;padding:16px;min-height:105px}.box h2{margin:0 0 8px;color:#06345f;font-size:13px;text-transform:uppercase;letter-spacing:.5px}.box p{margin:0;line-height:1.6}table{width:100%;border-collapse:collapse;font-size:12px}th{padding:10px 8px;background:#eef4f7;color:#48617b;text-transform:uppercase;font-size:10px;letter-spacing:.35px}td{padding:13px 8px;border-bottom:1px solid #e4ebef}td:not(:first-child),th:not(:first-child){text-align:right}td small{display:block;color:#718399;margin-top:3px}.summary{width:340px;margin:24px 0 0 auto}.summary div{display:flex;justify-content:space-between;padding:7px 0}.summary .total{border-top:2px solid #06345f;margin-top:5px;padding-top:12px;font-size:20px}.payment{margin-top:28px;padding:14px 16px;border-radius:10px;background:#f3f8ef;border:1px solid #cfe2c2}.footer{margin-top:32px;padding-top:16px;border-top:1px solid #dbe5eb;color:#64748b;font-size:11px}@media print{body{background:#fff}.sheet{margin:0;max-width:none;box-shadow:none;padding:20px}.actions{display:none}}@media(max-width:700px){.sheet{margin:0;padding:22px}.head,.parties{display:block}.meta{text-align:left;margin-top:18px}.parties .box{margin-top:12px}.summary{width:100%}table{font-size:10px}}</style></head><body><main class="sheet"><div class="actions"><button onclick="window.print()">Imprimir / guardar PDF</button></div><section class="head"><div><div class="brand">FV<span>Market</span></div><div class="issuer"><b>${esc(issuer.name)}</b>${issuer.nif?`<br>NIF: ${esc(issuer.nif)}`:''}${issuer.address?`<br>${esc(issuer.address)}`:''}${issuer.city||issuer.postalCode?`<br>${esc([issuer.postalCode,issuer.city].filter(Boolean).join(' '))}`:''}</div></div><div class="meta"><h1>FACTURA</h1><div class="paid">PAGADA</div><br><b>${esc(invoice.number)}</b><br>Fecha: ${esc(new Date(invoice.issuedAt).toLocaleDateString('es-ES'))}<br>Pedido: ${esc(invoice.orderNumber)}</div></section><section class="parties"><div class="box"><h2>Facturado a</h2><p><b>${esc(customer.billingName||customer.name)}</b>${customer.nifNie?`<br>NIF/NIE: ${esc(customer.nifNie)}`:''}<br>${esc(customer.billingAddress)}<br>${esc([customer.billingPostalCode,customer.billingCity].filter(Boolean).join(' '))}<br>${esc(customer.email)}</p></div><div class="box"><h2>Dirección de entrega</h2><p><b>${esc(customer.name)}</b><br>${esc(customer.deliveryAddress?.address||'')}<br>${esc([customer.deliveryAddress?.postalCode,customer.deliveryAddress?.city].filter(Boolean).join(' '))}<br>${esc(customer.phone||'')}</p></div></section><table><thead><tr><th>Concepto</th><th>Ud.</th><th>Precio</th><th>Base</th><th>${esc(invoice.taxName||'IGIC')}</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table><div class="summary"><div><span>Base imponible</span><b>${amount(invoice.taxBase)}</b></div><div><span>${esc(invoice.taxName||'IGIC')} (${Number(invoice.taxRate||0).toFixed(2)}%)</span><b>${amount(invoice.taxAmount)}</b></div><div class="total"><span>Total pagado</span><b>${amount(invoice.total)}</b></div></div><div class="payment"><b>Pago seguro procesado mediante Stripe</b>${reference?`<br><small>Referencia: ${esc(reference)}</small>`:''}</div><div class="footer">${esc(settings.invoiceFooter||'Gracias por confiar en FVMarket.')} · Productos y transporte se muestran como conceptos separados.</div></main></body></html>`;
 }
 function normalizeCheckoutCustomer(input={},user={}){const delivery={address:String(input.address||user.deliveryAddress?.address||'').trim(),city:String(input.city||user.deliveryAddress?.city||'').trim(),postalCode:String(input.postalCode||user.deliveryAddress?.postalCode||'').trim(),notes:String(input.notes||'').trim()};const name=String(input.name||user.name||[user.firstName,user.lastName].filter(Boolean).join(' ')||'').trim(),email=String(input.email||user.email||'').trim().toLowerCase(),phone=String(input.phone||user.phone||'').trim();const customer={name,email,phone,...delivery,billingName:String(input.billingName||user.billingName||name).trim(),nifNie:String(input.nifNie||user.nifNie||'').trim(),billingAddress:String(input.billingAddress||user.billingAddress||delivery.address).trim(),billingCity:String(input.billingCity||user.billingCity||delivery.city).trim(),billingPostalCode:String(input.billingPostalCode||user.billingPostalCode||delivery.postalCode).trim()};if(!name)return {error:'Introduce el nombre del cliente.'};if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return {error:'Introduce un correo electrónico válido.'};if(phone.replace(/\D/g,'').length<7)return {error:'Introduce un teléfono válido.'};if(!delivery.address||!delivery.city||!/^\d{5}$/.test(delivery.postalCode))return {error:'Completa la dirección, el municipio y un código postal válido.'};if(!customer.billingAddress||!customer.billingCity||!/^\d{5}$/.test(customer.billingPostalCode))return {error:'Completa los datos de facturación.'};return {customer}}
-function buildOrder(d,user,items,customer={},options={}){const normalized=[];let subtotal=0;for(const item of items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1)),unit=offerPrice(p),weightKg=normalizeWeightKg(p.weightKg);normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:unit,regularUnitPrice:Number(p.price||0),discountPct:Number(p.discountPct||0),qty,weightKg,totalWeightKg:Math.round(weightKg*qty*1000)/1000,lineTotal:moneyRound(unit*qty),procurement:{supplierId:String(p.supplierId||''),provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0,weightKg}});subtotal+=unit*qty}if(!normalized.length)return {error:'No hay productos válidos'};const q=options.quote||{},c=customer||{},destination={address:String(c.address||options.address||'').trim(),city:String(c.city||options.city||'').trim(),postalCode:String(c.postalCode||options.postalCode||'').trim(),notes:String(c.notes||options.notes||'').trim()};if(!destination.address||!destination.city||!destination.postalCode)return {error:'La dirección de entrega, municipio y código postal son obligatorios.',status:400};const weightedItems=normalized.map(x=>({id:x.productId,qty:x.qty,weightKg:x.weightKg}));if(!validTransportQuote(q,user.id,weightedItems,destination)&&!validTransportQuote(q,user.id,items,destination))return {error:'Vuelve a calcular el transporte a tu obra antes de pagar.',status:409};const delivery=Math.max(0,Number(q.amount??q.total??0)),billableDistanceKm=Math.max(0,Number(q.billableDistanceKm??q.distanceKm??0)),billableDurationMin=Math.max(0,Number(q.billableDurationMin??q.durationMinutes??0)),total=moneyRound(subtotal+delivery),contactName=String(c.name||user.name||[user.firstName,user.lastName].filter(Boolean).join(' ')||'').trim(),createdAt=new Date().toISOString(),deliveryEstimate=customerDeliveryEstimateForItems(d,normalized,createdAt);const billingAddress=String(c.billingAddress||user.billingAddress||destination.address).trim(),billingCity=String(c.billingCity||user.billingCity||destination.city).trim(),billingPostalCode=String(c.billingPostalCode||user.billingPostalCode||destination.postalCode).trim();const order={id:options.id||id('ord'),number:options.number||'FVM-'+Date.now().toString().slice(-8),userId:String(options.userId??user.id??''),guest:!!options.guest,items:normalized,subtotal:moneyRound(subtotal),delivery,deliveryEstimate,billableDistanceKm,billableDurationMin,transport:{provider:'RutaFV',requested:true,amount:delivery,quoteId:String(q.id||q.quoteId||''),billableDistanceKm,billableDurationMin,distanceKm:billableDistanceKm,deliveryMode:'normal',express:false,status:'pendiente_crear_reparto',estimatedDeliveryDate:q.estimatedDeliveryDate||null,deliveryDateStatus:q.deliveryDateStatus||'pendiente_planificacion',origin:fvmarketOrigin(d),originDetails:fvmarketOriginSnapshot(d),destination:{...destination}},workflow:{fulfillmentModel:'sin_stock_fisico',deliveryMode:'normal_planificado'},fulfillment:{status:'pendiente_compra_proveedor',readyForRutaFV:false},total,customer:{name:contactName,billingName:String(c.billingName||user.billingName||contactName).trim(),nifNie:String(c.nifNie||user.nifNie||'').trim(),billingAddress,billingCity,billingPostalCode,email:String(c.email||user.email||'').trim(),phone:String(c.phone||user.phone||options.phone||'').trim(),...destination},...destination,phone:String(c.phone||user.phone||options.phone||'').trim(),paymentMethod:'stripe',status:'pendiente_pago',termsAcceptedAt:options.termsAcceptedAt||'',privacyAcceptedAt:options.privacyAcceptedAt||'',createdAt};return {order}}
+function buildOrder(d,user,items,customer={},options={}){const normalized=[];let subtotal=0;for(const item of items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1)),unit=customerPrice(p,user),weightKg=normalizeWeightKg(p.weightKg);normalized.push({productId:p.id,title:p.title,ref:p.ref,unitPrice:unit,regularUnitPrice:Number(p.price||0),discountPct:Number(p.discountPct||0),customerDiscountPct:customerDiscountPct(user),qty,weightKg,totalWeightKg:Math.round(weightKg*qty*1000)/1000,lineTotal:moneyRound(unit*qty),procurement:{supplierId:String(p.supplierId||''),provider:String(p.sourceProvider||providerFromUrl(p.sourceUrl)||''),sourceRef:String(p.sourceRef||''),sourceEan:String(p.sourceEan||''),sourceUrl:String(p.sourceUrl||''),sourcePrice:Number(p.sourcePrice)||0,weightKg}});subtotal+=unit*qty}if(!normalized.length)return {error:'No hay productos válidos'};const q=options.quote||{},c=customer||{},destination={address:String(c.address||options.address||'').trim(),city:String(c.city||options.city||'').trim(),postalCode:String(c.postalCode||options.postalCode||'').trim(),notes:String(c.notes||options.notes||'').trim()};if(!destination.address||!destination.city||!destination.postalCode)return {error:'La dirección de entrega, municipio y código postal son obligatorios.',status:400};const weightedItems=normalized.map(x=>({id:x.productId,qty:x.qty,weightKg:x.weightKg}));if(!validTransportQuote(q,user.id,weightedItems,destination)&&!validTransportQuote(q,user.id,items,destination))return {error:'Vuelve a calcular el transporte a tu obra antes de pagar.',status:409};const delivery=Math.max(0,Number(q.amount??q.total??0)),billableDistanceKm=Math.max(0,Number(q.billableDistanceKm??q.distanceKm??0)),billableDurationMin=Math.max(0,Number(q.billableDurationMin??q.durationMinutes??0)),total=moneyRound(subtotal+delivery),contactName=String(c.name||user.name||[user.firstName,user.lastName].filter(Boolean).join(' ')||'').trim(),createdAt=new Date().toISOString(),deliveryEstimate=customerDeliveryEstimateForItems(d,normalized,createdAt);const billingAddress=String(c.billingAddress||user.billingAddress||destination.address).trim(),billingCity=String(c.billingCity||user.billingCity||destination.city).trim(),billingPostalCode=String(c.billingPostalCode||user.billingPostalCode||destination.postalCode).trim();const order={id:options.id||id('ord'),number:options.number||'FVM-'+Date.now().toString().slice(-8),userId:String(options.userId??user.id??''),guest:!!options.guest,items:normalized,subtotal:moneyRound(subtotal),delivery,deliveryEstimate,billableDistanceKm,billableDurationMin,transport:{provider:'RutaFV',requested:true,amount:delivery,quoteId:String(q.id||q.quoteId||''),billableDistanceKm,billableDurationMin,distanceKm:billableDistanceKm,deliveryMode:'normal',express:false,status:'pendiente_crear_reparto',estimatedDeliveryDate:q.estimatedDeliveryDate||null,deliveryDateStatus:q.deliveryDateStatus||'pendiente_planificacion',origin:fvmarketOrigin(d),originDetails:fvmarketOriginSnapshot(d),destination:{...destination}},workflow:{fulfillmentModel:'sin_stock_fisico',deliveryMode:'normal_planificado'},fulfillment:{status:'pendiente_compra_proveedor',readyForRutaFV:false},total,customer:{name:contactName,billingName:String(c.billingName||user.billingName||contactName).trim(),nifNie:String(c.nifNie||user.nifNie||'').trim(),billingAddress,billingCity,billingPostalCode,email:String(c.email||user.email||'').trim(),phone:String(c.phone||user.phone||options.phone||'').trim(),...destination},...destination,phone:String(c.phone||user.phone||options.phone||'').trim(),paymentMethod:'stripe',status:'pendiente_pago',termsAcceptedAt:options.termsAcceptedAt||'',privacyAcceptedAt:options.privacyAcceptedAt||'',createdAt};return {order}}
 
 function buildOrderFromQuote(d,q,user){
   if(!q.transport||Number(q.delivery)<0)return {error:'El presupuesto debe incluir el transporte calculado por RutaFV.'};
@@ -605,15 +644,15 @@ async function confirmStripePayment(req,session){
 }
 
 app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',paymentProvider:'stripe',stripeConfigured:!!stripe,stripeWebhook:!!(stripe&&STRIPE_WEBHOOK_SECRET),emailConfigured:!!(RESEND_API_KEY&&EMAIL_FROM),billing:true,guestCheckout:false}));
-app.get('/api/products',(req,res)=>{
-  const d=read(),q=String(req.query.q||'').toLowerCase().trim(),category=String(req.query.category||'').toLowerCase().trim();
+app.get('/api/products',optionalAuth,(req,res)=>{
+  const d=read(),q=String(req.query.q||'').toLowerCase().trim(),category=String(req.query.category||'').toLowerCase().trim(),customer=req.user?(d.users||[]).find(x=>String(x.id||'')===String(req.user.id||'')):null;
   const aliases={
     reformas:['reformas','baño y cocina','fontanería','electricidad','pintura'],
     'baño y cocina':['baño y cocina','reformas'],
     climatización:['climatización','calefacción','aire acondicionado']
   };
   const allowed=category?(aliases[category]||[category]):null;
-  res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.subcategory||''} ${p.ref}`.toLowerCase().includes(q)) && (!allowed || allowed.includes(String(p.category||'').toLowerCase()))).map(p=>publicProduct(p,d)));
+  res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.subcategory||''} ${p.ref}`.toLowerCase().includes(q)) && (!allowed || allowed.includes(String(p.category||'').toLowerCase()))).map(p=>publicProduct(p,d,customer)));
 });
 app.get('/api/products/:id/reviews',optionalAuth,(req,res)=>{
   const d=read(),product=d.products.find(item=>String(item.id||'')===String(req.params.id||'')&&item.published);
@@ -751,7 +790,7 @@ app.put('/api/me/profile',auth,async(req,res)=>{
   }catch(e){res.status(503).json({error:'No se pudo validar la dirección con Google/RutaFV: '+e.message})}
 });
 app.get('/api/my-orders',auth,(req,res)=>res.json(read().orders.filter(o=>o.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(publicOrder)));
-const CUSTOMER_NOTIFICATION_TITLES=new Set(['Pedido recibido','Pedido en reparto','Incidencia','Pedido entregado','Pedido reembolsado','Pedido cancelado']);
+const CUSTOMER_NOTIFICATION_TITLES=new Set(['Pedido recibido','Pedido Confirmado','Pedido Listo para Entrega','Incidencia','Pedido entregado','Pedido reembolsado','Pedido cancelado']);
 function customerNotificationsFor(d,userId){return (d.customerNotifications||[]).filter(x=>x.userId===userId&&CUSTOMER_NOTIFICATION_TITLES.has(String(x.title||''))).slice(0,100)}
 app.get('/api/my-notifications',auth,(req,res)=>res.json(customerNotificationsFor(read(),req.user.id)));
 app.get('/api/my-quotes',auth,(req,res)=>res.json((read().quotes||[]).filter(q=>q.userId===req.user.id).sort((a,b)=>b.createdAt.localeCompare(a.createdAt))));
@@ -784,13 +823,22 @@ app.delete('/api/quotes/:id',auth,(req,res)=>{
   if(String(q.status||'').toLowerCase()==='aceptado')return res.status(409).json({error:'No se puede eliminar un presupuesto aceptado.'});
   d.quotes.splice(index,1);save(d);res.json({ok:true});
 });
-function profileSummary(d,u){const quotes=(d.quotes||[]).filter(q=>q.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));const orders=(d.orders||[]).filter(o=>o.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(publicOrder);const invoices=(d.invoices||[]).filter(x=>x.userId===u.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice);const payments=orders.map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:'Pago seguro (Stripe)',status:o.status==='reembolsado'?'reembolsado':o.status==='reembolso_parcial'?'reembolso parcial':paidOrderStatus(o.status)?'pagado':'pendiente',createdAt:o.createdAt}));const notifications=customerNotificationsFor(d,u.id);return {quotes,orders,invoices,payments,notifications}}
+function profileSummary(d,u){
+  const quotes=(d.quotes||[]).filter(q=>q.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const allOrders=(d.orders||[]).filter(o=>o.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(publicOrder);
+  const storedDeliveredOrders=allOrders.filter(o=>o.storedDelivered);
+  const orders=allOrders.filter(o=>!o.storedDelivered);
+  const invoices=(d.invoices||[]).filter(x=>x.userId===u.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice);
+  const payments=allOrders.map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:'Pago seguro (Stripe)',status:o.status==='reembolsado'?'reembolsado':o.status==='reembolso_parcial'?'reembolso parcial':paidOrderStatus(o.status)?'pagado':'pendiente',createdAt:o.createdAt}));
+  const notifications=customerNotificationsFor(d,u.id);
+  return {quotes,orders,storedDeliveredOrders,archivedOrders:storedDeliveredOrders,invoices,payments,notifications};
+}
 app.get('/api/my-invoices',auth,(req,res)=>res.json(read().invoices.filter(x=>x.userId===req.user.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice)));
 app.get('/api/invoices/:id',auth,(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).json({error:'Factura no encontrada'});if(inv.userId!==req.user.id&&!['admin','orders_manager'].includes(req.user.role))return res.status(403).json({error:'No tienes permiso para ver esta factura'});res.json(publicInvoice(inv))});
 app.get('/api/invoices/:id/print',(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).send('Factura no encontrada');const supplied=String(req.query.token||'');const expected=invoiceEmailToken(inv);const tokenOk=supplied&&supplied.length===expected.length&&crypto.timingSafeEqual(Buffer.from(supplied),Buffer.from(expected));let viewer=null;const header=String(req.headers.authorization||'');if(header.startsWith('Bearer ')){try{viewer=jwt.verify(header.slice(7),JWT_SECRET)}catch{}}if(!tokenOk&&(!viewer|| (inv.userId!==viewer.id&&!['admin','orders_manager'].includes(viewer.role))))return res.status(401).send('No tienes permiso para ver esta factura');res.type('html').send(professionalInvoiceHtml(inv,d.settings))});
 app.get('/api/me/summary',auth,(req,res)=>{const d=read();const u=d.users.find(x=>x.id===req.user.id);if(!u)return res.status(404).json({error:'Cuenta no encontrada'});res.json({user:safeUser(u),...profileSummary(d,u)})});
 app.post('/api/quotes',auth,requireCustomerReady,async(req,res)=>{
-  const d=read();const normalized=[];let subtotal=0;for(const item of req.body?.items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));const unit=offerPrice(p),weightKg=normalizeWeightKg(p.weightKg);normalized.push({productId:p.id,title:p.title,ref:p.ref,qty,weightKg,totalWeightKg:Math.round(weightKg*qty*1000)/1000,unitPrice:unit,lineTotal:+(unit*qty).toFixed(2),supplierId:String(p.supplierId||''),sourceProvider:String(p.sourceProvider||'')});subtotal+=unit*qty}
+  const d=read();const normalized=[];let subtotal=0;for(const item of req.body?.items||[]){const p=d.products.find(x=>x.id===item.id&&x.published);if(!p)continue;const qty=Math.max(1,Math.min(99,Number(item.qty)||1));const unit=customerPrice(p,req.customer);normalized.push({productId:p.id,title:p.title,ref:p.ref,qty,weightKg:normalizeWeightKg(p.weightKg),totalWeightKg:Math.round(normalizeWeightKg(p.weightKg)*qty*1000)/1000,unitPrice:unit,regularUnitPrice:Number(p.price||0),discountPct:normalizeDiscountPct(p.discountPct),customerDiscountPct:customerDiscountPct(req.customer),lineTotal:+(unit*qty).toFixed(2),supplierId:String(p.supplierId||''),sourceProvider:String(p.sourceProvider||'')});subtotal+=unit*qty}
   if(!normalized.length)return res.status(400).json({error:'El carrito está vacío'});let delivery=0,transport=null;
   try{const profile=req.customer||{},input=req.body?.customer||{},u={...profile,...input};const rawDestination=input.deliveryAddress||input;const a={address:String(rawDestination.address||profile.deliveryAddress?.address||'').trim(),city:String(rawDestination.city||profile.deliveryAddress?.city||'').trim(),postalCode:String(rawDestination.postalCode||profile.deliveryAddress?.postalCode||'').trim()};if(!a.address||!a.city||!a.postalCode)return res.status(400).json({error:'Completa y valida la dirección de entrega antes de crear el presupuesto.'});const supplied=req.body?.rutaFVQuote;let r=null;const quoteItems=normalized.map(x=>({id:x.productId,qty:x.qty,weightKg:x.weightKg}));if(validTransportQuote(supplied,req.user.id,quoteItems,a)||validTransportQuote(supplied,req.user.id,req.body?.items||[],a)){r=supplied}else{const payload={clientCode:d.settings.rutaFVClientCode||RUTAFV_CLIENT_CODE,customer:{name:u.name,email:u.email,phone:u.phone||''},origin:fvmarketOrigin(d),originDetails:fvmarketOriginSnapshot(d),destination:[a.address,a.city,a.postalCode].filter(Boolean).join(', '),destinationText:[a.address,a.city,a.postalCode].filter(Boolean).join(', '),items:normalized.map(x=>({id:x.productId,ref:x.ref,title:x.title,qty:x.qty,weightKg:x.weightKg,totalWeightKg:x.totalWeightKg,supplierId:x.supplierId,sourceProvider:x.sourceProvider})),orderSource:'FVMarket',fulfillmentModel:'sin_stock_fisico',deliveryMode:'normal',express:false,requestType:'quote'};r=await rutaFVRequest(RUTAFV_QUOTE_PATH,payload)}delivery=Math.max(0,Number(r.amount||r.total||0));transport={provider:'RutaFV',amount:delivery,quoteId:String(r.id||r.quoteId||''),origin:fvmarketOrigin(d),originDetails:fvmarketOriginSnapshot(d),destination:a,deliveryMode:'normal',express:false,estimatedDeliveryDate:r.estimatedDeliveryDate||r.deliveryDate||null,deliveryDateStatus:r.deliveryDateStatus||'pendiente_planificacion'}}catch(e){return res.status(503).json({error:'No se pudo calcular el transporte: '+e.message})}
   const now=new Date(),until=new Date(now.getTime()+15*24*60*60*1000),input=req.body?.customer||{},profile=req.customer||{},deliveryAddress=input.deliveryAddress||{address:input.address||profile.deliveryAddress?.address||'',city:input.city||profile.deliveryAddress?.city||'',postalCode:input.postalCode||profile.deliveryAddress?.postalCode||''};const total=+(subtotal+delivery).toFixed(2),billingAddress=input.billingAddress||profile.billingAddress||deliveryAddress.address,billingCity=input.billingCity||profile.billingCity||deliveryAddress.city,billingPostalCode=input.billingPostalCode||profile.billingPostalCode||deliveryAddress.postalCode;const q={id:id('quo'),number:'PRE-FVM-'+Date.now().toString().slice(-8),userId:req.user.id,items:normalized,subtotal:+subtotal.toFixed(2),delivery,total,transport,deliveryEstimate:customerDeliveryEstimateForItems(d,normalized,now),status:'emitido',validUntil:until.toISOString(),customer:{name:input.name||profile.name,email:input.email||profile.email,nifNie:input.nifNie||profile.nifNie,billingName:input.billingName||profile.billingName||input.name||profile.name,billingAddress,billingCity,billingPostalCode,deliveryAddress,phone:input.phone||profile.phone},createdAt:now.toISOString()};d.quotes.push(q);save(d);res.status(201).json(q);
@@ -876,12 +924,18 @@ app.get('/api/admin/users/:id/profile',admin,(req,res)=>{
   res.json({
     user:safeUser(u),
     metrics:{orders:orders.length,paidOrders:paid.length,totalSpent:moneyRound(totalSpent),quotes:quotes.length,reviews:reviews.length},
-    orders:orders.slice(0,50).map(x=>({id:x.id,number:x.number,status:x.status,total:moneyRound(x.total),createdAt:x.createdAt,paidAt:x.paidAt||'',items:(x.items||[]).map(item=>({title:item.title||item.ref||'Artículo',qty:Number(item.qty)||1}))})),
+    orders:orders.slice(0,50).map(x=>({id:x.id,number:x.number,status:customerOrderState(x).key,statusLabel:customerOrderState(x).label,total:moneyRound(x.total),createdAt:x.createdAt,paidAt:x.paidAt||'',items:(x.items||[]).map(item=>({title:item.title||item.ref||'Artículo',qty:Number(item.qty)||1}))})),
     quotes:quotes.slice(0,50).map(x=>({id:x.id,number:x.number,status:x.status,total:moneyRound(x.total),createdAt:x.createdAt,validUntil:x.validUntil||''})),
     reviews:reviews.slice(0,50).map(x=>({id:x.id,productId:x.productId,rating:Math.max(1,Math.min(5,Math.round(Number(x.rating)||0))),comment:String(x.comment||''),createdAt:x.createdAt,status:x.status||'published',productTitle:(d.products||[]).find(p=>String(p.id||'')===String(x.productId||''))?.title||x.productId||'Producto'}))
   });
 });
 app.post('/api/admin/users',admin,async(req,res)=>{const d=read();const body=req.body||{};const role=String(body.role||'operator').trim();const email=String(body.email||'').trim().toLowerCase();const username=String(body.username||email.split('@')[0]||'').trim().toLowerCase();const password=String(body.password??body.pin??'');const name=String(body.name||'').trim();if(!STAFF_ROLE_KEYS.has(role))return res.status(400).json({error:'Rol no válido'});if(!name||!email||!/^\S+@\S+\.\S+$/.test(email))return res.status(400).json({error:'Indica nombre y un correo válido'});if(!/^[a-z0-9._-]{3,32}$/.test(username))return res.status(400).json({error:'El usuario debe tener entre 3 y 32 caracteres: letras, números, punto, guion o guion bajo'});if(password.length<8)return res.status(400).json({error:'La contraseña debe tener al menos 8 caracteres'});if(d.users.some(x=>String(x.email||'').toLowerCase()===email||String(x.username||'').toLowerCase()===username))return res.status(409).json({error:'Ese correo o usuario ya está en uso'});const parts=name.split(/\s+/),u={id:id('usr'),name,firstName:parts.shift()||name,lastName:parts.join(' '),email,username,password:await bcrypt.hash(password,12),role,emailVerified:true,internal:true,active:true,createdAt:new Date().toISOString(),deliveryAddress:{}};d.users.unshift(u);save(d);res.status(201).json(safeUser(u))});
+app.put('/api/admin/users/:id/discount',admin,(req,res)=>{
+  const d=read(),u=(d.users||[]).find(x=>String(x.id||'')===String(req.params.id||''));
+  if(!u)return res.status(404).json({error:'Usuario no encontrado'});
+  if(u.role!=='customer')return res.status(409).json({error:'El descuento personalizado solo se puede aplicar a clientes.'});
+  u.discountPct=normalizeDiscountPct(req.body?.discountPct);u.discountUpdatedAt=new Date().toISOString();u.discountUpdatedBy=req.user.id;save(d);res.json(safeUser(u));
+});
 app.get('/api/admin/settings',admin,(req,res)=>res.json(read().settings));
 app.put('/api/admin/settings',admin,(req,res)=>{
   const d=read(),body=req.body||{};
@@ -1466,9 +1520,15 @@ function applyRutaFVCallbackStatus(d,order,payload,status){
   order.transport.rutaFVStatusLabel=status==='entregado'?'Entregado':'Incidencia';
   order.transport.rutaFVLastUpdateAt=at;
   order.transport.rutaFVLastEventId=String(payload.eventId||payload.statusEventId||'');
+  if(status==='entregado'){
+    order.deliveredAt=order.deliveredAt||at;
+    order.transport.rutaFVDeliveredAt=order.transport.rutaFVDeliveredAt||at;
+  }
   order.rutaFVStatus=status;
   order.rutaFVStatusUpdatedAt=at;
   order.deliveryStatus=status;
+  const callbackAssignment=rutaFVAssignment(payload.assignment||payload);
+  if(callbackAssignment.vehicleId||callbackAssignment.vehicleLabel||callbackAssignment.driverId||callbackAssignment.driverLabel)order.transport.assignment=callbackAssignment;
   if(note){
     order.incidenceNote=note;
     order.transport.incidentNote=note;
@@ -1500,6 +1560,17 @@ app.post('/api/integrations/rutafv/status',async(req,res)=>{
   res.json({ok:true,orderId:order.id,orderNumber:order.number,status:order.status,notificationTitles:['Pedido entregado','Incidencia'].filter((title,index)=>status==='entregado'?index===0:index===1),changed:result.changed});
 });
 function orderReadyForRutaFV(o={}){if(o.fulfillment?.readyForRutaFV===true||o.readyForRutaFV===true)return true;const ready=new Set(['available','available_at_supplier','received','recibido','listo','ready']);const items=Array.isArray(o.items)?o.items:[];return items.length>0&&items.every(x=>ready.has(String(x.procurement?.status||x.fulfillmentStatus||'').toLowerCase()))}
+function rutaFVAssignment(value={}){
+  const root=value&&typeof value==='object'?value:{};
+  const source=root.assignment&&typeof root.assignment==='object'?root.assignment:(root.delivery&&typeof root.delivery==='object'?root.delivery:(root.data&&typeof root.data==='object'?root.data:root));
+  const vehicle=source.vehicle&&typeof source.vehicle==='object'?source.vehicle:{};
+  const driver=source.driver&&typeof source.driver==='object'?source.driver:{};
+  const vehicleId=String(source.vehicleId||source.vehicle_id||source.assignedVehicleId||vehicle.id||'').trim();
+  const driverId=String(source.driverId||source.driver_id||source.assignedDriverId||driver.id||'').trim();
+  const vehicleLabel=String(source.vehicleLabel||source.vehicleName||vehicle.name||vehicle.registration||vehicle.plate||'').trim();
+  const driverLabel=String(source.driverLabel||source.driverName||driver.name||driver.fullName||'').trim();
+  return {vehicleId,vehicleLabel,driverId,driverLabel};
+}
 async function createRutaFVDelivery(d,o){
   if(!o?.transport?.requested) return null;
   if(!paidOrderStatus(o.status)) throw new Error('El pedido aún no está pagado');
@@ -1540,6 +1611,7 @@ async function createRutaFVDelivery(d,o){
     transportCostBearer:'FVMarket',
     internalTransportCost:true,
     paymentStatus:'paid_in_fvmarket',
+    accounting:{payer:'FVMarket',paymentStatus:'paid_in_fvmarket',referenceAmount:Number(o.delivery)||0,referenceIncomeAmount:Number(o.delivery)||0,includeInRutaFVRevenue:false,revenueRecognized:false,description:'Importe de transporte cobrado en FVMarket; solo referencia interna en RutaFV'},
     origin,
     originDetails,
     pickup:originDetails,
@@ -1564,15 +1636,20 @@ async function createRutaFVDelivery(d,o){
     express:false,
     photoRequired:false,
     photoOptional:true,
+    assignment:o.transport.assignment||null,
+    vehicleId:String(o.transport.assignment?.vehicleId||''),
+    driverId:String(o.transport.assignment?.driverId||''),
     items,
     packages,
     packageCount:packages.length
   };
   const r=await rutaFVRequest(RUTAFV_DELIVERY_PATH,payload);
+  const assignment=rutaFVAssignment(r.assignment||r);
   o.transport.deliveryId=String(r.id||r.deliveryId||r.expeditionId||'');
   o.transport.status=o.transport.deliveryId?'creado_en_rutafv':'pendiente_planificacion';
   o.transport.syncedAt=new Date().toISOString();
   o.transport.rutaFVResponse=r;
+  o.transport.assignment=assignment;
   o.status=o.transport.deliveryId?'enviado_a_rutafv':o.status;
   return r;
 }
@@ -1606,5 +1683,4 @@ registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeIte
 app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');res.sendFile(path.join(__dirname,'public','index.html'));});
 async function start(){try{await persistence.init();read()}catch(e){console.error('FVMarket persistence bootstrap:',e)}return app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`))}
 if(require.main===module)start();
-module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus}};
-
+module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment}};
