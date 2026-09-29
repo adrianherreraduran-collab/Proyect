@@ -25,5 +25,7 @@ services:
         sync: false
       - key: RUTAFV_API_KEY
         sync: false
+      - key: RUTAFV_STATUS_CALLBACK_KEY
+        sync: false
       - key: RUTAFV_CLIENT_CODE
         value: FVMarket
