@@ -75,6 +75,28 @@ test('la firma de RutaFV queda ligada a invitado, carrito y destino', () => {
   assert.equal(server.sameTransportDestination({}, destination), false);
 });
 
+test('RutaFV actualiza el pedido FVMarket y no duplica el aviso final', () => {
+  const data = fixture();
+  data.users = [{ id: 'customer-1', role: 'customer', email: 'cliente@example.com' }];
+  data.orders = [{
+    id: 'ord-rfv-1', number: 'FVM-9001', userId: 'customer-1', status: 'enviado_a_rutafv',
+    paidAt: '2026-09-29T08:00:00.000Z', transport: { deliveryId: 'RFV-FVM-D-1', requested: true },
+    items: [{ productId: 'p1', qty: 1 }], subtotal: 100, delivery: 25
+  }];
+  assert.equal(server.normalizeRutaFVCallbackStatus('Entregado'), 'entregado');
+  const first = server.applyRutaFVCallbackStatus(data, data.orders[0], {
+    externalOrderId: 'ord-rfv-1', deliveryId: 'RFV-FVM-D-1', status: 'Entregado', at: '2026-09-29T10:00:00.000Z'
+  }, 'entregado');
+  assert.equal(first.ok, true);
+  assert.equal(data.orders[0].status, 'entregado');
+  assert.equal(data.customerNotifications.filter(item => item.orderId === 'ord-rfv-1' && item.title === 'Pedido entregado').length, 1);
+  const second = server.applyRutaFVCallbackStatus(data, data.orders[0], {
+    externalOrderId: 'ord-rfv-1', deliveryId: 'RFV-FVM-D-1', status: 'Entregado', at: '2026-09-29T10:00:00.000Z'
+  }, 'entregado');
+  assert.equal(second.ok, true);
+  assert.equal(data.customerNotifications.filter(item => item.orderId === 'ord-rfv-1' && item.title === 'Pedido entregado').length, 1);
+});
+
 test('el pedido conserva trazabilidad privada y separa transporte', () => {
   const data = fixture(), actor = { id: 'guest:abc123', name: 'Cliente', email: 'cliente@example.com', phone: '600123123' };
   const customer = { name: 'Cliente', email: actor.email, phone: actor.phone, address: 'Calle A 1', city: 'Morro Jable', postalCode: '35625', billingAddress: 'Calle A 1', billingCity: 'Morro Jable', billingPostalCode: '35625' };
