@@ -241,6 +241,12 @@ test('el envío a RutaFV crea una expedición con cliente, fechas, direcciones y
   assert.equal(payload.client.code, 'FVMarket');
   assert.equal(payload.sourceApplication, 'FVMarket');
   assert.equal(payload.paymentRequired, false);
+  assert.equal(payload.paymentRequiredAtDelivery, false);
+  assert.equal(payload.chargeCustomer, false);
+  assert.equal(payload.billingPayer, 'FVMarket');
+  assert.equal(payload.transportPayerType, 'internal_client');
+  assert.equal(payload.transportCostBearer, 'FVMarket');
+  assert.equal(payload.internalTransportCost, true);
   assert.equal(payload.originDetails.address, 'Origen logístico 1');
   assert.equal(payload.destination, 'Obra 1, Puerto del Rosario, 35600');
   assert.equal(payload.destinationDetails.address, 'Obra 1');
