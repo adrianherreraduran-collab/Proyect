@@ -95,6 +95,19 @@ test('RutaFV actualiza el pedido FVMarket y no duplica el aviso final', () => {
   }, 'entregado');
   assert.equal(second.ok, true);
   assert.equal(data.customerNotifications.filter(item => item.orderId === 'ord-rfv-1' && item.title === 'Pedido entregado').length, 1);
+  data.orders.push({
+    id: 'ord-rfv-2', number: 'FVM-9002', userId: 'customer-1', status: 'enviado_a_rutafv',
+    paidAt: '2026-09-29T08:00:00.000Z', transport: { deliveryId: 'RFV-FVM-D-2', requested: true },
+    items: [{ productId: 'p1', qty: 1 }], subtotal: 100, delivery: 25
+  });
+  const incident = server.applyRutaFVCallbackStatus(data, data.orders[1], {
+    externalOrderId: 'ord-rfv-2', deliveryId: 'RFV-FVM-D-2', status: 'Incidencia',
+    incidentNote: 'No había nadie en la dirección', at: '2026-09-29T11:00:00.000Z'
+  }, 'incidencia');
+  assert.equal(incident.ok, true);
+  assert.equal(data.orders[1].status, 'incidencia');
+  assert.equal(data.orders[1].rutaFVIncidentNote, 'No había nadie en la dirección');
+  assert.equal(data.customerNotifications.filter(item => item.orderId === 'ord-rfv-2' && item.title === 'Incidencia').length, 1);
 });
 
 test('el pedido conserva trazabilidad privada y separa transporte', () => {
