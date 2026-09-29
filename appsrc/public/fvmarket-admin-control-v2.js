@@ -6,13 +6,12 @@
   const labels = { pagado: 'Pagado', en_compra_proveedor: 'Compra al proveedor', mercancia_recogida: 'Mercancía recogida', listo_para_rutafv: 'Listo para RutaFV', incidencia: 'Incidencia' };
   const paidStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia']);
   const paymentStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial', 'reembolsado']);
-  const actions = [['comprada', 'Comprado'], ['mercancia_recogida', 'Mercancía recogida'], ['enviar_a_rutafv', 'Enviar a RutaFV'], ['incidencia', 'Incidencia']];
   let mounted = false;
 
   function addStyle() {
     if ($('fvmAdminControlV3Style')) return;
     const s = document.createElement('style'); s.id = 'fvmAdminControlV3Style';
-    s.textContent = `.fvmBoard{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:16px}.fvmBoardColumn{border-radius:12px;padding:14px;border:1px solid}.fvmBoardColumn.paid{background:#f3faef;border-color:#b8dda3}.fvmBoardColumn h3{margin:0 0 10px;font-size:15px;color:#397820}.fvmBoardCard{background:#fff;border:1px solid #e1e9ef;border-radius:10px;padding:11px;margin:8px 0}.fvmBoardCard header{background:none;color:inherit;padding:0;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.fvmBoardCard header b{color:var(--navy);font-size:12px}.fvmBoardCard small{color:var(--muted)}.fvmBoardStatus{display:inline-flex;padding:4px 7px;border-radius:999px;background:#eaf7e4;color:#397820;font-size:10px;font-weight:900}.fvmBoardMeta{font-size:11px;line-height:1.5;margin:8px 0}.fvmBoardItems{border-top:1px solid #edf1f4;margin-top:8px;padding-top:7px;font-size:10px}.fvmActionSelect{width:100%;border:1px solid #cbd9e4;border-radius:7px;background:#fff;padding:8px;color:var(--navy);font-weight:800;font-size:11px}.fvmBoardEmpty{padding:16px;text-align:center;color:var(--muted);font-size:12px}.fvmChecklist{display:grid;gap:4px;margin-top:9px;padding:8px;border:1px solid #edf1f4;border-radius:8px;background:#fbfdff}.fvmChecklist label{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b7787}.fvmChecklist label.done{color:#397820;font-weight:850}.fvmChecklist input{accent-color:#5fa92f;margin:0}.fvmChecklist input:disabled{opacity:1}.fvmIncidentNote{margin-top:6px;padding:7px 8px;border-left:3px solid #d48a22;background:#fff8e8;color:#76500e;border-radius:5px;font-size:10px;line-height:1.4}.fvmNotification{display:flex;gap:10px;align-items:flex-start;border:1px solid #dfe7ee;border-radius:9px;padding:11px;margin:8px 0;background:#fff}.fvmNotification.unread{border-left:4px solid var(--lime);background:#f8fbf5}.fvmNotification b{color:var(--navy)}.fvmNotification small{display:block;color:var(--muted);margin-top:3px}.fvmNotification button{margin-left:auto;white-space:nowrap}`;
+    s.textContent = `.fvmBoard{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:16px}.fvmBoardColumn{border-radius:12px;padding:14px;border:1px solid}.fvmBoardColumn.paid{background:#f3faef;border-color:#b8dda3}.fvmBoardColumn h3{margin:0 0 10px;font-size:15px;color:#397820}.fvmBoardCard{background:#fff;border:1px solid #e1e9ef;border-radius:10px;padding:11px;margin:8px 0}.fvmBoardCard header{background:none;color:inherit;padding:0;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.fvmBoardCard header b{color:var(--navy);font-size:12px}.fvmBoardCard small{color:var(--muted)}.fvmBoardStatus{display:inline-flex;padding:4px 7px;border-radius:999px;background:#eaf7e4;color:#397820;font-size:10px;font-weight:900}.fvmBoardMeta{font-size:11px;line-height:1.5;margin:8px 0}.fvmBoardItems{border-top:1px solid #edf1f4;margin-top:8px;padding-top:7px;font-size:10px}.fvmBoardEmpty{padding:16px;text-align:center;color:var(--muted);font-size:12px}.fvmChecklist{display:grid;gap:4px;margin-top:9px;padding:8px;border:1px solid #edf1f4;border-radius:8px;background:#fbfdff}.fvmChecklist label{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b7787;padding:2px 3px;border-radius:5px}.fvmChecklist label.actionable{cursor:pointer;color:var(--navy);background:#f4f8fb}.fvmChecklist label.done{color:#397820;font-weight:850}.fvmChecklist input{accent-color:#5fa92f;margin:0}.fvmChecklist input:not(:disabled){cursor:pointer}.fvmChecklist input:disabled{opacity:1}.fvmIncidentNote{margin-top:6px;padding:7px 8px;border-left:3px solid #d48a22;background:#fff8e8;color:#76500e;border-radius:5px;font-size:10px;line-height:1.4}.fvmNotification{display:flex;gap:10px;align-items:flex-start;border:1px solid #dfe7ee;border-radius:9px;padding:11px;margin:8px 0;background:#fff}.fvmNotification.unread{border-left:4px solid var(--lime);background:#f8fbf5}.fvmNotification b{color:var(--navy)}.fvmNotification small{display:block;color:var(--muted);margin-top:3px}.fvmNotification button{margin-left:auto;white-space:nowrap}`;
     document.head.appendChild(s);
   }
 
@@ -44,42 +43,49 @@
     if (id === 'notifications') loadNotifications();
   }
 
-  function actionSelect(order) {
-    const status = String(order.status || ''), allowed = ({
-      pagado: ['incidencia'],
-      en_compra_proveedor: ['comprada', 'enviar_a_rutafv', 'mercancia_recogida', 'incidencia'],
-      mercancia_recogida: ['enviar_a_rutafv', 'incidencia'],
-      listo_para_rutafv: ['enviar_a_rutafv', 'incidencia'],
-      incidencia: ['comprada', 'enviar_a_rutafv', 'mercancia_recogida']
-    }[status] || []);
-    if (!allowed.length) return '<span class="msg">Sin acciones pendientes</span>';
-    const tasks = Array.isArray(order.procurementTasks) ? order.procurementTasks : [];
-    const bought = tasks.length > 0 && tasks.every(task => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(task.status || '')));
-    const opts = actions.filter(([value]) => allowed.includes(value) && !(value === 'comprada' && bought)).map(([value, label]) => `<option value="${value}">${label}</option>`).join('');
-    return `<select class="fvmActionSelect" onchange="fvmRunProcurementAction('${esc(order.id)}',this.value,'',this)"><option value="">Seleccionar acción…</option>${opts}</select>`;
-  }
-
   function incidentNote(order) {
     const rows = Array.isArray(order.procurementActions) ? order.procurementActions.filter(x => x.action === 'incidencia') : [];
     const last = rows.sort((a, b) => String(a.at || '').localeCompare(String(b.at || ''))).pop();
     return String(last?.metadata?.note || last?.note || '').trim();
   }
 
-  function checklist(order) {
+  function checklistState(order) {
     const status = String(order.status || ''), rank = { pagado: 0, en_compra_proveedor: 1, mercancia_recogida: 2, listo_para_rutafv: 3, enviado_a_rutafv: 4, en_reparto: 5, entregado: 6 }[status] ?? -1;
     const tasks = Array.isArray(order.procurementTasks) ? order.procurementTasks : [];
     const bought = tasks.length ? tasks.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
     const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
     const incident = status === 'incidencia' || (Array.isArray(order.procurementActions) && order.procurementActions.some(x => x.action === 'incidencia'));
-    const steps = [['Pendiente compra al proveedor', true], ['Comprado', bought], ['Incidencia', incident], ['Recogido', collected], ['Reembolsado', ['reembolso_parcial', 'reembolsado'].includes(status)], ['Cancelado', status === 'cancelado']];
+    const sent = !!order.transport?.deliveryId || ['enviado_a_rutafv', 'en_reparto', 'entregado'].includes(status);
+    return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, refunded: ['reembolso_parcial', 'reembolsado'].includes(status), cancelled: status === 'cancelado' };
+  }
+
+  function canChecklistAction(state, action) {
+    if (action === 'comprada') return !state.bought && ['pagado', 'incidencia'].includes(state.status);
+    if (action === 'mercancia_recogida') return !state.collected && state.bought && ['en_compra_proveedor', 'incidencia'].includes(state.status);
+    if (action === 'enviar_a_rutafv') return !state.sent && state.collected && ['mercancia_recogida', 'listo_para_rutafv', 'incidencia'].includes(state.status);
+    if (action === 'incidencia') return !state.incident && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto'].includes(state.status);
+    return false;
+  }
+
+  function checklist(order) {
+    const state = checklistState(order);
+    const steps = [
+      ['Pendiente compra al proveedor', state.pending, '', true],
+      ['Comprado', state.bought, 'comprada', !state.bought && canChecklistAction(state, 'comprada')],
+      ['Incidencia', state.incident, 'incidencia', !state.incident && canChecklistAction(state, 'incidencia')],
+      ['Recogido', state.collected, 'mercancia_recogida', !state.collected && canChecklistAction(state, 'mercancia_recogida')],
+      ['Enviar a RutaFV', state.sent, 'enviar_a_rutafv', !state.sent && canChecklistAction(state, 'enviar_a_rutafv')],
+      ['Reembolsado', state.refunded, '', false],
+      ['Cancelado', state.cancelled, '', false]
+    ];
     const note = incidentNote(order);
-    return '<div class="fvmChecklist">' + steps.map(([label, done]) => `<label class="${done ? 'done' : ''}"><input type="checkbox" disabled ${done ? 'checked' : ''}><span>${label}</span></label>`).join('') + (note ? `<div class="fvmIncidentNote"><b>Nota de incidencia:</b> ${esc(note)}</div>` : '') + '</div>';
+    return '<div class="fvmChecklist" aria-label="Pasos del pedido">' + steps.map(([label, done, action, actionable]) => `<label class="${done ? 'done' : ''}${actionable ? ' actionable' : ''}"><input type="checkbox" ${done ? 'checked' : ''} ${actionable ? `onchange="fvmChecklistAction('${esc(order.id)}','${action}',this)"` : 'disabled'}><span>${label}</span></label>`).join('') + (note ? `<div class="fvmIncidentNote"><b>Nota de incidencia:</b> ${esc(note)}</div>` : '') + '</div>';
   }
 
   function card(order) {
     const items = (order.items || []).map(i => `<div>${esc(i.title || i.ref || 'Producto')} × ${Number(i.qty || 1)} · ${money(i.lineTotal)}</div>`).join('');
     const supplierRows = (order.supplierSummary || []).map(t => { const estimate=t.deliveryEstimate||{}; const location=[t.island, t.address].filter(Boolean).join(' · '); return `<div><b>${esc(t.name)}</b> (${esc(t.status || 'pendiente')})${location?` · ${esc(location)}`:''}<br><span>Entrega estimada del proveedor: <b>${esc(estimate.label || 'Pendiente de calcular')}</b></span></div>`; }).join('') || 'Proveedor pendiente';
-    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.delivery)}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}<div style="margin-top:9px">${actionSelect(order)}</div></article>`;
+    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.delivery)}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}</article>`;
   }
 
   function renderBoard(data) {
@@ -94,6 +100,20 @@
     try { renderBoard(await api('/api/admin/procurement-board')); } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
   }
 
+  window.fvmChecklistAction = async function (orderId, action, input) {
+    if (!input?.checked) { if (input) input.checked = true; return; }
+    if (action === 'incidencia' && !confirm('¿Registrar una incidencia para este pedido?')) { input.checked = false; return; }
+    const note = action === 'incidencia' ? prompt('Describe la incidencia. Esta nota quedará guardada en la trazabilidad:', '') : '';
+    if (action === 'incidencia' && !String(note || '').trim()) { alert('Debes indicar una nota para la incidencia.'); input.checked = false; return; }
+    const purchaseReference = action === 'comprada' ? prompt('Referencia, ticket o factura de la compra (opcional):', '') : '';
+    const cost = action === 'comprada' ? prompt('Coste real de compra (opcional):', '') : '';
+    if (action === 'enviar_a_rutafv' && !confirm('¿Crear ahora el reparto en RutaFV para este pedido?')) { input.checked = false; return; }
+    try {
+      await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/procurement-action', { method: 'POST', body: JSON.stringify({ action, note: note || '', purchaseReference: purchaseReference || '', actualCost: cost == null || cost === '' ? undefined : Number(String(cost).replace(',', '.')) }) });
+      await Promise.all([loadBoard(), loadNotifications()]);
+    } catch (e) { input.checked = false; alert(e.message); }
+  };
+
   async function loadNotifications() {
     const host = $('fvmNotifications'); if (!host) return;
     try {
@@ -102,18 +122,17 @@
     } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
   }
 
-  window.fvmRunProcurementAction = async function (orderId, action, taskId, select) {
-    if (!action) return;
-    if (action === 'incidencia' && !confirm('¿Registrar una incidencia para este pedido?')) { if (select) select.value = ''; return; }
-    const note = action === 'incidencia' ? prompt('Describe la incidencia. Esta nota quedará guardada en la trazabilidad:', '') : '';
-    if (action === 'incidencia' && !String(note || '').trim()) { alert('Debes indicar una nota para la incidencia.'); if (select) select.value = ''; return; }
-    const purchaseReference = action === 'comprada' ? prompt('Referencia, ticket o factura de la compra (opcional):', '') : '';
-    const cost = action === 'comprada' ? prompt('Coste real de compra (opcional):', '') : '';
-    if (action === 'enviar_a_rutafv' && !confirm('¿Crear ahora el reparto en RutaFV para este pedido?')) { if (select) select.value = ''; return; }
+  window.fvmRunProcurementAction = window.fvmChecklistAction;
+
+  window.fvmExportBoardPdf = async function () {
+    const button = $('fvmBoardPdf'); if (button) button.disabled = true;
     try {
-      await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/procurement-action', { method: 'POST', body: JSON.stringify({ action, taskId: taskId || '', note: note || '', purchaseReference: purchaseReference || '', actualCost: cost == null || cost === '' ? undefined : Number(String(cost).replace(',', '.')) }) });
-      await Promise.all([loadBoard(), loadNotifications()]);
-    } catch (e) { alert(e.message); if (select) select.value = ''; }
+      const response = await fetch('/api/admin/procurement-board/pdf', { headers: { Authorization: 'Bearer ' + (session?.token || '') } });
+      if (!response.ok) { let data = {}; try { data = await response.json(); } catch {} throw Error(data.error || 'No se pudo exportar el tablero.'); }
+      const blob = await response.blob(), url = URL.createObjectURL(blob), link = document.createElement('a');
+      link.href = url; link.download = 'fvmarket-tablero-proveedores.pdf'; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    } catch (e) { alert(e.message || 'No se pudo exportar el tablero.'); }
+    finally { if (button) button.disabled = false; }
   };
 
   window.fvmReadNotification = async function (id) { try { await api('/api/admin/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' }); loadNotifications(); } catch (e) { alert(e.message); } };
@@ -124,9 +143,9 @@
     const role = session?.user?.role || 'admin';
     if (!['admin', 'orders_manager'].includes(role)) return;
     newTab('control', '📋 Tablero'); newTab('notifications', '🔔 Avisos');
-    newView('control', '<div class="bar"><div><h2 style="margin:0">Tablero de pedidos</h2><p class="sub" style="margin:5px 0 0">Aquí solo aparecen pedidos pagados pendientes de adquirir al proveedor de FVMarket.</p></div><button class="btn navy" id="fvmBoardRefresh">Actualizar</button></div><div id="fvmControlBoard"></div>');
+    newView('control', '<div class="bar"><div><h2 style="margin:0">Tablero de pedidos</h2><p class="sub" style="margin:5px 0 0">Marca cada paso en el checklist. Aquí solo aparecen pedidos pagados de FVMarket.</p></div><div class="bar"><button class="btn ghost" id="fvmBoardPdf" type="button">⇩ Exportar PDF</button><button class="btn navy" id="fvmBoardRefresh" type="button" title="Actualizar ahora" aria-label="Actualizar ahora">↻</button></div></div><div id="fvmControlBoard"></div>');
     newView('notifications', '<div class="bar"><div><h2 style="margin:0">Avisos</h2><p class="sub" style="margin:5px 0 0">Pagos confirmados e incidencias internas.</p></div><button class="btn navy" id="fvmNotificationsRefresh">Actualizar</button></div><div id="fvmNotifications"></div>');
-    $('fvmBoardRefresh').onclick = loadBoard; $('fvmNotificationsRefresh').onclick = loadNotifications;
+    $('fvmBoardRefresh').onclick = loadBoard; $('fvmBoardPdf').onclick = fvmExportBoardPdf; $('fvmNotificationsRefresh').onclick = loadNotifications;
     [...document.querySelectorAll('.tab')].filter(x => ['control', 'notifications'].includes(x.dataset.view)).forEach(x => x.onclick = () => show(x.dataset.view));
     loadBoard();
   }

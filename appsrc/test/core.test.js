@@ -159,10 +159,10 @@ test('el tablero excluye pagos pendientes y permite incidencia y envío a RutaFV
   const routes = {};
   const app = { get(path, ...args) { routes[path] = args.at(-1); }, post(path, ...args) { routes[path] = args.at(-1); } };
   const data = { orders: [], procurementTasks: [], notifications: [], procurementActionLog: [], auditLog: [], settings: {} };
-  const paidOrder = { id: 'paid-1', number: 'FVM-PAID', status: 'en_compra_proveedor', paidAt: new Date().toISOString(), createdAt: new Date().toISOString(), total: 50, delivery: 10, items: [{ productId: 'p1', title: 'Taladro', qty: 1, procurement: { status: 'available' } }], transport: { requested: true } };
+  const paidOrder = { id: 'paid-1', number: 'FVM-PAID', status: 'pagado', paidAt: new Date().toISOString(), createdAt: new Date().toISOString(), total: 50, delivery: 10, items: [{ productId: 'p1', title: 'Taladro', qty: 1, procurement: { status: 'available' } }], transport: { requested: true } };
   const unpaidOrder = { id: 'pending-1', number: 'FVM-PENDING', status: 'pendiente_pago', createdAt: new Date().toISOString() };
   data.orders.push(paidOrder, unpaidOrder);
-  data.procurementTasks.push({ id: 'task-1', orderId: 'paid-1', supplierName: 'Proveedor Uno', status: 'comprada', sourceCost: 30, items: [] });
+  data.procurementTasks.push({ id: 'task-1', orderId: 'paid-1', supplierName: 'Proveedor Uno', status: 'pendiente_compra', sourceCost: 30, items: [] });
   let createdDelivery = false;
   procurement.registerProcurementRoutes(app, {
     read: () => data,
@@ -176,10 +176,18 @@ test('el tablero excluye pagos pendientes y permite incidencia y envío a RutaFV
   let board;
   await routes['/api/admin/procurement-board']({}, { json(value) { board = value; } });
   assert.deepEqual(board.orders.map(order => order.id), ['paid-1']);
+  let boughtResponse;
+  await routes['/api/admin/orders/:id/procurement-action']({ params: { id: 'paid-1' }, body: { action: 'comprada', purchaseReference: 'TICKET-1' }, user: { id: 'admin', role: 'admin' } }, { json(value) { boughtResponse = value; }, status() { return this; } });
+  assert.equal(boughtResponse.status, 'en_compra_proveedor');
+  assert.equal(data.procurementTasks[0].status, 'comprada');
   let incidentResponse;
   await routes['/api/admin/orders/:id/procurement-action']({ params: { id: 'paid-1' }, body: { action: 'incidencia', note: 'Proveedor sin stock en tienda.' }, user: { id: 'admin', role: 'admin' } }, { json(value) { incidentResponse = value; }, status() { return this; } });
   assert.equal(incidentResponse.status, 'incidencia');
   assert.equal(data.procurementActionLog[0].metadata.note, 'Proveedor sin stock en tienda.');
+  let collectedResponse;
+  await routes['/api/admin/orders/:id/procurement-action']({ params: { id: 'paid-1' }, body: { action: 'mercancia_recogida' }, user: { id: 'admin', role: 'admin' } }, { json(value) { collectedResponse = value; }, status() { return this; } });
+  assert.equal(collectedResponse.status, 'mercancia_recogida');
+  assert.equal(data.procurementTasks[0].status, 'recogida');
   let response;
   await routes['/api/admin/orders/:id/procurement-action']({ params: { id: 'paid-1' }, body: { action: 'enviar_a_rutafv' }, user: { id: 'admin', role: 'admin' } }, { json(value) { response = value; }, status() { return this; } });
   assert.equal(createdDelivery, true);
@@ -311,6 +319,9 @@ test('el catálogo interno muestra ubicación del proveedor y elimina la forma d
   assert.match(ordersUi, /Entrega estimada proveedor/);
   assert.match(board, /Entrega estimada del proveedor/);
   assert.doesNotMatch(board, /Iniciar compra/);
+  assert.match(board, /fvmChecklistAction/);
+  assert.match(board, /fvmBoardPdf/);
+  assert.doesNotMatch(board, /Seleccionar acción/);
   assert.doesNotMatch(suppliers, /Forma de adquisición/);
   assert.match(accountingUi, /Exportar para Holded/);
   assert.match(accountingUi, /FVMarket \/ RutaFV/);
