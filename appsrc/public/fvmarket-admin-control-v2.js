@@ -12,6 +12,7 @@
     if ($('fvmAdminControlV3Style')) return;
     const s = document.createElement('style'); s.id = 'fvmAdminControlV3Style';
     s.textContent = `.fvmBoard{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:16px}.fvmBoardColumn{border-radius:12px;padding:14px;border:1px solid}.fvmBoardColumn.paid{background:#f3faef;border-color:#b8dda3}.fvmBoardColumn h3{margin:0 0 10px;font-size:15px;color:#397820}.fvmBoardCard{background:#fff;border:1px solid #e1e9ef;border-radius:10px;padding:11px;margin:8px 0}.fvmBoardCard header{background:none;color:inherit;padding:0;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.fvmBoardCard header b{color:var(--navy);font-size:12px}.fvmBoardCard small{color:var(--muted)}.fvmBoardStatus{display:inline-flex;padding:4px 7px;border-radius:999px;background:#eaf7e4;color:#397820;font-size:10px;font-weight:900}.fvmBoardMeta{font-size:11px;line-height:1.5;margin:8px 0}.fvmBoardItems{border-top:1px solid #edf1f4;margin-top:8px;padding-top:7px;font-size:10px}.fvmBoardEmpty{padding:16px;text-align:center;color:var(--muted);font-size:12px}.fvmChecklist{display:grid;gap:4px;margin-top:9px;padding:8px;border:1px solid #edf1f4;border-radius:8px;background:#fbfdff}.fvmChecklist label{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b7787;padding:2px 3px;border-radius:5px}.fvmChecklist label.actionable{cursor:pointer;color:var(--navy);background:#f4f8fb}.fvmChecklist label.done{color:#397820;font-weight:850}.fvmChecklist input{accent-color:#5fa92f;margin:0}.fvmChecklist input:not(:disabled){cursor:pointer}.fvmChecklist input:disabled{opacity:1}.fvmIncidentNote{margin-top:6px;padding:7px 8px;border-left:3px solid #d48a22;background:#fff8e8;color:#76500e;border-radius:5px;font-size:10px;line-height:1.4}.fvmNotification{display:flex;gap:10px;align-items:flex-start;border:1px solid #dfe7ee;border-radius:9px;padding:11px;margin:8px 0;background:#fff}.fvmNotification.unread{border-left:4px solid var(--lime);background:#f8fbf5}.fvmNotification b{color:var(--navy)}.fvmNotification small{display:block;color:var(--muted);margin-top:3px}.fvmNotification button{margin-left:auto;white-space:nowrap}`;
+    s.textContent += `.fvmBoardToolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:4px 0 16px}.fvmBoardToolbar .sub{max-width:620px}.fvmBoardToolbarActions{display:flex;align-items:center;gap:8px;flex-shrink:0}.fvmPdfButton{display:inline-flex;align-items:center;gap:9px;border:1px solid #c7d8e6;background:linear-gradient(180deg,#fff,#f3f8fc);color:#0c3358;border-radius:9px;padding:9px 13px;font-weight:850;font-size:12px;box-shadow:0 2px 5px rgba(12,51,88,.08);transition:transform .15s ease,box-shadow .15s ease,background .15s ease}.fvmPdfButton:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 12px rgba(12,51,88,.14);background:#fff}.fvmPdfButton:focus-visible{outline:3px solid rgba(56,138,211,.28);outline-offset:2px}.fvmPdfButton:disabled{opacity:.72;cursor:wait}.fvmPdfIcon{display:inline-grid;place-items:center;min-width:25px;height:22px;border-radius:5px;background:#d9534f;color:#fff;font-size:9px;letter-spacing:.3px;font-weight:950}.fvmBoardPdfHint{margin:0;color:#718096;font-size:10px}@media(max-width:760px){.fvmBoardToolbar{align-items:flex-start;flex-direction:column}.fvmBoardToolbarActions{width:100%;justify-content:space-between}.fvmPdfButton{flex:1;justify-content:center}}`;
     document.head.appendChild(s);
   }
 
@@ -143,14 +144,16 @@
   window.fvmRunProcurementAction = window.fvmChecklistAction;
 
   window.fvmExportBoardPdf = async function () {
-    const button = $('fvmBoardPdf'); if (button) button.disabled = true;
+    const button = $('fvmBoardPdf');
+    const initialLabel = button?.innerHTML;
+    if (button) { button.disabled = true; button.classList.add('is-loading'); button.innerHTML = '<span class="fvmPdfIcon">PDF</span><span>Generando PDF...</span>'; }
     try {
       const response = await fetch('/api/admin/procurement-board/pdf', { headers: { Authorization: 'Bearer ' + (session?.token || '') } });
       if (!response.ok) { let data = {}; try { data = await response.json(); } catch {} throw Error(data.error || 'No se pudo exportar el tablero.'); }
       const blob = await response.blob(), url = URL.createObjectURL(blob), link = document.createElement('a');
-      link.href = url; link.download = 'fvmarket-tablero-proveedores.pdf'; document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+      link.href = url; link.download = 'fvmarket-tablero-compras.pdf'; document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) { alert(e.message || 'No se pudo exportar el tablero.'); }
-    finally { if (button) button.disabled = false; }
+    finally { if (button) { button.disabled = false; button.classList.remove('is-loading'); button.innerHTML = initialLabel || '<span class="fvmPdfIcon">PDF</span><span>Exportar PDF</span>'; } }
   };
 
   window.fvmReadNotification = async function (id) { try { await api('/api/admin/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' }); loadNotifications(); } catch (e) { alert(e.message); } };
@@ -161,7 +164,7 @@
     const role = session?.user?.role || 'admin';
     if (!['admin', 'orders_manager'].includes(role)) return;
     newTab('control', '📋 Tablero'); newTab('notifications', '🔔 Avisos');
-    newView('control', '<div class="bar"><div><h2 style="margin:0">Tablero de pedidos</h2><p class="sub" style="margin:5px 0 0">Marca cada paso en el checklist. Aquí solo aparecen pedidos pagados de FVMarket.</p></div><div class="bar"><button class="btn ghost" id="fvmBoardPdf" type="button">⇩ Exportar PDF</button><button class="btn navy" id="fvmBoardRefresh" type="button" title="Actualizar ahora" aria-label="Actualizar ahora">↻</button></div></div><div id="fvmControlBoard"></div>');
+    newView('control', '<div class="fvmBoardToolbar"><div><h2 style="margin:0">Tablero de pedidos</h2><p class="sub" style="margin:5px 0 0">Marca cada paso en el checklist. Aquí solo aparecen pedidos pagados de FVMarket.</p><p class="fvmBoardPdfHint">El PDF agrupa las compras por proveedor y añade casillas para marcar cada línea en papel.</p></div><div class="fvmBoardToolbarActions"><button class="fvmPdfButton" id="fvmBoardPdf" type="button"><span class="fvmPdfIcon">PDF</span><span>Exportar compras</span></button><button class="btn navy" id="fvmBoardRefresh" type="button" title="Actualizar ahora" aria-label="Actualizar ahora">↻</button></div></div><div id="fvmControlBoard"></div>');
     newView('notifications', '<div class="bar"><div><h2 style="margin:0">Avisos</h2><p class="sub" style="margin:5px 0 0">Pagos confirmados e incidencias internas.</p></div><button class="btn navy" id="fvmNotificationsRefresh">Actualizar</button></div><div id="fvmNotifications"></div>');
     $('fvmBoardRefresh').onclick = loadBoard; $('fvmBoardPdf').onclick = fvmExportBoardPdf; $('fvmNotificationsRefresh').onclick = loadNotifications;
     [...document.querySelectorAll('.tab')].filter(x => ['control', 'notifications'].includes(x.dataset.view)).forEach(x => x.onclick = () => show(x.dataset.view));

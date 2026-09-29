@@ -85,37 +85,147 @@ function groupedBoardRows(rows = []) {
   }
   return [...grouped.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es')).map(([supplier, items]) => ({ supplier, items }));
 }
+
+function pdfDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function pdfClean(value, fallback = '') {
+  return String(value ?? fallback).replace(/\s+/g, ' ').trim();
+}
+
+function drawPdfCheckbox(doc, x, y, size = 9) {
+  doc.save();
+  doc.lineWidth(0.8).strokeColor('#728397').roundedRect(x, y, size, size, 2).stroke();
+  doc.restore();
+}
+
+function drawPdfFooter(doc, pageNumber) {
+  const margin = 40;
+  const y = doc.page.height - 63;
+  doc.save();
+  doc.moveTo(margin, y - 7).lineTo(doc.page.width - margin, y - 7).lineWidth(0.5).strokeColor('#d9e2ea').stroke();
+  doc.font('Helvetica').fontSize(7).fillColor('#718096')
+    .text(`FVMarket - Hoja de compras interna - Pagina ${pageNumber}`, margin, y, { width: doc.page.width - margin * 2, align: 'center', lineBreak: false });
+  doc.restore();
+}
+
 function drawBoardPdf(doc, rows, exportedAt = new Date()) {
-  const margin = 40, bottom = () => doc.page.height - margin;
-  const ensureSpace = needed => { if (doc.y + needed > bottom()) doc.addPage(); };
-  const text = (value, options = {}) => doc.text(String(value ?? ''), { width: doc.page.width - margin * 2, ...options });
-  doc.font('Helvetica-Bold').fontSize(18).fillColor('#06345f').text('FVMarket · Tablero de pedidos');
-  doc.font('Helvetica').fontSize(9).fillColor('#52677b').text(`Pedidos pagados pendientes de gestión · Exportado: ${new Date(exportedAt).toLocaleString('es-ES')}`);
-  doc.moveDown(1);
+  const margin = 40;
+  const contentWidth = doc.page.width - margin * 2;
+  const bottom = () => doc.page.height - 70;
+  let pageNumber = 1;
+
+  const addPage = () => {
+    drawPdfFooter(doc, pageNumber);
+    doc.addPage();
+    pageNumber += 1;
+    doc.y = margin;
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#0c3358').text('FVMarket - Tablero de compras', margin, margin, { width: contentWidth });
+    doc.moveTo(margin, margin + 15).lineTo(doc.page.width - margin, margin + 15).lineWidth(0.5).strokeColor('#d9e2ea').stroke();
+    doc.y = margin + 27;
+  };
+  const ensureSpace = needed => { if (doc.y + needed > bottom()) addPage(); };
+  const drawText = (value, x, y, width, options = {}) => {
+    const text = pdfClean(value);
+    if (!text) return 0;
+    const font = options.font || 'Helvetica';
+    const fontSize = options.fontSize || 8.5;
+    const lineGap = options.lineGap == null ? 1.5 : options.lineGap;
+    doc.font(font).fontSize(fontSize).fillColor(options.color || '#405568');
+    const height = doc.heightOfString(text, { width, lineGap });
+    doc.text(text, x, y, { width, lineGap });
+    return height;
+  };
+
+  doc.roundedRect(margin, margin, contentWidth, 72, 8).fill('#0c3358');
+  doc.font('Helvetica-Bold').fontSize(19).fillColor('#ffffff').text('FVMarket', margin + 16, margin + 13);
+  doc.font('Helvetica-Bold').fontSize(13).fillColor('#d8f1b8').text('TABLERO DE COMPRAS', margin + 16, margin + 38);
+  doc.font('Helvetica').fontSize(8).fillColor('#e9f3fb').text('Pedidos pagados organizados por proveedor', margin + 16, margin + 55);
+  doc.font('Helvetica').fontSize(8).fillColor('#e9f3fb').text(`Exportado: ${pdfDate(exportedAt)}`, margin + 300, margin + 19, { width: contentWidth - 316, align: 'right' });
+  doc.font('Helvetica').fontSize(8).fillColor('#e9f3fb').text('Marque cada casilla al completar la compra', margin + 300, margin + 34, { width: contentWidth - 316, align: 'right' });
+  doc.y = margin + 92;
+
   const groups = groupedBoardRows(rows);
-  if (!groups.length) { doc.fontSize(11).fillColor('#52677b').text('No hay pedidos pagados pendientes de gestión.'); return; }
-  groups.forEach((group, groupIndex) => {
-    ensureSpace(65);
-    const supplierRows = group.items;
-    const orderCount = new Set(supplierRows.map(x => x.orderId)).size;
-    const cost = money(supplierRows.reduce((sum, x) => sum + Number(x.actualCost || x.sourceCost || 0), 0));
-    doc.roundedRect(margin, doc.y, doc.page.width - margin * 2, 27, 5).fill('#eaf4df');
-    doc.fillColor('#397820').font('Helvetica-Bold').fontSize(12).text(group.supplier, margin + 10, doc.y + 8);
-    doc.fillColor('#52677b').font('Helvetica').fontSize(8).text(`${orderCount} pedido(s) · Coste proveedor: ${cost.toFixed(2)} €`, margin + 10, doc.y + 23);
-    doc.y += 38;
-    supplierRows.forEach(row => {
-      ensureSpace(82);
-      const itemText = (row.items || []).map(item => `${item.title || item.ref || 'Producto'} × ${Number(item.qty || 1)}${item.totalWeightKg ? ` · ${Number(item.totalWeightKg).toFixed(3)} kg` : ''}`).join(' | ') || 'Sin líneas de producto';
-      doc.fillColor('#10233f').font('Helvetica-Bold').fontSize(10).text(`${row.orderNumber || row.orderId} · ${row.customer || 'Cliente'}`);
-      doc.font('Helvetica').fontSize(8).fillColor('#405568');
-      text(`Estado: ${row.status || 'pendiente'} · Paso proveedor: ${row.taskStatus || 'pendiente_compra'} · Plazo: ${row.deliveryEstimate?.label || 'Pendiente de calcular'}`);
-      text(`Productos: ${itemText}`);
-      text(`Total pedido: ${money(row.total).toFixed(2)} € · RutaFV: ${money(row.delivery).toFixed(2)} €${row.purchaseReference ? ` · Ref. compra: ${row.purchaseReference}` : ''}`);
-      if (row.notes) text(`Nota: ${row.notes}`);
-      doc.moveDown(.65);
-    });
-    if (groupIndex < groups.length - 1) doc.moveDown(.3);
+  const allOrderIds = new Set(rows.map(row => row.orderId));
+  const totalLines = rows.reduce((sum, row) => sum + (row.items || []).length, 0);
+  const summaryWidth = (contentWidth - 16) / 3;
+  const summaryY = doc.y;
+  [['PROVEEDORES', groups.length], ['PEDIDOS', allOrderIds.size], ['LINEAS A COMPRAR', totalLines]].forEach(([label, value], index) => {
+    const x = margin + index * (summaryWidth + 8);
+    doc.roundedRect(x, summaryY, summaryWidth, 39, 6).fillAndStroke('#f4f8fb', '#dbe6ee');
+    doc.font('Helvetica-Bold').fontSize(14).fillColor('#0c3358').text(String(value), x + 10, summaryY + 7, { width: summaryWidth - 20, lineBreak: false });
+    doc.font('Helvetica').fontSize(7).fillColor('#65788a').text(label, x + 10, summaryY + 25, { width: summaryWidth - 20, lineBreak: false });
   });
+  doc.y = summaryY + 53;
+
+  if (!groups.length) {
+    doc.roundedRect(margin, doc.y, contentWidth, 54, 7).fillAndStroke('#f8fafc', '#dbe6ee');
+    drawText('No hay pedidos pagados pendientes de gestion.', margin + 14, doc.y + 19, contentWidth - 28, { fontSize: 10, color: '#52677b' });
+    drawPdfFooter(doc, pageNumber);
+    return;
+  }
+
+  groups.forEach((group, groupIndex) => {
+    const supplierRows = group.items;
+    const firstRow = supplierRows[0] || {};
+    const firstItemCount = Array.isArray(firstRow.items) ? firstRow.items.length : 0;
+    const firstOrderHeight = 59 + Math.max(firstItemCount, 1) * 24 + (firstRow.notes ? 22 : 0);
+    ensureSpace(Math.min(74 + firstOrderHeight, 260));
+    const orderCount = new Set(supplierRows.map(x => x.orderId)).size;
+    const lineCount = supplierRows.reduce((sum, row) => sum + (row.items || []).length, 0);
+    const supplierY = doc.y;
+    doc.roundedRect(margin, supplierY, contentWidth, 42, 6).fill('#e8f3df');
+    drawPdfCheckbox(doc, margin + 11, supplierY + 10, 12);
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#2f6b20').text(pdfClean(group.supplier, 'Proveedor pendiente'), margin + 31, supplierY + 8, { width: contentWidth - 42 });
+    doc.font('Helvetica').fontSize(8).fillColor('#52677b').text(`${orderCount} pedido(s) - ${lineCount} linea(s) - Casilla: proveedor completado`, margin + 31, supplierY + 25, { width: contentWidth - 42 });
+    doc.y = supplierY + 54;
+
+    supplierRows.forEach(row => {
+      const items = Array.isArray(row.items) ? row.items : [];
+      const estimatedHeight = 59 + Math.max(items.length, 1) * 24 + (row.notes ? 22 : 0);
+      ensureSpace(Math.min(estimatedHeight, 150));
+      const orderY = doc.y;
+      drawPdfCheckbox(doc, margin + 4, orderY + 2, 10);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#10233f').text(`${pdfClean(row.orderNumber || row.orderId)} - ${pdfClean(row.customer, 'Cliente')}`, margin + 21, orderY, { width: contentWidth - 25 });
+      doc.font('Helvetica').fontSize(7.8).fillColor('#52677b').text(`Estado: ${pdfClean(row.status, 'pendiente')} - Paso: ${pdfClean(row.taskStatus, 'pendiente_compra')} - Plazo: ${pdfClean(row.deliveryEstimate?.label, 'Pendiente de calcular')}`, margin + 21, orderY + 16, { width: contentWidth - 25 });
+      doc.y = orderY + 31;
+
+      if (!items.length) {
+        drawPdfCheckbox(doc, margin + 14, doc.y + 2, 9);
+        drawText('Sin lineas de producto', margin + 30, doc.y, contentWidth - 30, { fontSize: 8, color: '#718096' });
+        doc.y += 17;
+      } else {
+        items.forEach(item => {
+          const title = pdfClean(item.title || item.ref || 'Producto');
+          const qty = Number(item.qty || 1);
+          const ref = pdfClean(item.sourceRef || item.ref);
+          const weight = Number(item.totalWeightKg || 0);
+          const suffix = [ref ? `Ref: ${ref}` : '', weight > 0 ? `${weight.toFixed(3)} kg` : ''].filter(Boolean).join(' - ');
+          const productText = `${title} x ${qty}${suffix ? ` - ${suffix}` : ''}`;
+          doc.font('Helvetica').fontSize(8.2);
+          const height = Math.max(16, doc.heightOfString(productText, { width: contentWidth - 122, lineGap: 1.5 }));
+          ensureSpace(height + 8);
+          const lineY = doc.y;
+          drawPdfCheckbox(doc, margin + 14, lineY + 2, 9);
+          drawText(productText, margin + 30, lineY, contentWidth - 122, { fontSize: 8.2, color: '#2f4558' });
+          doc.y = lineY + height + 4;
+        });
+      }
+      const totals = `Total pedido: ${money(row.total).toFixed(2)} EUR - RutaFV: ${money(row.delivery).toFixed(2)} EUR${row.purchaseReference ? ` - Ref. compra: ${pdfClean(row.purchaseReference)}` : ''}`;
+      drawText(totals, margin + 21, doc.y, contentWidth - 25, { fontSize: 7.7, color: '#52677b' });
+      doc.y += 14;
+      if (row.notes) {
+        drawText(`Nota: ${pdfClean(row.notes)}`, margin + 21, doc.y, contentWidth - 25, { fontSize: 7.7, color: '#76500e' });
+        doc.y += 14;
+      }
+      doc.moveTo(margin + 4, doc.y + 4).lineTo(doc.page.width - margin - 4, doc.y + 4).lineWidth(0.4).strokeColor('#dce5eb').stroke();
+      doc.y += 13;
+    });
+    if (groupIndex < groups.length - 1) doc.y += 3;
+  });
+  drawPdfFooter(doc, pageNumber);
 }
 function registerProcurementRoutes(app, deps) {
   const { read, save, ordersManager, transitionOrder, ensureLedgerForOrder, createRutaFVDelivery, paidOrderStatus } = deps;
@@ -209,4 +319,4 @@ function registerProcurementRoutes(app, deps) {
     } catch (e) { res.status(409).json({ error: String(e.message || e) }); }
   });
 }
-module.exports = { ensureData, registerProcurementRoutes, filterPurchases };
+module.exports = { ensureData, registerProcurementRoutes, filterPurchases, groupedBoardRows, drawBoardPdf };
