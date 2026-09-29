@@ -83,7 +83,7 @@ app.post('/api/stripe/webhook',express.raw({type:'application/json'}),async(req,
 app.use(express.json({limit:'30mb'}));
 const requestBuckets=new Map();
 function requestLimit(req,res,next){
-  const path=String(req.path||''),rule=path==='/api/auth/login'||path==='/api/auth/forgot-password'?{limit:20,windowMs:15*60*1000}:path==='/api/checkout/stripe'?{limit:15,windowMs:10*60*1000}:path==='/api/rutafv/quote'?{limit:60,windowMs:10*60*1000}:null;
+  const path=String(req.path||''),rule=path==='/api/auth/login'||path==='/api/auth/forgot-password'?{limit:20,windowMs:15*60*1000}:path==='/api/checkout/stripe'?{limit:15,windowMs:10*60*1000}:path==='/api/rutafv/quote'?{limit:60,windowMs:10*60*1000}:req.method==='POST'&&path.startsWith('/api/products/')&&path.endsWith('/reviews')?{limit:10,windowMs:15*60*1000}:null;
   if(!rule)return next();const now=Date.now(),key=`${req.ip}:${path}`,current=requestBuckets.get(key);const bucket=!current||current.resetAt<=now?{count:0,resetAt:now+rule.windowMs}:current;bucket.count+=1;requestBuckets.set(key,bucket);
   if(requestBuckets.size>2000)for(const [storedKey,value] of requestBuckets)if(value.resetAt<=now)requestBuckets.delete(storedKey);
   if(bucket.count>rule.limit){res.set('Retry-After',String(Math.ceil((bucket.resetAt-now)/1000)));return res.status(429).json({error:'Demasiados intentos. Espera unos minutos antes de volver a intentarlo.'})}next();
@@ -124,7 +124,7 @@ function ensureCatalogData(d){
   }
   return changed;
 }
-function seed({emptyProducts=false}={}){return {users:[],products:emptyProducts?[]:cloneDefaultProducts(),orders:[],quotes:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
+function seed({emptyProducts=false}={}){return {users:[],products:emptyProducts?[]:cloneDefaultProducts(),orders:[],quotes:[],reviews:[],settings:{deliveryBase:0,igic:7,storeName:'FVMarket',categories:['Construcción','Bricolaje','Herramientas','Reformas'],subcategories:{'Reformas':['Baño','Cocina','Fontanería','Electricidad'],'Bricolaje':['Adhesivos y selladores','Fijaciones','Organización','Reparación']}}}}
 function resetDatabaseState(current={}){
   const fresh=databaseBackup.initialState(seed({emptyProducts:true}),Array.isArray(current.users)?current.users:[]);
   const currentSettings=current.settings&&typeof current.settings==='object'?current.settings:{};
@@ -142,7 +142,7 @@ function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2));persistenc
 function normalizeState(d){
   const before=JSON.stringify(d);
   ensureAdmin(d);ensureCatalogData(d);ensureCatalogProducts(d);
-  ensureCustomerData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);
+  ensureCustomerData(d);ensureReviewData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);
   return JSON.stringify(d)!==before;
 }
 function writeStateAtomically(raw){const temporary=DATA_FILE+'.next';fs.writeFileSync(temporary,raw);fs.renameSync(temporary,DATA_FILE)}
@@ -211,6 +211,21 @@ function ensureCustomerData(d){
     if(!u.deliveryAddress||typeof u.deliveryAddress!=='object')u.deliveryAddress={};
     if(u.firstName==null)u.firstName='';if(u.lastName==null)u.lastName='';if(u.nifNie==null)u.nifNie='';if(u.phone==null)u.phone='';if(u.billingName==null)u.billingName='';if(u.billingAddress==null)u.billingAddress='';if(u.billingCity==null)u.billingCity='';if(u.billingPostalCode==null)u.billingPostalCode='';
   }
+}
+function ensureReviewData(d){
+  if(!Array.isArray(d.reviews))d.reviews=[];
+  d.reviews=d.reviews.filter(review=>review&&typeof review==='object'&&String(review.productId||'').trim()&&String(review.userId||'').trim()).map(review=>({
+    ...review,
+    id:String(review.id||id('rev')),
+    productId:String(review.productId),
+    userId:String(review.userId),
+    orderId:String(review.orderId||''),
+    rating:Math.max(1,Math.min(5,Math.round(Number(review.rating)||0))),
+    comment:String(review.comment||'').trim().slice(0,2000),
+    authorName:String(review.authorName||'Cliente verificado').trim().slice(0,80),
+    createdAt:String(review.createdAt||new Date().toISOString()),
+    status:String(review.status||'published')==='hidden'?'hidden':'published'
+  })).filter(review=>review.rating>=1&&review.comment);
 }
 function ensureLogisticsSettings(d){
   d.settings=d.settings||{};
@@ -328,6 +343,41 @@ function requireCustomerReady(req,res,next){
 }
 
 // FVM_PRIVATE_PROCUREMENT_V1
+function reviewAuthorName(user={}){
+  const first=String(user.firstName||String(user.name||'').trim().split(/\s+/)[0]||'Cliente').trim();
+  const last=String(user.lastName||'').trim();
+  return `${first}${last?` ${last.charAt(0)}.`:''}`.slice(0,80);
+}
+function reviewableOrderForUser(d={},userId='',productId=''){
+  const uid=String(userId||''),pid=String(productId||'');
+  if(!uid||!pid)return null;
+  return (d.orders||[]).filter(order=>String(order.userId||'')===uid&&paidOrderStatus(order.status)&&!['cancelado','reembolsado','reembolso_parcial'].includes(String(order.status||'').toLowerCase())&&(order.items||[]).some(item=>String(item.productId||item.id||'')===pid)).sort((a,b)=>String(b.paidAt||b.createdAt||'').localeCompare(String(a.paidAt||a.createdAt||'')))[0]||null;
+}
+function publicReview(review={}, d=null){
+  const user=(d?.users||[]).find(candidate=>String(candidate.id||'')===String(review.userId||''));
+  return {
+    id:String(review.id||''),
+    rating:Math.max(1,Math.min(5,Math.round(Number(review.rating)||0))),
+    comment:String(review.comment||''),
+    authorName:String(review.authorName||reviewAuthorName(user||{})),
+    verifiedPurchase:true,
+    createdAt:String(review.createdAt||'')
+  };
+}
+function reviewSummaryForProduct(d={},productId=''){
+  const rows=(d.reviews||[]).filter(review=>String(review.productId||'')===String(productId||'')&&String(review.status||'published')!=='hidden').sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  const average=rows.length?Math.round((rows.reduce((sum,review)=>sum+Number(review.rating||0),0)/rows.length)*10)/10:0;
+  return {average,count:rows.length,reviews:rows.slice(0,20).map(review=>publicReview(review,d))};
+}
+function reviewEligibility(d={},userId='',productId=''){
+  const uid=String(userId||''),pid=String(productId||'');
+  if(!uid)return {eligible:false,alreadyReviewed:false,reason:'Inicia sesión para valorar este producto.'};
+  const existing=(d.reviews||[]).find(review=>String(review.userId||'')===uid&&String(review.productId||'')===pid&&String(review.status||'published')!=='hidden');
+  if(existing)return {eligible:false,alreadyReviewed:true,reason:'Ya has valorado este producto.'};
+  const order=reviewableOrderForUser(d,uid,pid);
+  if(!order)return {eligible:false,alreadyReviewed:false,reason:'Podrás valorar este producto después de comprarlo.'};
+  return {eligible:true,alreadyReviewed:false,orderId:String(order.id||''),orderNumber:String(order.number||'')};
+}
 function publicProduct(p={}, d=null){
   const {sourceUrl,sourcePrice,sourceRef,sourceEan,sourceProvider,sourceBrand,sourceAvailability,sourceTaxNote,sourceCheckedAt,sourceSync,margin,addedValue,imageSource,imageLicense,imageAuthor,sourceImages,sourceStore,sourceSeller,providerKey,supplierId,...safe}=p;
   if(Array.isArray(safe.images))safe.images=safe.images.map(x=>typeof x==='string'?x:{url:x.url}).filter(x=>x.url);
@@ -338,6 +388,7 @@ function publicProduct(p={}, d=null){
     const estimate=customerDeliveryEstimateForItems(d,[{supplierId:p.supplierId||'',procurement:{supplierId:p.supplierId||''},supplierIsland:supplier.island,supplierAddress:supplier.address,supplierCity:supplier.city}],new Date());
     if(estimate)safe.deliveryEstimate=publicDeliveryEstimate(estimate);
   }
+  safe.reviewSummary=reviewSummaryForProduct(d||{},p.id);
   return safe;
 }
 function publicDeliveryEstimate(value){
@@ -561,13 +612,36 @@ app.get('/api/products',(req,res)=>{
   const allowed=category?(aliases[category]||[category]):null;
   res.json(d.products.filter(p=>p.published && (!q || `${p.title} ${p.category} ${p.subcategory||''} ${p.ref}`.toLowerCase().includes(q)) && (!allowed || allowed.includes(String(p.category||'').toLowerCase()))).map(p=>publicProduct(p,d)));
 });
+app.get('/api/products/:id/reviews',optionalAuth,(req,res)=>{
+  const d=read(),product=d.products.find(item=>String(item.id||'')===String(req.params.id||'')&&item.published);
+  if(!product)return res.status(404).json({error:'Producto no encontrado'});
+  const summary=reviewSummaryForProduct(d,product.id);
+  const eligibility=req.user?reviewEligibility(d,req.user.id,product.id):{eligible:false,alreadyReviewed:false,reason:'Inicia sesión para valorar este producto.'};
+  res.json({productId:product.id,average:summary.average,count:summary.count,reviews:summary.reviews,eligibility});
+});
+app.post('/api/products/:id/reviews',auth,(req,res)=>{
+  const d=read(),product=d.products.find(item=>String(item.id||'')===String(req.params.id||'')&&item.published),user=d.users.find(item=>String(item.id||'')===String(req.user.id||''));
+  if(!product)return res.status(404).json({error:'Producto no encontrado'});
+  if(!user||user.role!=='customer')return res.status(403).json({error:'Solo los clientes pueden valorar productos'});
+  if(!user.emailVerified)return res.status(403).json({error:'Verifica tu correo electrónico antes de valorar un producto'});
+  const rating=Number(req.body?.rating),comment=String(req.body?.comment||'').trim();
+  if(!Number.isInteger(rating)||rating<1||rating>5)return res.status(400).json({error:'La valoración debe estar entre 1 y 5 estrellas'});
+  if(comment.length<5)return res.status(400).json({error:'Escribe una opinión de al menos 5 caracteres'});
+  if(comment.length>2000)return res.status(400).json({error:'La opinión no puede superar los 2.000 caracteres'});
+  const eligibility=reviewEligibility(d,user.id,product.id);
+  if(eligibility.alreadyReviewed)return res.status(409).json({error:'Ya has valorado este producto'});
+  if(!eligibility.eligible)return res.status(403).json({error:eligibility.reason||'Solo pueden valorar los clientes que hayan comprado este producto'});
+  const review={id:id('rev'),productId:product.id,userId:user.id,orderId:eligibility.orderId,rating,comment,authorName:reviewAuthorName(user),verifiedPurchase:true,status:'published',createdAt:new Date().toISOString()};
+  d.reviews.unshift(review);save(d);
+  res.status(201).json({review:publicReview(review,d),summary:reviewSummaryForProduct(d,product.id)});
+});
 function legalPage(section='condiciones',settings={}){
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const email=String(settings.legalEmail||settings.supportEmail||'contacto.fvmarket@gmail.com'),phone=String(settings.contactPhone||'605 308 154');
   const holder=[settings.fiscalName||settings.storeName||'FVMarket',settings.fiscalNif?`NIF ${settings.fiscalNif}`:'',[settings.fiscalAddress,settings.fiscalPostalCode,settings.fiscalCity].filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' · ');
   const pages={
     condiciones:{title:'Condiciones de compra',body:`<h2>1. Titular y ámbito</h2><p>FVMarket vende productos de ferretería, construcción y hogar con entrega en Fuerteventura. Titular: ${holder}.</p><h2>2. Pedido, disponibilidad y precio</h2><p>Los precios se muestran en euros con el IGIC incluido cuando corresponda. FVMarket trabaja bajo pedido y no garantiza stock físico inmediato. Tras el pago verificaremos la disponibilidad con el proveedor; si un artículo no estuviera disponible, propondremos una alternativa o el reembolso.</p><h2>3. Pago</h2><p>El pago online se procesa mediante Stripe. Stripe mostrará tarjeta y, cuando el importe, el país y el cliente cumplan los requisitos, métodos de pago a plazo u otros métodos compatibles, como Klarna. FVMarket no almacena los datos completos del medio de pago. El pedido se considera pagado cuando Stripe confirma el cobro.</p><h2 id="transporte">4. Transporte</h2><p>La entrega se realiza con RutaFV en Fuerteventura. El transporte se calcula antes del pago y aparece separado de los productos. La fecha se comunicará cuando el pedido esté preparado. La entrega requiere firma o confirmación del receptor; una negativa o imposibilidad de entrega se registrará como incidencia.</p><h2>5. Cancelaciones y reembolsos</h2><p>Puedes solicitar la cancelación antes de que se encargue la mercancía al proveedor o se entregue a RutaFV. Cuando proceda, el reembolso se tramitará mediante Stripe al mismo medio de pago.</p><h2>6. Contacto</h2><p>Para consultas, incidencias o devoluciones escribe a <a href="mailto:${esc(email)}">${esc(email)}</a> o llama al ${esc(phone)}.</p>`},
-    privacidad:{title:'Política de privacidad',body:`<h2>Responsable</h2><p>${holder}. Contacto: <a href="mailto:${esc(email)}">${esc(email)}</a>.</p><h2>Datos y finalidades</h2><p>Tratamos los datos de contacto, facturación, entrega, pedido y pago necesarios para gestionar compras, facturas, atención al cliente, prevención del fraude y obligaciones legales. Crear una cuenta es opcional para comprar.</p><h2>Base jurídica y conservación</h2><p>El tratamiento necesario para el pedido se basa en la ejecución del contrato; las obligaciones fiscales, en el cumplimiento legal; y las comunicaciones opcionales, en el consentimiento. Conservaremos la información durante los plazos necesarios para atender responsabilidades y obligaciones contables.</p><h2>Proveedores</h2><p>Usamos Stripe para pagos, RutaFV para transporte, Resend para correos transaccionales y Render para alojamiento. Solo se comparten los datos necesarios para prestar cada servicio.</p><h2>Derechos</h2><p>Puedes solicitar acceso, rectificación, supresión, oposición, limitación o portabilidad escribiendo a <a href="mailto:${esc(email)}">${esc(email)}</a>. También puedes reclamar ante la Agencia Española de Protección de Datos.</p>`},
+    privacidad:{title:'Política de privacidad',body:`<h2>Responsable</h2><p>${holder}. Contacto: <a href="mailto:${esc(email)}">${esc(email)}</a>.</p><h2>Datos y finalidades</h2><p>Tratamos los datos de contacto, facturación, entrega, pedido y pago necesarios para gestionar compras, facturas, atención al cliente, prevención del fraude y obligaciones legales. Crear una cuenta es opcional para comprar.</p><h2>Opiniones de clientes</h2><p>Cuando publicas una valoración mostramos en la ficha del producto tu nombre reducido, la puntuación y el comentario. Solo pueden publicar opiniones los clientes con una compra verificada y puedes solicitar su rectificación o retirada.</p><h2>Base jurídica y conservación</h2><p>El tratamiento necesario para el pedido se basa en la ejecución del contrato; las obligaciones fiscales, en el cumplimiento legal; y las comunicaciones opcionales, en el consentimiento. Conservaremos la información durante los plazos necesarios para atender responsabilidades y obligaciones contables.</p><h2>Proveedores</h2><p>Usamos Stripe para pagos, RutaFV para transporte, Resend para correos transaccionales y Render para alojamiento. Solo se comparten los datos necesarios para prestar cada servicio.</p><h2>Derechos</h2><p>Puedes solicitar acceso, rectificación, supresión, oposición, limitación o portabilidad escribiendo a <a href="mailto:${esc(email)}">${esc(email)}</a>. También puedes reclamar ante la Agencia Española de Protección de Datos.</p>`},
     devoluciones:{title:'Devoluciones y reembolsos',body:`<h2>Cómo solicitarlo</h2><p>Escribe a <a href="mailto:${esc(email)}">${esc(email)}</a> indicando el número de pedido, el motivo y, si existe daño o error, fotografías que permitan revisarlo.</p><h2>Productos bajo pedido</h2><p>Revisaremos cada solicitud según el estado de compra al proveedor, entrega y naturaleza del producto. Te comunicaremos por escrito las instrucciones y, cuando corresponda, la recogida.</p><h2>Reembolso</h2><p>Los reembolsos aprobados se realizan mediante Stripe al mismo medio de pago. El plazo de abono final depende de la entidad emisora de la tarjeta.</p>`}
   };
   const page=pages[section]||pages.condiciones;
@@ -1416,4 +1490,4 @@ registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeIte
 app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');res.sendFile(path.join(__dirname,'public','index.html'));});
 async function start(){try{await persistence.init();read()}catch(e){console.error('FVMarket persistence bootstrap:',e)}return app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`))}
 if(require.main===module)start();
-module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState}};
+module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData}};

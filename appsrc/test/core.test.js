@@ -39,6 +39,22 @@ test('el plazo público no expone la isla ni reglas internas del proveedor', () 
   assert.equal('address' in product.deliveryEstimate, false);
 });
 
+test('las opiniones solo se habilitan para clientes con una compra y se agregan por producto', () => {
+  const data = fixture();
+  data.users = [{ id: 'customer-1', role: 'customer', emailVerified: true, firstName: 'Ana', lastName: 'López', name: 'Ana López' }];
+  data.orders = [{ id: 'order-1', number: 'FVM-1', userId: 'customer-1', status: 'pagado', paidAt: '2026-09-29T08:00:00.000Z', items: [{ productId: 'p1', qty: 1 }] }];
+  data.reviews = [];
+  assert.equal(server.reviewEligibility(data, 'customer-1', 'p1').eligible, true);
+  assert.equal(server.reviewEligibility(data, 'customer-1', 'p2').eligible, false);
+  data.reviews.push({ id: 'rev-1', productId: 'p1', userId: 'customer-1', orderId: 'order-1', rating: 5, comment: 'Muy buen producto y entrega correcta.', createdAt: '2026-09-29T09:00:00.000Z', status: 'published' });
+  const summary = server.reviewSummaryForProduct(data, 'p1');
+  assert.equal(summary.count, 1);
+  assert.equal(summary.average, 5);
+  assert.equal(summary.reviews[0].verifiedPurchase, true);
+  assert.equal(server.reviewEligibility(data, 'customer-1', 'p1').alreadyReviewed, true);
+  assert.equal(server.publicProduct(data.products[0], data).reviewSummary.count, 1);
+});
+
 test('los datos de invitado validan contacto, entrega y facturación', () => {
   const valid = server.normalizeCheckoutCustomer({
     name: 'Cliente Prueba', email: 'cliente@example.com', phone: '600123123',
