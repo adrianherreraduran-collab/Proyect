@@ -31,6 +31,14 @@ test('el catálogo público oculta proveedor, coste y margen', () => {
   assert.deepEqual(product.images, [{ url: 'https://images.example/taladro.jpg' }]);
 });
 
+test('el plazo público no expone la isla ni reglas internas del proveedor', () => {
+  const product = server.publicProduct(fixture().products[0], { suppliers: [{ id: 'sup1', island: 'Fuerteventura', address: 'Calle privada 1' }] });
+  assert.equal(product.deliveryEstimate.label, '24–72 h');
+  assert.equal('rule' in product.deliveryEstimate, false);
+  assert.equal('isLocal' in product.deliveryEstimate, false);
+  assert.equal('address' in product.deliveryEstimate, false);
+});
+
 test('los datos de invitado validan contacto, entrega y facturación', () => {
   const valid = server.normalizeCheckoutCustomer({
     name: 'Cliente Prueba', email: 'cliente@example.com', phone: '600123123',

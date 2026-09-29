@@ -336,21 +336,22 @@ function publicProduct(p={}, d=null){
   if(d){
     const supplier=(d.suppliers||[]).find(x=>String(x.id||'')===String(p.supplierId||''))||{island:p.supplierIsland||'',address:p.supplierAddress||'',city:p.supplierCity||''};
     const estimate=customerDeliveryEstimateForItems(d,[{supplierId:p.supplierId||'',procurement:{supplierId:p.supplierId||''},supplierIsland:supplier.island,supplierAddress:supplier.address,supplierCity:supplier.city}],new Date());
-    if(estimate)safe.deliveryEstimate=estimate;
+    if(estimate)safe.deliveryEstimate=publicDeliveryEstimate(estimate);
   }
   return safe;
+}
+function publicDeliveryEstimate(value){
+  if(!value||typeof value!=='object')return null;
+  return {
+    label:String(value.label||'Pendiente de confirmar'),
+    minDate:String(value.minDate||''),
+    maxDate:String(value.maxDate||'')
+  };
 }
 function publicOrder(o={}){
   const {stripeSessionId,stripeSessionUrl,stripeSessionExpiresAt,paymentIntentId,stripePaymentStatus,guestAccessTokenHash,emailEvents,refunds,...safe}=o;
   const paymentMethod=String(safe.paymentMethod||'').toLowerCase()==='stripe'?'Pago seguro (Stripe)':(safe.paymentMethod||'');
-  const estimate=o.deliveryEstimate&&typeof o.deliveryEstimate==='object'?{
-    label:String(o.deliveryEstimate.label||'Pendiente de confirmar'),
-    rule:String(o.deliveryEstimate.rule||'pendiente_confirmacion'),
-    minDate:String(o.deliveryEstimate.minDate||''),
-    maxDate:String(o.deliveryEstimate.maxDate||''),
-    minAt:o.deliveryEstimate.minAt||null,
-    maxAt:o.deliveryEstimate.maxAt||null
-  }:null;
+  const estimate=publicDeliveryEstimate(o.deliveryEstimate);
   return {...safe,paymentMethod,deliveryEstimate:estimate,refunds:Array.isArray(refunds)?refunds.map(({stripeRefundId,...refund})=>refund):refunds,items:(o.items||[]).map(({procurement,...item})=>item)};
 }
 function customerDeliveryEstimateForItems(d, items = [], baseAt = new Date()) {
