@@ -226,7 +226,8 @@ test('el envío a RutaFV crea una expedición con cliente, fechas, direcciones y
   assert.equal(payload.sourceApplication, 'FVMarket');
   assert.equal(payload.paymentRequired, false);
   assert.equal(payload.originDetails.address, 'Origen logístico 1');
-  assert.equal(payload.destination.address, 'Obra 1');
+  assert.equal(payload.destination, 'Obra 1, Puerto del Rosario, 35600');
+  assert.equal(payload.destinationDetails.address, 'Obra 1');
   assert.equal(payload.probableDeliveryDate, '2026-09-28');
   assert.equal(payload.photoRequired, false);
   assert.equal(payload.packageCount, 1);

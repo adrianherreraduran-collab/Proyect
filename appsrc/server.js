@@ -435,7 +435,12 @@ function nextProductRef(d,title,category){
 }
 function offerPrice(p){const pct=Math.max(0,Math.min(90,Number(p.discountPct)||0));return p.onOffer&&pct?+(Number(p.price||0)*(1-pct/100)).toFixed(2):Number(p.price||0)}
 function rutaFVErrorMessage(value,fallback=''){
-  if(Array.isArray(value))return value.map(x=>rutaFVErrorMessage(x,'')).filter(Boolean).join('; ');
+  if(Array.isArray(value))return value.map(x=>{
+    const message=rutaFVErrorMessage(x,'');
+    const location=x&&typeof x==='object'&&Array.isArray(x.loc)?x.loc.filter(Boolean).join('.'):
+      (x&&typeof x==='object'&&x.path?String(x.path):'');
+    return location&&message?`${location}: ${message}`:message;
+  }).filter(Boolean).join('; ');
   if(value&&typeof value==='object'){
     const nested=value.message??value.detail??value.msg??value.error;
     if(nested!==undefined)return rutaFVErrorMessage(nested,fallback);
@@ -1334,14 +1339,16 @@ async function createRutaFVDelivery(d,o){
   const origin=String(originDetails.label||o.transport.origin||fvmarketOrigin(d)).trim();
   const probableDate=String(o.transport.estimatedDeliveryDate||probableDeliveryDate(o.deliveryEstimate||{})||'').trim();
   const client=operations.rutaFVClient(d,RUTAFV_CLIENT_CODE);
-  const items=(o.items||[]).map(x=>{const weightKg=normalizeWeightKg(x.weightKg||x.procurement?.weightKg);return {productId:x.productId,ref:x.ref,title:x.title,qty:x.qty,weightKg,totalWeightKg:Math.round(weightKg*Number(x.qty||1)*1000)/1000,supplierId:x.procurement?.supplierId||'',sourceProvider:x.procurement?.provider||''}});
+  const items=(o.items||[]).map(x=>{const weightKg=normalizeWeightKg(x.weightKg||x.procurement?.weightKg),qty=Math.max(1,Number(x.qty)||1);return {id:String(x.productId||x.id||''),ref:String(x.ref||''),title:String(x.title||''),qty,weightKg,totalWeightKg:Math.round(weightKg*qty*1000)/1000,supplierId:String(x.procurement?.supplierId||x.supplierId||''),sourceProvider:String(x.procurement?.provider||x.sourceProvider||''),sourceUrl:String(x.sourceUrl||''),sourceRef:String(x.sourceRef||'')}});
   const packages=operations.shipmentPackages(o.items||[]);
+  const destinationText=[address,city,postalCode].filter(Boolean).join(', ');
+  const customer={name:String(o.customer?.name||u.name||''),email:String(o.customer?.email||u.email||''),phone:String(o.customer?.phone||o.phone||''),city,postalCode,notes};
   const payload={
     clientCode:client.code,
     client,
     externalOrderId:o.id,
     externalOrderNumber:o.number,
-    customer:{name:o.customer?.name||u.name||'',email:o.customer?.email||u.email||'',phone:o.customer?.phone||o.phone||'',city,postalCode,notes},
+    customer,
     sourceApplication:'FVMarket',
     accountingApplication:'RutaFV',
     paymentRequired:false,
@@ -1349,8 +1356,12 @@ async function createRutaFVDelivery(d,o){
     origin,
     originDetails,
     pickup:originDetails,
-    destination,
-    destinationText:[address,city,postalCode].filter(Boolean).join(', '),
+    // RutaFV valida `destination` como texto. Conservamos el desglose para
+    // compatibilidad y trazabilidad, pero el campo contractual es siempre
+    // una cadena.
+    destination:destinationText,
+    destinationDetails:destination,
+    destinationText,
     deliveryAddress:destination,
     probableDeliveryDate:probableDate,
     estimatedDeliveryDate:probableDate,

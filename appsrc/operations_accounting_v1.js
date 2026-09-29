@@ -571,6 +571,7 @@ function registerOperationsRoutes(app, deps) {
       const user = d.users.find(x => x.id === order.userId) || {};
       if (!order.procurement?.allReady && !order.fulfillment?.readyForRutaFV) return res.status(409).json({ error: 'Completa primero la compra y recogida de todos los proveedores.' });
       const destination = order.transport?.destination || { address: order.customer?.address || order.address || '', city: order.customer?.city || order.city || '', postalCode: order.customer?.postalCode || order.postalCode || '', notes: order.customer?.notes || order.notes || '' };
+      const destinationText = [String(destination.address || '').trim(), String(destination.city || '').trim(), String(destination.postalCode || '').trim()].filter(Boolean).join(', ');
       const originDetails = order.transport?.originDetails || { label: String(order.transport?.origin || d.settings?.rutaFVOrigin || '').trim(), source: 'FVMarket' };
       const probableDate = String(order.transport?.estimatedDeliveryDate || probableDeliveryDate(order.deliveryEstimate || {}) || '').trim();
       const client = rutaFVClient(d, RUTAFV_CLIENT_CODE);
@@ -589,8 +590,11 @@ function registerOperationsRoutes(app, deps) {
         origin: originDetails.label || String(order.transport?.origin || '').trim(),
         originDetails,
         pickup: originDetails,
-        destination,
-        destinationText: [destination.address, destination.city, destination.postalCode].filter(Boolean).join(', '),
+        // El contrato de RutaFV declara destination como string; el objeto
+        // detallado se mantiene en un campo adicional para no perder datos.
+        destination: destinationText,
+        destinationDetails: destination,
+        destinationText,
         deliveryAddress: destination,
         probableDeliveryDate: probableDate,
         estimatedDeliveryDate: probableDate,
