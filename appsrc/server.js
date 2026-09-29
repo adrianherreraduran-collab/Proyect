@@ -1344,10 +1344,10 @@ async function createRutaFVDelivery(d,o){
   const destinationText=[address,city,postalCode].filter(Boolean).join(', ');
   const customer={name:String(o.customer?.name||u.name||''),email:String(o.customer?.email||u.email||''),phone:String(o.customer?.phone||o.phone||''),city,postalCode,notes};
   const payload={
-    clientCode:client.code,
+    clientCode:String(client.code||''),
     client,
-    externalOrderId:o.id,
-    externalOrderNumber:o.number,
+    externalOrderId:String(o.id||''),
+    externalOrderNumber:String(o.number||''),
     customer,
     sourceApplication:'FVMarket',
     accountingApplication:'RutaFV',
@@ -1366,7 +1366,7 @@ async function createRutaFVDelivery(d,o){
     probableDeliveryDate:probableDate,
     estimatedDeliveryDate:probableDate,
     deliveryEstimate:{label:o.deliveryEstimate?.label||'Pendiente de confirmar',minDate:o.deliveryEstimate?.minDate||'',maxDate:o.deliveryEstimate?.maxDate||'',businessDaysOnly:true},
-    transportAmount:o.delivery,
+    transportAmount:Number(o.delivery)||0,
     transportPaid:true,
     orderSource:'FVMarket',
     fulfillmentModel:'sin_stock_fisico',

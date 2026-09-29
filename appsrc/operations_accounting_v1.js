@@ -578,10 +578,10 @@ function registerOperationsRoutes(app, deps) {
       const items = (order.items || []).map(x => ({ productId: x.productId, ref: x.ref, title: x.title, qty: x.qty, weightKg: Number(x.weightKg || x.procurement?.weightKg || 0), totalWeightKg: Number(x.totalWeightKg || (Number(x.weightKg || x.procurement?.weightKg || 0) * Number(x.qty || 1))) }));
       const packages = shipmentPackages(order.items || []);
       const payload = {
-        clientCode: client.code,
+        clientCode: String(client.code || ''),
         client,
-        externalOrderId: order.id,
-        externalOrderNumber: order.number,
+        externalOrderId: String(order.id || ''),
+        externalOrderNumber: String(order.number || ''),
         customer: { name: order.customer?.name || user.name || '', email: order.customer?.email || user.email || '', phone: order.customer?.phone || order.phone || '' },
         sourceApplication: 'FVMarket',
         accountingApplication: 'RutaFV',
