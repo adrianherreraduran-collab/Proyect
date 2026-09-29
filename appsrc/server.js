@@ -46,6 +46,9 @@ const GOOGLE_CSE_CX = String(process.env.GOOGLE_CSE_CX || '');
 const BRAVE_SEARCH_API_KEY = String(process.env.BRAVE_SEARCH_API_KEY || '');
 const RUTAFV_API_URL = String(process.env.RUTAFV_API_URL || '').trim().replace(/\/$/,'');
 const RUTAFV_API_KEY = String(process.env.RUTAFV_API_KEY || '').trim();
+// RutaFV reutiliza la clave de integración para devolver los estados finales
+// del reparto. Puede separarse expresamente si ambos servicios lo requieren.
+const RUTAFV_STATUS_CALLBACK_KEY = String(process.env.RUTAFV_STATUS_CALLBACK_KEY || RUTAFV_API_KEY || '').trim();
 const RUTAFV_CLIENT_CODE = String(process.env.RUTAFV_CLIENT_CODE || 'FVMarket').trim();
 const RUTAFV_QUOTE_PATH = String(process.env.RUTAFV_QUOTE_PATH || '/api/integrations/fvmarket/quote').trim();
 const RUTAFV_DELIVERY_PATH = String(process.env.RUTAFV_DELIVERY_PATH || '/api/integrations/fvmarket/deliveries').trim();
@@ -1395,6 +1398,88 @@ app.post('/api/rutafv/quote',optionalAuth,async(req,res)=>{
   }
 });
 app.get('/api/rutafv/address-search',optionalAuth,async(req,res)=>{try{if(!checkoutActorId(req))return res.status(400).json({error:'No se pudo identificar esta sesión'});const q=String(req.query.q||'').trim();if(q.length<3)return res.json({results:[]});const data=await rutaFVGet('/api/integrations/fvmarket/address-search',{q,limit:'5'});res.json(data)}catch(e){res.status(503).json({error:e.message})}});
+function normalizeRutaFVCallbackStatus(value){
+  const normalized=String(value||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase().trim();
+  if(['entregado','entregada','delivered','completado','completada'].includes(normalized))return 'entregado';
+  if(['incidencia','incident','incidence','fallido','fallida'].includes(normalized))return 'incidencia';
+  return '';
+}
+function validRutaFVCallbackToken(req){
+  if(!RUTAFV_STATUS_CALLBACK_KEY)return false;
+  const authorization=String(req.headers.authorization||'');
+  const supplied=authorization.startsWith('Bearer ')
+    ? authorization.slice(7).trim()
+    : String(req.headers['x-rutafv-status-key']||req.headers['x-fvmarket-integration-key']||'').trim();
+  const expected=Buffer.from(RUTAFV_STATUS_CALLBACK_KEY);
+  const actual=Buffer.from(supplied);
+  return expected.length===actual.length&&expected.length>0&&crypto.timingSafeEqual(expected,actual);
+}
+function orderForRutaFVCallback(d,payload={}){
+  const externalId=String(payload.externalOrderId||payload.orderId||'').trim();
+  const externalNumber=String(payload.externalOrderNumber||payload.orderNumber||'').trim();
+  const deliveryId=String(payload.deliveryId||payload.expeditionId||'').trim();
+  return (d.orders||[]).find(order=>
+    (externalId&&String(order.id||'')===externalId)
+    || (externalNumber&&String(order.number||'')===externalNumber)
+    || (deliveryId&&String(order.transport?.deliveryId||'')===deliveryId)
+  )||null;
+}
+function applyRutaFVCallbackStatus(d,order,payload,status){
+  operations.ensureOperationsData(d);
+  const note=String(payload.incidentNote||payload.incidencia||payload.note||payload.message||'').trim().slice(0,2000);
+  const at=String(payload.at||payload.updatedAt||new Date().toISOString());
+  const actor={id:'rutafv-integration',username:'RutaFV',name:'RutaFV',role:'integration'};
+  const current=String(order.status||'pendiente_pago');
+  const results=[];
+  if(status==='entregado'&&current!=='entregado'&&current!=='en_reparto'){
+    const inTransit=operations.transitionOrder(d,order,'en_reparto',actor,'Estado recibido desde RutaFV: reparto iniciado');
+    if(!inTransit.ok)return {ok:false,error:inTransit.error};
+    results.push(inTransit);
+  }
+  if(String(order.status||'')!==status){
+    const result=operations.transitionOrder(d,order,status,actor,note||`Estado recibido desde RutaFV: ${status}`);
+    if(!result.ok)return {ok:false,error:result.error};
+    results.push(result);
+  }
+  order.transport=order.transport||{};
+  order.transport.status=status;
+  order.transport.rutaFVStatus=status;
+  order.transport.rutaFVStatusLabel=status==='entregado'?'Entregado':'Incidencia';
+  order.transport.rutaFVLastUpdateAt=at;
+  order.transport.rutaFVLastEventId=String(payload.eventId||payload.statusEventId||'');
+  order.rutaFVStatus=status;
+  order.rutaFVStatusUpdatedAt=at;
+  order.deliveryStatus=status;
+  if(note){
+    order.incidenceNote=note;
+    order.transport.incidentNote=note;
+    order.rutaFVIncidentNote=note;
+  }
+  order.history=Array.isArray(order.history)?order.history:[];
+  const historyKey=`rutafv:${status}:${at}:${String(payload.deliveryId||payload.expeditionId||'')}`;
+  if(!order.history.some(entry=>String(entry?.key||'')===historyKey))order.history.push({key:historyKey,at,action:`RutaFV: ${status==='entregado'?'pedido entregado':'incidencia comunicada'}`,note,user:'RutaFV'});
+  order.history=order.history.slice(-100);
+  operations.ensureLedgerForOrder(d,order);
+  return {ok:true,changed:results.some(result=>result.changed),results};
+}
+// Webhook servidor-servidor. No depende de la sesión del cliente ni del
+// navegador del repartidor; por eso el perfil se actualiza aunque la app móvil
+// quede sin conexión justo después de cerrar la entrega.
+app.post('/api/integrations/rutafv/status',async(req,res)=>{
+  if(!validRutaFVCallbackToken(req))return res.status(RUTAFV_STATUS_CALLBACK_KEY?401:503).json({error:RUTAFV_STATUS_CALLBACK_KEY?'Credenciales RutaFV no válidas':'Callback RutaFV no configurado'});
+  const payload=req.body&&typeof req.body==='object'?req.body:{};
+  const status=normalizeRutaFVCallbackStatus(payload.status||payload.deliveryStatus||payload.orderStatus);
+  if(!status)return res.status(400).json({error:'El callback de RutaFV debe indicar Entregado o Incidencia'});
+  const d=read();
+  const order=orderForRutaFVCallback(d,payload);
+  if(!order)return res.status(404).json({error:'No se encontró el pedido FVMarket asociado al reparto',externalOrderId:String(payload.externalOrderId||'')});
+  const result=applyRutaFVCallbackStatus(d,order,payload,status);
+  if(!result.ok)return res.status(409).json({error:result.error});
+  save(d);
+  if(result.changed&&result.results.some(item=>item.to==='en_reparto'))scheduleOrderEmail(req,order.id,'delivery_in_transit');
+  if(result.changed&&result.results.some(item=>item.to==='entregado'))scheduleOrderEmail(req,order.id,'delivery_completed');
+  res.json({ok:true,orderId:order.id,orderNumber:order.number,status:order.status,notificationTitles:status==='entregado'?['Pedido entregado']:['Incidencia'],changed:result.changed});
+});
 function orderReadyForRutaFV(o={}){if(o.fulfillment?.readyForRutaFV===true||o.readyForRutaFV===true)return true;const ready=new Set(['available','available_at_supplier','received','recibido','listo','ready']);const items=Array.isArray(o.items)?o.items:[];return items.length>0&&items.every(x=>ready.has(String(x.procurement?.status||x.fulfillmentStatus||'').toLowerCase()))}
 async function createRutaFVDelivery(d,o){
   if(!o?.transport?.requested) return null;
