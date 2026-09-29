@@ -52,11 +52,12 @@
   function checklistState(order) {
     const status = String(order.status || ''), rank = { pagado: 0, en_compra_proveedor: 1, mercancia_recogida: 2, listo_para_rutafv: 3, enviado_a_rutafv: 4, en_reparto: 5, entregado: 6 }[status] ?? -1;
     const tasks = Array.isArray(order.procurementTasks) ? order.procurementTasks : [];
-    const bought = tasks.length ? tasks.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
-    const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
+    const supplierRows = Array.isArray(order.supplierSummary) ? order.supplierSummary : [];
+    const bought = tasks.length ? tasks.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
+    const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
     const incident = status === 'incidencia' || (Array.isArray(order.procurementActions) && order.procurementActions.some(x => x.action === 'incidencia'));
     const sent = !!order.transport?.deliveryId || ['enviado_a_rutafv', 'en_reparto', 'entregado'].includes(status);
-    return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, refunded: ['reembolso_parcial', 'reembolsado'].includes(status), cancelled: status === 'cancelado' };
+    return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, refunded: status === 'reembolsado', cancelled: status === 'cancelado' };
   }
 
   function canChecklistAction(state, action) {
@@ -64,6 +65,8 @@
     if (action === 'mercancia_recogida') return !state.collected && state.bought && ['en_compra_proveedor', 'incidencia'].includes(state.status);
     if (action === 'enviar_a_rutafv') return !state.sent && state.collected && ['mercancia_recogida', 'listo_para_rutafv', 'incidencia'].includes(state.status);
     if (action === 'incidencia') return !state.incident && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto'].includes(state.status);
+    if (action === 'reembolsado') return !state.refunded && !state.cancelled && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial'].includes(state.status);
+    if (action === 'cancelado') return !state.cancelled && !state.refunded && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'incidencia'].includes(state.status);
     return false;
   }
 
@@ -75,8 +78,8 @@
       ['Incidencia', state.incident, 'incidencia', !state.incident && canChecklistAction(state, 'incidencia')],
       ['Recogido', state.collected, 'mercancia_recogida', !state.collected && canChecklistAction(state, 'mercancia_recogida')],
       ['Enviar a RutaFV', state.sent, 'enviar_a_rutafv', !state.sent && canChecklistAction(state, 'enviar_a_rutafv')],
-      ['Reembolsado', state.refunded, '', false],
-      ['Cancelado', state.cancelled, '', false]
+      ['Reembolsado', state.refunded, 'reembolsado', !state.refunded && canChecklistAction(state, 'reembolsado')],
+      ['Cancelado', state.cancelled, 'cancelado', !state.cancelled && canChecklistAction(state, 'cancelado')]
     ];
     const note = incidentNote(order);
     return '<div class="fvmChecklist" aria-label="Pasos del pedido">' + steps.map(([label, done, action, actionable]) => `<label class="${done ? 'done' : ''}${actionable ? ' actionable' : ''}"><input type="checkbox" ${done ? 'checked' : ''} ${actionable ? `onchange="fvmChecklistAction('${esc(order.id)}','${action}',this)"` : 'disabled'}><span>${label}</span></label>`).join('') + (note ? `<div class="fvmIncidentNote"><b>Nota de incidencia:</b> ${esc(note)}</div>` : '') + '</div>';
@@ -105,6 +108,21 @@
     if (action === 'incidencia' && !confirm('¿Registrar una incidencia para este pedido?')) { input.checked = false; return; }
     const note = action === 'incidencia' ? prompt('Describe la incidencia. Esta nota quedará guardada en la trazabilidad:', '') : '';
     if (action === 'incidencia' && !String(note || '').trim()) { alert('Debes indicar una nota para la incidencia.'); input.checked = false; return; }
+    if (action === 'cancelado') {
+      const reason = prompt('Indica el motivo de la cancelación:', '');
+      if (!String(reason || '').trim()) { alert('Debes indicar un motivo para cancelar el pedido.'); input.checked = false; return; }
+      if (!confirm('¿Confirmar la cancelación de este pedido?')) { input.checked = false; return; }
+      try { await api('/api/admin/orders/' + encodeURIComponent(orderId), { method: 'PUT', body: JSON.stringify({ status: 'cancelado', note: String(reason).trim() }) }); await Promise.all([loadBoard(), loadNotifications()]); } catch (e) { input.checked = false; alert(e.message); }
+      return;
+    }
+    if (action === 'reembolsado') {
+      const amount = prompt('Importe a reembolsar en Stripe (vacío = importe restante completo):', '');
+      if (amount === null) { input.checked = false; return; }
+      if (amount !== null && String(amount).trim() !== '' && (!Number.isFinite(Number(String(amount).replace(',', '.'))) || Number(String(amount).replace(',', '.')) <= 0)) { alert('Indica un importe válido mayor que cero.'); input.checked = false; return; }
+      if (!confirm('¿Confirmar el reembolso mediante Stripe?')) { input.checked = false; return; }
+      try { const body = String(amount).trim() === '' ? {} : { amount: Number(String(amount).replace(',', '.')) }; await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/refund', { method: 'POST', body: JSON.stringify(body) }); await Promise.all([loadBoard(), loadNotifications()]); } catch (e) { input.checked = false; alert(e.message); }
+      return;
+    }
     const purchaseReference = action === 'comprada' ? prompt('Referencia, ticket o factura de la compra (opcional):', '') : '';
     const cost = action === 'comprada' ? prompt('Coste real de compra (opcional):', '') : '';
     if (action === 'enviar_a_rutafv' && !confirm('¿Crear ahora el reparto en RutaFV para este pedido?')) { input.checked = false; return; }
