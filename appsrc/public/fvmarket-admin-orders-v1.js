@@ -6,29 +6,8 @@
   // sus campos de transporte mientras se replica el pedido. Trátalos igual
   // para que el check Entregado no dependa del orden en que llegue la réplica.
   const isDelivered = order => {
-    const values = [order?.status, order?.deliveryStatus, order?.rutaFVStatus, order?.transport?.status, order?.transport?.rutaFVStatus];
-    return values.some(value => ['entregado','entregada','delivered','completado','completada'].includes(String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim())) || !!order?.deliveredAt || !!order?.transport?.rutaFVDeliveredAt;
-  };
-  const isCompleted = order => isDelivered(order);
-  const ensureCompletedCard = () => {
-    if (document.getElementById('fvmCompletedOrdersCard')) return;
-    const view = document.getElementById('view-orders');
-    const first = view?.querySelector('.card');
-    if (!first) return;
-    const card = document.createElement('div');
-    card.id = 'fvmCompletedOrdersCard';
-    card.className = 'card';
-    card.style.marginTop = '16px';
-    card.innerHTML = '<div class="bar"><div><h2 style="margin:0">Pedidos completados</h2><p class="sub" style="margin:5px 0 0">Pedidos entregados y cerrados correctamente, separados de la gestión pendiente.</p></div><button class="btn navy" type="button" id="fvmCompletedOrdersToggle" aria-expanded="false">Mostrar pedidos completados</button></div><div id="fvmCompletedOrdersBody" style="display:none;overflow:auto"><table><thead><tr><th>Nº</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th><th>Checklist</th><th>Entrega</th></tr></thead><tbody id="fvmCompletedOrders"></tbody></table></div>';
-    view.appendChild(card);
-    const toggle = document.getElementById('fvmCompletedOrdersToggle');
-    toggle.onclick = () => {
-      const body = document.getElementById('fvmCompletedOrdersBody');
-      const open = body.style.display !== 'none';
-      body.style.display = open ? 'none' : 'block';
-      toggle.setAttribute('aria-expanded', String(!open));
-      toggle.textContent = open ? 'Mostrar pedidos completados' : 'Ocultar pedidos completados';
-    };
+    const values=[order?.customerStatus,order?.status,order?.deliveryStatus,order?.rutaFVStatus,order?.transport?.status,order?.transport?.rutaFVStatus];
+    return values.some(value=>['entregado','entregada','delivered','completado','completada'].includes(String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim()))||!!order?.deliveredAt||!!order?.transport?.rutaFVDeliveredAt||!!order?.workflow?.deliveredAt;
   };
   const checklist = order => {
     const status = String(order.status || ''), rank = { pagado: 0, en_compra_proveedor: 1, mercancia_recogida: 2, listo_para_rutafv: 3, enviado_a_rutafv: 4, en_reparto: 5, entregado: 6 }[status] ?? -1;
@@ -58,15 +37,12 @@
     return payment + refund;
   };
   const paidRow = order => `<tr><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES')}</td><td>${Number(order.total).toFixed(2)} €</td><td>${esc(order.paymentMethod)}</td><td>${source(order)}${supplierEstimate(order)}</td><td>${checklist(order)}</td><td>${actions(order)}</td></tr>`;
-  const completedRow = order => `<tr><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES')}</td><td><b>${esc(order.customer?.name || '')}</b><br><small>${esc(order.customer?.email || '')}</small></td><td>${money(order.total)}</td><td><span class="badge">${esc(order.statusLabel || 'Entregado')}</span></td><td>${checklist(order)}</td><td>${order.workflow?.deliveredAt || order.deliveredAt || order.transport?.rutaFVDeliveredAt ? new Date(order.workflow?.deliveredAt || order.deliveredAt || order.transport?.rutaFVDeliveredAt).toLocaleString('es-ES') : '—'}</td></tr>`;
   window.loadOrders = async function loadOrders() {
-    ensureCompletedCard();
+    document.getElementById('fvmCompletedOrdersCard')?.remove();
     const all = await api('/api/admin/orders');
-    const paid = all.filter(order => isPaid(order) && !isCompleted(order)), completed = all.filter(isCompleted);
+    const paid = all.filter(isPaid);
     statOrders.textContent = paid.length;
     orders.innerHTML = paid.map(paidRow).join('') || '<tr><td colspan="7" class="empty">No hay pedidos pagados.</td></tr>';
-    const completedHost = document.getElementById('fvmCompletedOrders');
-    if (completedHost) completedHost.innerHTML = completed.map(completedRow).join('') || '<tr><td colspan="7" class="empty">Todavía no hay pedidos completados.</td></tr>';
   };
   if (!document.getElementById('fvmPaidOrderChecklist')) {
     const style = document.createElement('style');

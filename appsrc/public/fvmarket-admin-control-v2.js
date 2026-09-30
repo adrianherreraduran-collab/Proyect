@@ -59,7 +59,7 @@
     const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
     const incident = status === 'incidencia' || (Array.isArray(order.procurementActions) && order.procurementActions.some(x => x.action === 'incidencia'));
     const sent = !!order.transport?.deliveryId || ['enviado_a_rutafv', 'en_reparto', 'entregado'].includes(status);
-    const delivered = ['entregado', 'entregada', 'delivered', 'completado', 'completada'].includes(String(order.transport?.rutaFVStatus || order.deliveryStatus || status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()) || !!order.deliveredAt || !!order.transport?.rutaFVDeliveredAt;
+    const delivered = [order.customerStatus,status,order.deliveryStatus,order.rutaFVStatus,order.transport?.rutaFVStatus,order.transport?.status].some(value => ['entregado','entregada','delivered','completado','completada'].includes(String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim())) || !!order.deliveredAt || !!order.transport?.rutaFVDeliveredAt || !!order.workflow?.deliveredAt;
     return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, delivered, refunded: status === 'reembolsado', cancelled: status === 'cancelado' };
   }
 

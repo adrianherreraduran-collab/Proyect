@@ -144,9 +144,24 @@ function resetDatabaseState(current={}){
 function save(d){fs.writeFileSync(DATA_FILE,JSON.stringify(d,null,2));persistence.persist(d)}
 function normalizeState(d){
   const before=JSON.stringify(d);
+  reconcileDeliveredReceipts(d);
   ensureAdmin(d);ensureCatalogData(d);ensureCatalogProducts(d);
   ensureCustomerData(d);ensureReviewData(d);ensureBillingData(d);ensureCatalogSettings(d);ensureWarehouseData(d);ensureLogisticsSettings(d);operations.ensureOperationsData(d);procurementV2.ensureData(d);
   return JSON.stringify(d)!==before;
+}
+function reconcileDeliveredReceipts(d){
+  // Recupera pedidos cuyo aviso de entrega ya quedó registrado pero cuya
+  // réplica del estado no se actualizó. No genera nuevos avisos ni cobros.
+  const receipts=Array.isArray(d.customerNotifications)?d.customerNotifications:[];
+  for(const order of d.orders||[]){
+    if(!['pagado','en_compra_proveedor','mercancia_recogida','listo_para_rutafv','enviado_a_rutafv','en_reparto'].includes(String(order.status||'')))continue;
+    const receipt=receipts.filter(item=>String(item.orderId)===String(order.id)&&String(item.userId)===String(order.userId)&&item.metadata?.key===`${order.id}:status:entregado`).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')))[0];
+    if(!receipt)continue;
+    order.status='entregado';order.deliveryStatus='entregado';order.rutaFVStatus='entregado';
+    order.deliveredAt=order.deliveredAt||receipt.createdAt;
+    order.transport={...(order.transport||{}),rutaFVStatus:'entregado',rutaFVDeliveredAt:order.transport?.rutaFVDeliveredAt||receipt.createdAt};
+    order.workflow={...(order.workflow||{}),deliveredAt:order.workflow?.deliveredAt||receipt.createdAt};
+  }
 }
 function writeStateAtomically(raw){const temporary=DATA_FILE+'.next';fs.writeFileSync(temporary,raw);fs.renameSync(temporary,DATA_FILE)}
 async function replaceState(d){
@@ -216,6 +231,7 @@ function ensureCustomerData(d){
   }
 }
 function ensureReviewData(d){
+  if(!Array.isArray(d.orderReviews))d.orderReviews=[];
   if(!Array.isArray(d.reviews))d.reviews=[];
   d.reviews=d.reviews.filter(review=>review&&typeof review==='object'&&String(review.productId||'').trim()&&String(review.userId||'').trim()).map(review=>({
     ...review,
@@ -406,21 +422,29 @@ function normalizeCustomerOrderState(value=''){
   return String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[\s-]+/g,'_');
 }
 function customerOrderState(order={}){
-  const values=[];
-  const add=value=>{if(value!==undefined&&value!==null&&String(value).trim())values.push(normalizeCustomerOrderState(value))};
-  add(order.status);add(order.deliveryStatus);add(order.rutaFVStatus);add(order.transport?.status);add(order.transport?.rutaFVStatus);
-  for(const entry of (Array.isArray(order.history)?order.history:[])){
-    add(entry?.status);add(entry?.to);add(entry?.action);
+  const final=value=>{
+    const key=normalizeCustomerOrderState(value);
+    if(['cancelado','cancelada','cancelled'].includes(key))return {key:'cancelado',label:'Pedido cancelado'};
+    if(['reembolsado','reembolsada','reembolso_parcial','refunded','partially_refunded'].includes(key))return {key:'reembolsado',label:'Pedido reembolsado'};
+    if(['entregado','entregada','delivered','completado','completada'].includes(key))return {key:'entregado',label:'Pedido entregado'};
+    if(['incidencia','incident','incidence','fallido','fallida'].includes(key))return {key:'incidencia',label:'Incidencia'};
+    return null;
+  };
+  // El estado actual prevalece sobre incidencias antiguas del historial.
+  const current=final(order.status);
+  if(current)return current;
+  for(const value of [order.deliveryStatus,order.rutaFVStatus,order.transport?.rutaFVStatus,order.transport?.status]){
+    const state=final(value);if(state)return state;
   }
-  const has=keys=>values.some(value=>keys.includes(value));
-  // Los estados finales tienen prioridad para que un callback de RutaFV siga
-  // siendo visible aunque el estado principal llegue con retraso.
-  if(has(['cancelado','cancelada','cancelled']))return {key:'cancelado',label:'Pedido cancelado'};
-  if(has(['reembolsado','reembolsada','reembolso_parcial','refunded','partially_refunded']))return {key:'reembolsado',label:'Pedido reembolsado'};
-  if(has(['incidencia','incident','incidence','fallido','fallida']))return {key:'incidencia',label:'Incidencia'};
-  if(has(['entregado','entregada','delivered','completado','completada']))return {key:'entregado',label:'Pedido entregado'};
-  if(has(['enviado_a_rutafv','listo_para_entrega','listo_para_rutafv','en_reparto','reparto']))return {key:'listo_para_entrega',label:'Pedido Listo para Entrega'};
-  if(has(['comprado','comprada','en_compra_proveedor','mercancia_recogida','recogido','recogida','preparando','pagado','pago_confirmado']))return {key:'confirmado',label:'Pedido Confirmado'};
+  if(order.deliveredAt||order.transport?.rutaFVDeliveredAt||order.workflow?.deliveredAt)return {key:'entregado',label:'Pedido entregado'};
+  const history=[...(Array.isArray(order.history)?order.history:[])].sort((a,b)=>String(b.at||'').localeCompare(String(a.at||'')));
+  for(const entry of history){
+    const state=final(entry.to||entry.status);if(state)return state;
+    if(String(entry.key||'').startsWith('rutafv:entregado:'))return {key:'entregado',label:'Pedido entregado'};
+  }
+  const values=[order.status,...history.map(entry=>entry.to||entry.status||entry.action)].map(normalizeCustomerOrderState);
+  if(values.some(value=>['enviado_a_rutafv','listo_para_entrega','listo_para_rutafv','en_reparto','reparto'].includes(value)))return {key:'listo_para_entrega',label:'Pedido Listo para Entrega'};
+  if(values.some(value=>['comprado','comprada','en_compra_proveedor','mercancia_recogida','recogido','recogida','preparando','pagado','pago_confirmado'].includes(value)))return {key:'confirmado',label:'Pedido Confirmado'};
   return {key:'recibido',label:'Pedido recibido'};
 }
 function canaryCalendarDate(value){
@@ -442,7 +466,7 @@ function publicOrder(o={}){
   const paymentMethod=String(safe.paymentMethod||'').toLowerCase()==='stripe'?'Pago seguro (Stripe)':(safe.paymentMethod||'');
   const estimate=publicDeliveryEstimate(o.deliveryEstimate);
   const publicState=customerOrderState(o);
-  return {...safe,paymentMethod,deliveryEstimate:estimate,customerStatus:publicState.key,customerStatusLabel:publicState.label,deliveredAt:orderDeliveredAt(o)||null,storedDelivered:isStoredDeliveredOrder(o),refunds:Array.isArray(refunds)?refunds.map(({stripeRefundId,...refund})=>refund):refunds,items:(o.items||[]).map(({procurement,...item})=>item)};
+  return {...safe,paymentMethod,deliveryEstimate:estimate,customerStatus:publicState.key,customerStatusLabel:publicState.label,deliveredAt:o.deliveredAt||o.transport?.rutaFVDeliveredAt||o.workflow?.deliveredAt||(publicState.key==='entregado'?orderDeliveredAt(o):null),storedDelivered:isStoredDeliveredOrder(o),refunds:Array.isArray(refunds)?refunds.map(({stripeRefundId,...refund})=>refund):refunds,items:(o.items||[]).map(({procurement,...item})=>item)};
 }
 function customerDeliveryEstimateForItems(d, items = [], baseAt = new Date()) {
   const tasks = (items || []).map(item => {
@@ -455,7 +479,7 @@ function customerDeliveryEstimateForItems(d, items = [], baseAt = new Date()) {
   });
   return operations.customerDeliveryEstimate(tasks, baseAt);
 }
-function adminOrder(o={}){const {guestAccessTokenHash,emailEvents,...safe}=o;return {...safe,stripePaymentLinkUrl:String(safe.stripeSessionUrl||'')}}
+function adminOrder(o={}){const {guestAccessTokenHash,emailEvents,...safe}=o;const state=customerOrderState(o);return {...safe,customerStatus:state.key,customerStatusLabel:state.label,stripePaymentLinkUrl:String(safe.stripeSessionUrl||'')}}
 function providerFromUrl(raw=''){
   try{
     const h=new URL(String(raw)).hostname.toLowerCase().replace(/^www\./,'');
@@ -677,6 +701,24 @@ app.post('/api/products/:id/reviews',auth,(req,res)=>{
   d.reviews.unshift(review);save(d);
   res.status(201).json({review:publicReview(review,d),summary:reviewSummaryForProduct(d,product.id)});
 });
+// Opiniones de experiencia vinculadas a un pedido entregado del cliente.
+app.get('/api/reviews/experiences',(req,res)=>{
+  const d=read();
+  const reviews=(d.orderReviews||[]).filter(review=>review.status!=='hidden'&&(d.orders||[]).some(order=>order.id===review.orderId)).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+  res.json({count:reviews.length,reviews:reviews.slice(0,20).map(review=>publicReview(review,d))});
+});
+app.post('/api/orders/:id/review',auth,(req,res)=>{
+  const d=read(),user=d.users.find(item=>String(item.id)===String(req.user.id)),order=d.orders.find(item=>String(item.id)===String(req.params.id));
+  if(!order||String(order.userId)!==String(req.user.id))return res.status(404).json({error:'Pedido no encontrado'});
+  if(!user||user.role!=='customer'||!user.emailVerified)return res.status(403).json({error:'Necesitas una cuenta de cliente verificada para valorar la compra'});
+  if(customerOrderState(order).key!=='entregado')return res.status(409).json({error:'Podrás valorar la compra cuando el pedido esté entregado'});
+  const rating=Number(req.body?.rating),comment=String(req.body?.comment||'').trim();
+  if(!Number.isInteger(rating)||rating<1||rating>5)return res.status(400).json({error:'Selecciona una valoración entre 1 y 5 estrellas'});
+  if(comment.length<5||comment.length>2000)return res.status(400).json({error:'Escribe un comentario entre 5 y 2.000 caracteres'});
+  if(d.orderReviews.some(review=>review.orderId===order.id&&review.userId===user.id))return res.status(409).json({error:'Ya has valorado esta compra'});
+  const review={id:id('orev'),orderId:order.id,userId:user.id,rating,comment,authorName:reviewAuthorName(user),verifiedPurchase:true,status:'published',createdAt:new Date().toISOString()};
+  d.orderReviews.unshift(review);save(d);res.status(201).json({review});
+});
 function legalPage(section='condiciones',settings={}){
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const email=String(settings.legalEmail||settings.supportEmail||'contacto.fvmarket@gmail.com'),phone=String(settings.contactPhone||'605 308 154');
@@ -826,12 +868,14 @@ app.delete('/api/quotes/:id',auth,(req,res)=>{
 function profileSummary(d,u){
   const quotes=(d.quotes||[]).filter(q=>q.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
   const allOrders=(d.orders||[]).filter(o=>o.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(publicOrder);
-  const storedDeliveredOrders=allOrders.filter(o=>o.storedDelivered);
-  const orders=allOrders.filter(o=>!o.storedDelivered);
+  for(const order of allOrders)order.experienceReview=(d.orderReviews||[]).find(review=>review.orderId===order.id&&review.userId===u.id)||null;
+  const deliveredOrders=allOrders.filter(o=>o.customerStatus==='entregado');
+  const storedDeliveredOrders=deliveredOrders.filter(o=>o.storedDelivered);
+  const orders=allOrders.filter(o=>o.customerStatus!=='entregado');
   const invoices=(d.invoices||[]).filter(x=>x.userId===u.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice);
   const payments=allOrders.map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:'Pago seguro (Stripe)',status:o.status==='reembolsado'?'reembolsado':o.status==='reembolso_parcial'?'reembolso parcial':paidOrderStatus(o.status)?'pagado':'pendiente',createdAt:o.createdAt}));
   const notifications=customerNotificationsFor(d,u.id);
-  return {quotes,orders,storedDeliveredOrders,archivedOrders:storedDeliveredOrders,invoices,payments,notifications};
+  return {quotes,orders,deliveredOrders,storedDeliveredOrders,archivedOrders:storedDeliveredOrders,invoices,payments,notifications};
 }
 app.get('/api/my-invoices',auth,(req,res)=>res.json(read().invoices.filter(x=>x.userId===req.user.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice)));
 app.get('/api/invoices/:id',auth,(req,res)=>{const d=read();const inv=d.invoices.find(x=>x.id===req.params.id);if(!inv)return res.status(404).json({error:'Factura no encontrada'});if(inv.userId!==req.user.id&&!['admin','orders_manager'].includes(req.user.role))return res.status(403).json({error:'No tienes permiso para ver esta factura'});res.json(publicInvoice(inv))});
@@ -1687,4 +1731,4 @@ registerProviderSourceRoutes(app,admin,{read,save,id,nextProductRef,aiAnalyzeIte
 app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');res.sendFile(path.join(__dirname,'public','index.html'));});
 async function start(){try{await persistence.init();read()}catch(e){console.error('FVMarket persistence bootstrap:',e)}return app.listen(PORT,'0.0.0.0',()=>console.log(`FVMarket listening on ${PORT}`))}
 if(require.main===module)start();
-module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment}};
+module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment}};
