@@ -102,7 +102,7 @@
     const purchaseOrders = orders.filter(order => !trackingStatuses.has(String(order.status || '')));
     const trackingOrders = orders.filter(order => trackingStatuses.has(String(order.status || '')));
     const host = $('fvmControlBoard'); if (!host) return;
-    host.innerHTML = `<div class="fvmBoard"><section class="fvmBoardColumn paid"><h3>Pedidos pagados pendientes de compra al proveedor (${purchaseOrders.length})</h3>${purchaseOrders.map(card).join('') || '<div class="fvmBoardEmpty">No hay pedidos pagados pendientes de adquirir al proveedor.'}</section><section class="fvmBoardColumn tracking"><h3>Pedidos enviados a RutaFV (${trackingOrders.length})</h3><p class="fvmBoardPdfHint">Estos pedidos permanecen visibles para consultar el reparto y recibir automáticamente «Entregado».</p>${trackingOrders.map(card).join('') || '<div class="fvmBoardEmpty">Todavía no hay pedidos enviados a RutaFV.</div>'}</section></div>`;
+    host.innerHTML = `<div class="fvmBoard"><section class="fvmBoardColumn paid"><h3>Pedidos pagados pendientes de compra al proveedor (${purchaseOrders.length})</h3>${purchaseOrders.map(card).join('') || '<div class="fvmBoardEmpty">No hay pedidos pagados pendientes de adquirir al proveedor.</div>'}</section><section class="fvmBoardColumn tracking"><h3>Pedidos enviados a RutaFV (${trackingOrders.length})</h3><p class="fvmBoardPdfHint">Estos pedidos permanecen visibles para consultar el reparto y recibir automáticamente «Entregado».</p>${trackingOrders.map(card).join('') || '<div class="fvmBoardEmpty">Todavía no hay pedidos enviados a RutaFV.</div>'}</section></div>`;
   }
 
   async function loadBoard() {
