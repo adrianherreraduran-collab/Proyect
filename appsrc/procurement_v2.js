@@ -11,7 +11,16 @@ const ACTIONS = {
   incidencia: { label: 'Incidencia', status: 'incidencia' }
 };
 
-const BOARD_STATUSES = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia']);
+// El tablero conserva visibles los pedidos después de enviarlos a RutaFV para poder
+// consultar su seguimiento y recibir el estado Entregado. El PDF de compras usa
+// PURCHASE_BOARD_STATUSES y no incluye repartos ya enviados.
+const BOARD_STATUSES = new Set([
+  'pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv',
+  'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia',
+]);
+const PURCHASE_BOARD_STATUSES = new Set([
+  'pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia',
+]);
 
 function now() { return new Date().toISOString(); }
 function money(v) { return Math.round((Number(v) || 0) * 100) / 100; }
@@ -74,7 +83,7 @@ function filterPurchases(d, query = {}) {
   return rows;
 }
 function boardRows(d, query = {}) {
-  return filterPurchases(d, query).filter(row => BOARD_STATUSES.has(String(row.status || '')));
+  return filterPurchases(d, query).filter(row => PURCHASE_BOARD_STATUSES.has(String(row.status || '')));
 }
 function groupedBoardRows(rows = []) {
   const grouped = new Map();
