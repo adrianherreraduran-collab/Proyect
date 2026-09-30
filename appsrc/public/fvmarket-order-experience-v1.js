@@ -62,7 +62,10 @@
       const response = await fetch('/api/reviews/experiences');
       if (!response.ok) return;
       const data = await response.json();
-      if (!data.reviews?.length) return;
+      if (!data.reviews?.length) {
+        host.innerHTML = '<p class="fvm-reviews-empty">Todavía no hay opiniones publicadas.</p>';
+        return;
+      }
       host.innerHTML = data.reviews.slice(0,4).map(review => `<article class="fvm-review-card"><div class="fvm-review-stars" aria-label="${Number(review.rating)} de 5 estrellas">${stars(review.rating)}</div><blockquote>${esc(review.comment)}</blockquote><div class="fvm-review-author"><strong>${esc(review.authorName)}</strong><small>Compra verificada · ${esc(new Date(review.createdAt).toLocaleDateString('es-ES'))}</small></div></article>`).join('');
       document.getElementById('fvm-reviews-title').textContent = 'Experiencias de nuestros clientes';
       const intro = document.querySelector('#fvm-reviews .fvm-reviews-head p:not(.fvm-reviews-eyebrow)');
