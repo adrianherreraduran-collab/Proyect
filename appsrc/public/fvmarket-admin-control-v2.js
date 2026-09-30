@@ -3,7 +3,7 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = value => Number(value || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
-  const labels = { pagado: 'Pagado', en_compra_proveedor: 'Compra al proveedor', mercancia_recogida: 'Mercancía recogida', listo_para_rutafv: 'Listo para RutaFV', incidencia: 'Incidencia' };
+  const labels = { pagado: 'Pagado', en_compra_proveedor: 'Compra al proveedor', mercancia_recogida: 'Mercancía recogida', listo_para_rutafv: 'Listo para RutaFV', enviado_a_rutafv: 'Pedido Listo para Entrega', en_reparto: 'En reparto', entregado: 'Entregado', incidencia: 'Incidencia' };
   const paidStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia']);
   const paymentStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial', 'reembolsado']);
   let mounted = false;
@@ -58,7 +58,8 @@
     const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
     const incident = status === 'incidencia' || (Array.isArray(order.procurementActions) && order.procurementActions.some(x => x.action === 'incidencia'));
     const sent = !!order.transport?.deliveryId || ['enviado_a_rutafv', 'en_reparto', 'entregado'].includes(status);
-    return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, refunded: status === 'reembolsado', cancelled: status === 'cancelado' };
+    const delivered = ['entregado', 'entregada', 'delivered', 'completado', 'completada'].includes(String(order.transport?.rutaFVStatus || order.deliveryStatus || status || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()) || !!order.deliveredAt || !!order.transport?.rutaFVDeliveredAt;
+    return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, delivered, refunded: status === 'reembolsado', cancelled: status === 'cancelado' };
   }
 
   function canChecklistAction(state, action) {
@@ -79,6 +80,7 @@
       ['Incidencia', state.incident, 'incidencia', !state.incident && canChecklistAction(state, 'incidencia')],
       ['Recogido', state.collected, 'mercancia_recogida', !state.collected && canChecklistAction(state, 'mercancia_recogida')],
       ['Enviar a RutaFV', state.sent, 'enviar_a_rutafv', !state.sent && canChecklistAction(state, 'enviar_a_rutafv')],
+      ['Entregado', state.delivered, '', false],
       ['Reembolsado', state.refunded, 'reembolsado', !state.refunded && canChecklistAction(state, 'reembolsado')],
       ['Cancelado', state.cancelled, 'cancelado', !state.cancelled && canChecklistAction(state, 'cancelado')]
     ];
