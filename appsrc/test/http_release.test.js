@@ -107,6 +107,17 @@ test('Pedidos y Tablero informan qué entregados van al archivo sin perderlos de
   const board = await request('/api/admin/procurement-board'); assert.equal(board.data.orders.find(order => order.id === 'archived').storedDelivered, true);
   const summary = await request('/api/me/summary', { id: 'customer', role: 'customer' }); assert.equal(summary.data.orders.length, 0); assert.equal(summary.data.deliveredOrders.length, 2);
 });
+test('una opinión antigua ofensiva se retira de la portada, vuelve a revisión y no puede aprobarse por error', async () => {
+  const data = server.read();
+  data.orderReviews.push({id:'offensive-old',orderId:'delivered',userId:'customer',rating:5,comment:'Esto es una MIERDA',status:'approved',reviewedAt:new Date().toISOString(),reviewedBy:{role:'admin',id:'admin'},createdAt:new Date().toISOString()});
+  server.save(data);
+  const published=await request('/api/reviews/experiences',{anonymous:true});
+  assert.equal(published.data.reviews.some(review=>review.comment.includes('MIERDA')),false);
+  const pending=await request('/api/admin/reviews?status=pending');
+  assert.ok(pending.data.reviews.find(review=>review.id==='offensive-old').moderationWarning);
+  assert.equal((await request('/api/admin/reviews/experience/offensive-old',{method:'PATCH',body:{action:'approve'}})).status,400);
+  assert.equal((await request('/api/admin/reviews/experience/offensive-old',{method:'PATCH',body:{action:'reject',reason:'Lenguaje ofensivo'}})).status,200);
+});
 test('los cambios de rol invalidan también el acceso a la factura impresa y las rutas desconocidas devuelven JSON', async () => {
   const invoice = server.read().invoices[0]; // Current fixture has no invoice: use a private independent document.
   const data = server.read(); data.invoices.push({ id: 'private', userId: 'customer', orderId: 'delivered', issuedAt: new Date().toISOString(), lines: [] }); data.users.find(user => user.id === 'operator').active = false; server.save(data);

@@ -3,8 +3,15 @@
 const STATUSES = new Set(['pending', 'approved', 'rejected']);
 const COLLECTIONS = { product: 'reviews', experience: 'orderReviews' };
 
+function moderationWarning(review = {}) {
+  const text = String(review.comment || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const words = text.match(/[a-z]+/g) || [];
+  const obscene = new Set(['mierda', 'mierdas', 'puta', 'putas', 'puto', 'putos', 'gilipollas', 'hijoputa', 'cabron', 'cabrones', 'joder', 'fuck', 'fucking', 'shit']);
+  return words.some(word => obscene.has(word)) || /\bcoños?\b/i.test(String(review.comment || '')) ? 'Lenguaje ofensivo detectado. Esta opinión no se publicará; revisa el texto y recházala si incumple las normas.' : '';
+}
+
 function isApproved(review = {}) {
-  return review.status === 'approved' && !!review.reviewedAt && review.reviewedBy?.role === 'admin';
+  return review.status === 'approved' && !!review.reviewedAt && review.reviewedBy?.role === 'admin' && !moderationWarning(review);
 }
 
 function ensureModeration(d) {
@@ -29,7 +36,7 @@ function adminReviews(d) {
   return Object.entries(COLLECTIONS).flatMap(([kind, collection]) => d[collection].map(review => {
     const order = (d.orders || []).find(o => o.id === review.orderId);
     const product = (d.products || []).find(p => p.id === review.productId);
-    return {...ownReview(review), kind, orderNumber: order?.number || '', productTitle: product?.title || '', reviewedAt: review.reviewedAt || '', reviewedBy: review.reviewedBy || null};
+    return {...ownReview(review), kind, moderationWarning: moderationWarning(review), orderNumber: order?.number || '', productTitle: product?.title || '', reviewedAt: review.reviewedAt || '', reviewedBy: review.reviewedBy || null};
   })).sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
 }
 
@@ -53,6 +60,7 @@ function registerRoutes(app, {read, save, admin}) {
     const d = ensureModeration(read());
     const review = d[collection].find(row => String(row.id) === String(req.params.id));
     if (!review) return res.status(404).json({error: 'Opinión no encontrada'});
+    if (action === 'approve' && moderationWarning(review)) return res.status(400).json({error: moderationWarning(review)});
     const status = action === 'approve' ? 'approved' : 'rejected';
     const previous = review.status;
     if (previous !== status) {
@@ -68,4 +76,4 @@ function registerRoutes(app, {read, save, admin}) {
   });
 }
 
-module.exports = {isApproved, ensureModeration, ownReview, adminReviews, registerRoutes};
+module.exports = {isApproved, ensureModeration, ownReview, adminReviews, registerRoutes, moderationWarning};

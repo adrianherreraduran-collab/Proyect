@@ -1,13 +1,7 @@
 name: Apply FVMarket v17
+# Historical patch: current deployments use repack-fvmarket.yml.
 on:
-  push:
-    paths:
-      - '.github/workflows/apply-fvmarket-v17.yml'
-      - 'scripts/patch_fvmarket_v17.py'
-      - 'appsrc/public/fvmarket-admin-v17.js'
-      - 'appsrc/public/fvmarket-storefront-v17.js'
-      - 'appsrc/persistent_store_v17.js'
-      - 'carousel_sprite_v17_*.part'
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:

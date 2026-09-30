@@ -79,6 +79,11 @@ test('las actualizaciones concurrentes no borran otros pedidos ni beneficios cam
   const merged = mergeState(base, incoming, current); assert.equal(merged.users[0].discountPct, 20); assert.equal(merged.users[0].name, 'Ana López'); assert.equal(merged.orders.find(order => order.id === 'a').status, 'entregado'); assert.equal(merged.orders.length, 3);
   assert.equal(mergeState(base, incoming, { users: [], orders: [] }).users.length, 0);
 });
+test('la moderación detecta lenguaje ofensivo con mayúsculas y acentos sin bloquear palabras legítimas parecidas', () => {
+  const moderation = require('../reviews_moderation_v1');
+  for (const comment of ['Esto es una MIERDA.', 'Es un cabrón', 'Esto es un coño']) assert.ok(moderation.moderationWarning({comment}));
+  for (const comment of ['El cono funciona bien', 'El cómputo de la factura es correcto', 'Muy buen producto']) assert.equal(moderation.moderationWarning({comment}), '');
+});
 test('los documentos del cliente ocultan proveedores, operaciones y direcciones internas', () => {
   const { order } = build(); order.procurement = { sourceCost: 80 }; order.adminPurchaseAlert = { recipient: 'private@example.com' }; order.transport.originDetails = { address: 'Dirección privada' };
   const publicOrder = server.publicOrder(order); assert.equal('procurement' in publicOrder, false); assert.equal('adminPurchaseAlert' in publicOrder, false); assert.equal('originDetails' in publicOrder.transport, false); assert.equal('procurement' in publicOrder.items[0], false);
