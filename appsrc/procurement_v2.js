@@ -3,6 +3,7 @@
 
 const {deliveryEstimate}=require('./supplier_delivery_v1');
 const PDFDocument=require('pdfkit');
+const {purchaseItems}=require('./purchase_details_v1');
 
 const ACTIONS = {
   comprada: { label: 'Comprado', status: 'en_compra_proveedor', taskStatus: 'comprada' },
@@ -55,7 +56,7 @@ function orderPublic(order, d) {
     return {...task, supplierIsland: estimate.island, supplierAddress: estimate.address, supplierCity: estimate.city, supplierPostalCode: estimate.postalCode, deliveryEstimate: estimate};
   });
   const actions = (d.procurementActionLog || []).filter(x => x.orderId === order.id).sort((a, b) => String(a.at).localeCompare(String(b.at)));
-  return { ...order, procurementTasks: tasks, procurementActions: actions, supplierSummary: tasks.map(t => ({ id: t.supplierId || t.supplierKey, name: t.supplierName, status: t.status, sourceCost: money(t.sourceCost), actualCost: money(t.actualCost), island: t.supplierIsland, address: t.supplierAddress, deliveryEstimate: t.deliveryEstimate, items: t.items || [] })) };
+  return { ...order, purchaseItems:purchaseItems(order,d), procurementTasks: tasks, procurementActions: actions, supplierSummary: tasks.map(t => ({ id: t.supplierId || t.supplierKey, name: t.supplierName, status: t.status, sourceCost: money(t.sourceCost), actualCost: money(t.actualCost), island: t.supplierIsland, address: t.supplierAddress, deliveryEstimate: t.deliveryEstimate, items: t.items || [] })) };
 }
 function filterPurchases(d, query = {}) {
   const q = String(query.q || '').trim().toLowerCase();
@@ -209,20 +210,50 @@ function drawBoardPdf(doc, rows, exportedAt = new Date()) {
         items.forEach(item => {
           const title = pdfClean(item.title || item.ref || 'Producto');
           const qty = Number(item.qty || 1);
-          const ref = pdfClean(item.sourceRef || item.ref);
+          const ref = pdfClean(item.sourceRef);
           const weight = Number(item.totalWeightKg || 0);
-          const suffix = [ref ? `Ref: ${ref}` : '', weight > 0 ? `${weight.toFixed(3)} kg` : ''].filter(Boolean).join(' - ');
-          const productText = `${title} x ${qty}${suffix ? ` - ${suffix}` : ''}`;
-          doc.font('Helvetica').fontSize(8.2);
-          const height = Math.max(16, doc.heightOfString(productText, { width: contentWidth - 122, lineGap: 1.5 }));
-          ensureSpace(height + 8);
+          const productText = `${title} - Cantidad a comprar: ${qty} ud.`;
+          const details = [
+            `Proveedor: ${pdfClean(item.provider || row.supplierName)}`,
+            ref ? `Referencia original del proveedor: ${ref}` : 'Referencia original del proveedor: no guardada',
+            item.ref ? `Referencia FVMarket: ${pdfClean(item.ref)}` : '',
+            weight > 0 ? `Peso total: ${weight.toFixed(3)} kg` : '',
+            `Coste de origen: ${money(item.sourcePrice).toFixed(2)} EUR/ud. - Total de compra: ${money(Number(item.sourcePrice) * qty).toFixed(2)} EUR`
+          ].filter(Boolean).join(' - ');
+          const description = `Descripcion: ${pdfClean(item.description, 'No guardada') || 'No guardada'}`;
+          const width = contentWidth - 42;
+          doc.font('Helvetica-Bold').fontSize(10);
+          const titleHeight = doc.heightOfString(productText, {width, lineGap:1.5});
+          doc.font('Helvetica').fontSize(8.5);
+          const detailHeight = doc.heightOfString(details, {width, lineGap:1.5});
+          ensureSpace(Math.min(titleHeight + detailHeight + 35, bottom() - margin - 27));
           const lineY = doc.y;
           drawPdfCheckbox(doc, margin + 14, lineY + 2, 9);
-          drawText(productText, margin + 30, lineY, contentWidth - 122, { fontSize: 8.2, color: '#2f4558' });
-          doc.y = lineY + height + 4;
+          drawText(productText, margin + 30, lineY, width, {font:'Helvetica-Bold',fontSize:10,color:'#10233f'});
+          doc.y = lineY + titleHeight + 4;
+          const detailY = doc.y;
+          drawText(details, margin + 30, detailY, width, {fontSize:8.5,color:'#52677b'});
+          doc.y = detailY + detailHeight + 4;
+          // Divide descripciones largas entre páginas conservando los márgenes
+          // y el pie de página; nunca trunca la información del producto.
+          const words = description.split(' ');
+          while (words.length) {
+            doc.font('Helvetica').fontSize(8.5);
+            const available = bottom() - doc.y - 8;
+            if (available < 18) { addPage(); continue; }
+            let take = 1;
+            while (take < words.length && doc.heightOfString(words.slice(0,take+1).join(' '), {width,lineGap:1.5}) <= available) take++;
+            const text = words.splice(0,take).join(' ');
+            const y = doc.y;
+            const height = drawText(text, margin + 30, y, width, {fontSize:8.5,color:'#405568'});
+            doc.y = y + height + 4;
+            if (words.length) addPage();
+          }
+          doc.y += 7;
         });
       }
       const totals = `Total pedido: ${money(row.total).toFixed(2)} EUR - RutaFV: ${money(row.delivery).toFixed(2)} EUR${row.purchaseReference ? ` - Ref. compra: ${pdfClean(row.purchaseReference)}` : ''}`;
+      ensureSpace(44);
       drawText(totals, margin + 21, doc.y, contentWidth - 25, { fontSize: 7.7, color: '#52677b' });
       doc.y += 14;
       if (row.notes) {

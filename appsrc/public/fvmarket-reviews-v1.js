@@ -45,7 +45,7 @@
     const reviews = Array.isArray(summary.reviews) ? summary.reviews : [];
     const eligibility = summary.eligibility || { eligible: false, alreadyReviewed: false, reason: 'Inicia sesión para valorar este producto.' };
     const logged = !!currentSession()?.token;
-    const form = eligibility.eligible ? `<form class="fvmReviewForm" data-review-form="${esc(product.id)}"><h4>Valora este producto</h4><label for="fvmReviewRating-${esc(product.id)}">Valoración</label><select id="fvmReviewRating-${esc(product.id)}" name="rating" required><option value="5">★★★★★ · 5 estrellas</option><option value="4">★★★★☆ · 4 estrellas</option><option value="3">★★★☆☆ · 3 estrellas</option><option value="2">★★☆☆☆ · 2 estrellas</option><option value="1">★☆☆☆☆ · 1 estrella</option></select><textarea name="comment" maxlength="2000" minlength="5" required placeholder="Cuéntanos cómo fue tu experiencia con este producto…"></textarea><button type="submit">Publicar opinión</button><p class="fvmReviewMessage" data-review-message></p></form>` : (logged ? `<p class="fvmReviewLogin">${esc(eligibility.reason || 'Podrás valorar este producto después de comprarlo.')}</p>` : '<p class="fvmReviewLogin">Para valorar una compra, <button type="button" data-review-login>inicia sesión</button> en FVMarket.</p>');
+    const form = eligibility.eligible ? `<form class="fvmReviewForm" data-review-form="${esc(product.id)}"><h4>Valora este producto</h4><p>Tu opinión se publicará después de la aprobación del administrador.</p><label for="fvmReviewRating-${esc(product.id)}">Valoración</label><select id="fvmReviewRating-${esc(product.id)}" name="rating" required><option value="5">★★★★★ · 5 estrellas</option><option value="4">★★★★☆ · 4 estrellas</option><option value="3">★★★☆☆ · 3 estrellas</option><option value="2">★★☆☆☆ · 2 estrellas</option><option value="1">★☆☆☆☆ · 1 estrella</option></select><textarea name="comment" maxlength="2000" minlength="5" required placeholder="Cuéntanos cómo fue tu experiencia con este producto…"></textarea><button type="submit">Enviar opinión para revisión</button><p class="fvmReviewMessage" data-review-message></p></form>` : (logged ? `<p class="fvmReviewLogin">${esc(eligibility.reason || 'Podrás valorar este producto después de comprarlo.')}</p>` : '<p class="fvmReviewLogin">Para valorar una compra, <button type="button" data-review-login>inicia sesión</button> en FVMarket.</p>');
     const list = reviews.length ? reviews.map(review => `<article class="fvmReviewItem"><div class="fvmReviewItemHead"><strong>${esc(review.authorName || 'Cliente verificado')}</strong><time datetime="${esc(review.createdAt || '')}">${esc(date(review.createdAt))}</time></div><div>${stars(review.rating, true)} <span class="fvmReviewVerified">✓ Compra verificada</span></div><p>${esc(review.comment || '')}</p></article>`).join('') : '<div class="fvmReviewEmpty">Todavía no hay opiniones para este producto.</div>';
     return `<section class="fvmProductReviews" data-review-product="${esc(product.id)}"><h3>Opiniones de clientes</h3><div class="fvmReviewSummary">${summary.count ? stars(summary.average) : stars(0, true)}<strong>${summary.count ? esc(Number(summary.average).toLocaleString('es-ES', { maximumFractionDigits: 1 })) + ' / 5' : 'Sin valoraciones'}</strong><span class="fvmReviewCount">${summary.count} ${summary.count === 1 ? 'opinión' : 'opiniones'}</span></div>${form}<div class="fvmReviewList">${list}</div></section>`;
   }
@@ -77,15 +77,15 @@
       const rating = Number(form.querySelector('[name="rating"]')?.value || 0), comment = String(form.querySelector('[name="comment"]')?.value || '').trim();
       if (!rating || comment.length < 5) { if (message) message.textContent = 'Selecciona una valoración y escribe una opinión de al menos 5 caracteres.'; return; }
       button.disabled = true;
-      if (message) { message.className = 'fvmReviewMessage'; message.textContent = 'Publicando tu opinión…'; }
+      if (message) { message.className = 'fvmReviewMessage'; message.textContent = 'Enviando tu opinión…'; }
       try {
         const result = await apiCall('/api/products/' + encodeURIComponent(product.id) + '/reviews', { method: 'POST', body: JSON.stringify({ rating, comment }) });
         product.reviewSummary = result.summary;
-        root.outerHTML = reviewSection(product, { ...result.summary, eligibility: { eligible: false, alreadyReviewed: true, reason: 'Ya has valorado este producto.' } });
+        root.outerHTML = reviewSection(product, { ...result.summary, eligibility: { eligible: false, alreadyReviewed: true, reason: result.message || 'Tu opinión está pendiente de aprobación por el administrador.' } });
         bindReviewEvents(product);
       } catch (error) {
         button.disabled = false;
-        if (message) { message.className = 'fvmReviewMessage'; message.textContent = error.message || 'No se pudo publicar la opinión.'; }
+        if (message) { message.className = 'fvmReviewMessage'; message.textContent = error.message || 'No se pudo enviar la opinión.'; }
       }
     });
   }

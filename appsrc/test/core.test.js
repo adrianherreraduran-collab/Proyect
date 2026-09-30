@@ -46,7 +46,7 @@ test('las opiniones solo se habilitan para clientes con una compra y se agregan 
   data.reviews = [];
   assert.equal(server.reviewEligibility(data, 'customer-1', 'p1').eligible, true);
   assert.equal(server.reviewEligibility(data, 'customer-1', 'p2').eligible, false);
-  data.reviews.push({ id: 'rev-1', productId: 'p1', userId: 'customer-1', orderId: 'order-1', rating: 5, comment: 'Muy buen producto y entrega correcta.', createdAt: '2026-09-29T09:00:00.000Z', status: 'published' });
+  data.reviews.push({ id: 'rev-1', productId: 'p1', userId: 'customer-1', orderId: 'order-1', rating: 5, comment: 'Muy buen producto y entrega correcta.', createdAt: '2026-09-29T09:00:00.000Z', status: 'approved', reviewedAt: '2026-09-29T10:00:00Z', reviewedBy: {id:'admin',role:'admin'} });
   const summary = server.reviewSummaryForProduct(data, 'p1');
   assert.equal(summary.count, 1);
   assert.equal(summary.average, 5);

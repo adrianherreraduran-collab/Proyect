@@ -216,7 +216,8 @@ function syncProcurementTasks(d, order) {
     const current = grouped.get(key) || { supplierId: s.id, supplierName: s.name, supplier, items: [], sourceCost: 0 };
     const qty = Math.max(1, Number(item.qty) || 1);
     const sourcePrice = Number(item.procurement?.sourcePrice || 0);
-    current.items.push({ productId: item.productId, title: item.title, ref: item.ref, sourceRef: item.procurement?.sourceRef || '', qty, weightKg: Number(item.weightKg || item.procurement?.weightKg || 0), totalWeightKg: Number(item.totalWeightKg || (Number(item.weightKg || item.procurement?.weightKg || 0) * qty)), sourcePrice });
+    const product=(d.products||[]).find(p=>p.id===item.productId)||{};
+    current.items.push({ productId: item.productId, title: item.title, description: String(item.description||item.procurement?.description||product.description||''), ref: item.ref, sourceRef: item.procurement?.sourceRef || product.sourceRef || '', provider: s.name, qty, weightKg: Number(item.weightKg || item.procurement?.weightKg || 0), totalWeightKg: Number(item.totalWeightKg || (Number(item.weightKg || item.procurement?.weightKg || 0) * qty)), sourcePrice });
     current.sourceCost = money(current.sourceCost + sourcePrice * qty);
     grouped.set(key, current);
   }
