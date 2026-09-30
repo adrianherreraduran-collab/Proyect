@@ -113,7 +113,7 @@ test('RutaFV actualiza el pedido FVMarket y no duplica el aviso final', () => {
 test('el pedido conserva trazabilidad privada y separa transporte', () => {
   const data = fixture(), actor = { id: 'guest:abc123', name: 'Cliente', email: 'cliente@example.com', phone: '600123123' };
   const customer = { name: 'Cliente', email: actor.email, phone: actor.phone, address: 'Calle A 1', city: 'Morro Jable', postalCode: '35625', billingAddress: 'Calle A 1', billingCity: 'Morro Jable', billingPostalCode: '35625' };
-  const items = [{ id: 'p1', qty: 2 }], quote = server.decorateTransportQuote({ id: 'rq1', amount: 18.5 }, actor.id, items, customer);
+  const items = [{ id: 'p1', qty: 2, weightKg:12.5 }], quote = server.decorateTransportQuote({ id: 'rq1', amount: 18.5 }, actor.id, items, customer);
   const built = server.buildOrder(data, actor, items, customer, { quote, paymentMethod: 'stripe', guest: true, userId: '' });
   assert.equal(built.error, undefined);
   assert.equal(built.order.subtotal, 200);

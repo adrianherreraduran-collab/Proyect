@@ -3,7 +3,7 @@ name: Repack FVMarket application
 on:
   push:
     paths:
-      - appsrc/server.js
+      - appsrc/*.js
       - appsrc/operations_accounting_v1.js
       - appsrc/procurement_v2.js
       - appsrc/supplier_delivery_v1.js
@@ -21,6 +21,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Apply FVMarket image-management patch
         run: |
           if [ -f patch_images.py ]; then python patch_images.py; fi
@@ -39,6 +42,10 @@ jobs:
           });
           console.log(`Validated ${scripts.length} inline script blocks`);
           NODE
+      - name: Run FVMarket regression checks
+        run: |
+          npm ci --prefix appsrc --omit=dev --no-audit --no-fund
+          npm test --prefix appsrc
       - name: Repack application
         run: |
           python - <<'PY'
@@ -48,7 +55,7 @@ jobs:
           buf=io.BytesIO()
           with tarfile.open(fileobj=buf,mode="w:gz") as tar:
               for p in sorted(root.rglob("*")):
-                  if p.is_file():
+                  if p.is_file() and 'node_modules' not in p.parts and '.git' not in p.parts and p.name not in {'data.json','.env'}:
                       tar.add(p,arcname=str(p.relative_to(root)))
           Path("fvmarket-app.tgz.b64").write_text(base64.b64encode(buf.getvalue()).decode("ascii"),encoding="ascii")
           PY

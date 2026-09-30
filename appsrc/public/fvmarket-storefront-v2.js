@@ -93,7 +93,7 @@
     }
     if (box) { box.style.display = 'block'; box.className = 'routeQuote loading'; box.innerHTML = '<span class="fvmTransportSpinner"></span>Calculando el transporte con RutaFV…'; }
     const pending = requestRutaFVQuote({ items: cart, customer: value, address: value.address, city: value.city, postalCode: value.postalCode, phone: value.phone, notes: value.notes, deliveryMode: 'normal', express: false })
-      .then(quote => { rutaFVQuote = quote; const estimate = quote.deliveryEstimate?.label || 'Pendiente de confirmar'; if (box) { box.className = 'routeQuote ok'; box.textContent = 'Transporte calculado: ' + money(quote.amount ?? quote.total) + ' · Plazo estimado: ' + estimate; box.style.display = 'block'; } document.querySelectorAll('.rutaFVChoice small').forEach(node => { node.textContent = 'Plazo estimado: ' + estimate; }); renderCart(); return true; })
+      .then(quote => { rutaFVQuote = quote; const estimate = quote.deliveryEstimate?.label || 'Pendiente de confirmar'; if (box) { box.className = 'routeQuote ok'; box.textContent = (quote.freeTransport?'Transporte gratis: '+money(0)+' · Precio del transporte: '+money(quote.regularAmount):'Transporte calculado: '+money(quote.customerAmount??quote.amount??quote.total)) + ' · Plazo estimado: ' + estimate; box.style.display = 'block'; } document.querySelectorAll('.rutaFVChoice small').forEach(node => { node.textContent = 'Plazo estimado: ' + estimate; }); renderCart(); return true; })
       .catch(error => { rutaFVQuote = null; if (box) { box.style.display = 'block'; box.className = 'routeQuote error'; box.textContent = error.message || 'No se pudo calcular el transporte.'; } renderCart(); return false; })
       .finally(() => { window.fvmRutaFVInFlight = null; });
     window.fvmRutaFVInFlight = pending;
@@ -166,7 +166,7 @@
     if (!cart?.length) { message.textContent = 'Añade al menos un producto al carrito.'; return; }
     if (!address || !city || !/^\d{5}$/.test(postalCode)) { message.textContent = 'Completa dirección, municipio y código postal.'; return; }
     message.innerHTML = '<span class="fvmTransportSpinner"></span>Calculando transporte…';
-    try { const quote = await requestRutaFVQuote({ items: cart, customer: {}, address, city, postalCode, deliveryMode: 'normal', express: false }); message.textContent = 'Envío a tu obra: ' + money(quote.amount ?? quote.total) + ' · Plazo estimado: ' + (quote.deliveryEstimate?.label || 'Pendiente de confirmar'); }
+    try { const quote = await requestRutaFVQuote({ items: cart, customer: {}, address, city, postalCode, deliveryMode: 'normal', express: false }); message.textContent = (quote.freeTransport?'Transporte gratis: '+money(0)+' · Precio del transporte: '+money(quote.regularAmount):'Envío a tu obra: '+money(quote.customerAmount??quote.amount??quote.total)) + ' · Plazo estimado: ' + (quote.deliveryEstimate?.label || 'Pendiente de confirmar'); }
     catch (error) { message.textContent = error.message; }
   };
 

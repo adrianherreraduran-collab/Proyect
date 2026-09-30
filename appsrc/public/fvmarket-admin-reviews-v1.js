@@ -21,7 +21,7 @@
           controls.forEach(control=>control.disabled=true);message.textContent='Guardando decisión…';
           try {
             await api('/api/admin/reviews/'+review.kind+'/'+encodeURIComponent(review.id),{method:'PATCH',body:JSON.stringify({action:button.dataset.reviewDecision,reason:card.querySelector('[data-review-reason]').value})});
-            await loadReviews();
+            await loadReviews();window.fvmRefreshPendingReviews?.();
           } catch(error){message.textContent=error.message;controls.forEach(control=>control.disabled=false);}
         });
       });

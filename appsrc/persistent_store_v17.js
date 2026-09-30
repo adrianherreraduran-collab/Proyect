@@ -27,8 +27,8 @@ async function init(){
 function writeRaw(raw){const job=writeQueue.then(()=>pool.query(`INSERT INTO fvmarket_state(state_key,payload,updated_at) VALUES('main',$1,NOW()) ON CONFLICT(state_key) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()`,[raw]));writeQueue=job.catch(()=>{});return job}
 async function flush(){
   timer=null;if(!enabled||!pool||pending==null)return;const raw=pending;pending=null;
-  try{await writeRaw(raw);lastError=''}catch(e){lastError=String(e.message||e);console.error('FVMarket persistence write failed:',lastError)}
-  if(pending!=null)scheduleRaw(pending);
+  try{await writeRaw(raw);lastError=''}catch(e){lastError=String(e.message||e);console.error('FVMarket persistence write failed:',lastError);if(pending==null)pending=raw}
+  if(pending!=null){if(lastError){timer=setTimeout(flush,5000)}else scheduleRaw(pending);}
 }
 function scheduleRaw(raw){pending=raw;if(timer)clearTimeout(timer);timer=setTimeout(flush,180)}
 function persist(data){if(!enabled)return;try{scheduleRaw(JSON.stringify(data,null,2))}catch(e){lastError=String(e.message||e)}}
@@ -40,4 +40,4 @@ async function replace(raw){
   catch(e){lastError=String(e.message||e);console.error('FVMarket persistence replacement failed:',lastError);throw new Error('No se pudo guardar el cambio completo en Postgres.');}
 }
 function status(){return {enabled,mode:enabled?'postgres':'file',dataFile,lastError}}
-module.exports={config,init,persist,replace,status};
+module.exports={config,init,persist,replace,status,flush};

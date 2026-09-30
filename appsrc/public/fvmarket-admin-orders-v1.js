@@ -38,15 +38,26 @@
     return payment + refund;
   };
   const rowState = order => String(order.customerStatus||order.status)==='incidencia'?'incidencia':isDelivered(order)?'entregado':'';
-  const paidRow = order => `<tr class="fvmOrderState-${rowState(order)}" data-order-state="${rowState(order)}"><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES')}</td><td>${Number(order.total).toFixed(2)} €</td><td>${esc(order.paymentMethod)}</td><td>${source(order)}${supplierEstimate(order)}</td><td>${rowState(order)?'<b class="fvmOrderStateLabel">'+(rowState(order)==='entregado'?'Entregado':'Incidencia')+'</b>':''}${checklist(order)}</td><td>${actions(order)}</td></tr>`;
+  const paidRow = order => `<tr class="fvmOrderState-${rowState(order)}" data-order-state="${rowState(order)}"><td>${esc(order.number)}</td><td>${new Date(order.createdAt).toLocaleString('es-ES',{timeZone:'Atlantic/Canary'})+(order.storedDelivered&&order.deliveredAt?'<br><small>Entrega: '+new Date(order.deliveredAt).toLocaleString('es-ES',{timeZone:'Atlantic/Canary'})+'</small>':'')}</td><td>${Number(order.total).toFixed(2)} €</td><td>${esc(order.paymentMethod)}</td><td>${source(order)}${supplierEstimate(order)}</td><td>${rowState(order)?'<b class="fvmOrderStateLabel">'+(rowState(order)==='entregado'?'Entregado':'Incidencia')+'</b>':''}${checklist(order)}</td><td>${actions(order)}</td></tr>`;
   window.loadOrders = async function loadOrders() {
     document.getElementById('fvmCompletedOrdersCard')?.remove();
     const all = await api('/api/admin/orders');
     window.fvmSetPurchaseOrders?.(all);
-    const paid = all.filter(isPaid);
+    const paid = all.filter(order=>isPaid(order)&&!order.storedDelivered);
+    const archived=all.filter(order=>order.storedDelivered);
+    document.getElementById('fvmDeliveredOrders')?.replaceChildren();
+    const archivedBody=document.getElementById('fvmDeliveredOrders');if(archivedBody)archivedBody.innerHTML=archived.map(paidRow).join('')||'<tr><td colspan=7>No hay pedidos entregados archivados.</td></tr>';
     statOrders.textContent = paid.length;
     orders.innerHTML = paid.map(paidRow).join('') || '<tr><td colspan="7" class="empty">No hay pedidos pagados.</td></tr>';
   };
+  function mountDeliveredArchive(){
+    const nav=document.querySelector('.navin'),panel=document.getElementById('panel');
+    if(!nav||!panel||document.getElementById('view-delivered-orders'))return;
+    const tab=document.createElement('button');tab.className='tab';tab.dataset.view='delivered-orders';tab.textContent='✓ Pedidos Entregados';
+    const view=document.createElement('section');view.id='view-delivered-orders';view.className='view';view.innerHTML='<div class="card"><h2>Pedidos Entregados</h2><p class="sub">Se archivan al comenzar el día siguiente a la entrega, según la hora de Canarias. Conservan todos los datos y el historial.</p><div style="overflow:auto"><table><thead><tr><th>Nº</th><th>Fecha</th><th>Total</th><th>Pago</th><th>Proveedor / compra</th><th>Estado</th><th>Acciones</th></tr></thead><tbody id="fvmDeliveredOrders"></tbody></table></div></div>';
+    nav.appendChild(tab);panel.appendChild(view);tab.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===tab));document.querySelectorAll('.view').forEach(x=>x.classList.toggle('active',x===view));window.loadOrders();};
+  }
+  setTimeout(mountDeliveredArchive,800);
   if (!document.getElementById('fvmPaidOrderChecklist')) {
     const style = document.createElement('style');
     style.id = 'fvmPaidOrderChecklist';

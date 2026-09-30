@@ -268,10 +268,10 @@ function drawBoardPdf(doc, rows, exportedAt = new Date()) {
   drawPdfFooter(doc, pageNumber);
 }
 function registerProcurementRoutes(app, deps) {
-  const { read, save, ordersManager, transitionOrder, ensureLedgerForOrder, createRutaFVDelivery, paidOrderStatus } = deps;
+  const { read, save, ordersManager, transitionOrder, ensureLedgerForOrder, createRutaFVDelivery, paidOrderStatus, isStoredDeliveredOrder = () => false, customerOrderState = order => ({key:order.status}) } = deps;
   app.get('/api/admin/procurement-board', ordersManager, (req, res) => {
     const d = ensureData(read());
-    const orders = (d.orders || []).filter(o => (paidOrderStatus(o.status) || !!o.paidAt) && BOARD_STATUSES.has(String(o.status || ''))).map(o => orderPublic(o, d));
+    const orders = (d.orders || []).filter(o => (paidOrderStatus(o.status) || !!o.paidAt) && BOARD_STATUSES.has(String(o.status || ''))).map(o => ({...orderPublic(o,d),storedDelivered:isStoredDeliveredOrder(o),customerStatus:customerOrderState(o).key}));
     res.json({ orders, pending: orders.length, statuses: [...BOARD_STATUSES] });
   });
   app.get('/api/admin/procurement-board/pdf', ordersManager, (req, res) => {
@@ -295,7 +295,7 @@ function registerProcurementRoutes(app, deps) {
   });
   app.get('/api/admin/notifications', ordersManager, (req, res) => {
     const d = ensureData(read());
-    res.json((d.notifications || []).slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 200));
+    const pendingReviews=[...(d.reviews||[]),...(d.orderReviews||[])].filter(review=>review.status==='pending').length;const reviewNotice=req.user?.role==='admin'&&pendingReviews?[{id:'pending_reviews',type:'pending_reviews',title:pendingReviews+' opiniones pendientes de revisión',message:'Abre Opiniones para aprobar o rechazar los comentarios antes de publicarlos.',read:false,createdAt:new Date().toISOString()}]:[];res.json([...reviewNotice,...(d.notifications || [])].slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 200));
   });
   app.post('/api/admin/notifications/:id/read', ordersManager, (req, res) => {
     const d = ensureData(read()); const n = (d.notifications || []).find(x => x.id === req.params.id);

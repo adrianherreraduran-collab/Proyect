@@ -97,16 +97,16 @@
     const supplierRows = (order.supplierSummary || []).map(t => { const estimate=t.deliveryEstimate||{}; const location=[t.island, t.address].filter(Boolean).join(' · '); return `<div><b>${esc(t.name)}</b> (${esc(t.status || 'pendiente')})${location?` · ${esc(location)}`:''}<br><span>Entrega estimada del proveedor: <b>${esc(estimate.label || 'Pendiente de calcular')}</b></span></div>`; }).join('') || 'Proveedor pendiente';
     const deliveryId = order.transport?.deliveryId || order.transport?.rutaFVDeliveryId || '';
     const deliveryMeta = deliveryId ? `<br><b>Reparto RutaFV:</b> ${esc(deliveryId)}` : '';
-    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.delivery)}${deliveryMeta}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}</article>`;
+    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.regularDelivery??order.delivery)}${order.freeTransport?' · Cliente preferente: transporte gratis':''}${deliveryMeta}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}</article>`;
   }
 
   function renderBoard(data) {
     window.fvmSetPurchaseOrders?.(data.orders||[]);
-    const orders = (data.orders || []).filter(order => paymentStatuses.has(String(order.status || '')) && paidStatuses.has(String(order.status || '')));
+    const orders = (data.orders || []).filter(order => !order.storedDelivered && paymentStatuses.has(String(order.status || '')) && paidStatuses.has(String(order.status || '')));
     const purchaseOrders = orders.filter(order => !trackingStatuses.has(String(order.status || '')));
     const trackingOrders = orders.filter(order => trackingStatuses.has(String(order.status || '')));
     const host = $('fvmControlBoard'); if (!host) return;
-    host.innerHTML = `<div class="fvmBoard"><section class="fvmBoardColumn paid"><h3>Pedidos pagados pendientes de compra al proveedor (${purchaseOrders.length})</h3>${purchaseOrders.map(card).join('') || '<div class="fvmBoardEmpty">No hay pedidos pagados pendientes de adquirir al proveedor.</div>'}</section><section class="fvmBoardColumn tracking"><h3>Pedidos enviados a RutaFV (${trackingOrders.length})</h3><p class="fvmBoardPdfHint">Estos pedidos permanecen visibles para consultar el reparto y recibir automáticamente «Entregado».</p>${trackingOrders.map(card).join('') || '<div class="fvmBoardEmpty">Todavía no hay pedidos enviados a RutaFV.</div>'}</section></div>`;
+    host.innerHTML = `<div class="fvmBoard"><section class="fvmBoardColumn paid"><h3>Pedidos pagados pendientes de compra al proveedor (${purchaseOrders.length})</h3>${purchaseOrders.map(card).join('') || '<div class="fvmBoardEmpty">No hay pedidos pagados pendientes de adquirir al proveedor.</div>'}</section><section class="fvmBoardColumn tracking"><h3>Pedidos enviados a RutaFV (${trackingOrders.length})</h3><p class="fvmBoardPdfHint">Los entregados permanecen aquí durante el día de entrega y pasan a Pedidos Entregados al día siguiente.</p>${trackingOrders.map(card).join('') || '<div class="fvmBoardEmpty">Todavía no hay pedidos enviados a RutaFV.</div>'}</section></div>`;
   }
 
   async function loadBoard() {
@@ -148,7 +148,7 @@
     const host = $('fvmNotifications'); if (!host) return;
     try {
       const rows = await api('/api/admin/notifications');
-      host.innerHTML = rows.map(n => `<div class="fvmNotification ${n.read ? '' : 'unread'}"><div>🔔</div><div><b>${esc(n.title)}</b><small>${esc(n.message)} · ${new Date(n.createdAt).toLocaleString('es-ES')}</small></div>${n.read ? '' : `<button class="btn ghost" onclick="fvmReadNotification('${esc(n.id)}')">Marcar leída</button>`}</div>`).join('') || '<div class="empty">No hay notificaciones.</div>';
+      host.innerHTML = rows.map(n => `<div class="fvmNotification ${n.read ? '' : 'unread'}"><div>🔔</div><div><b>${esc(n.title)}</b><small>${esc(n.message)} · ${new Date(n.createdAt).toLocaleString('es-ES')}</small></div>${n.read ? '' : `<button class="btn ghost" onclick="fvmReadNotification('${esc(n.id)}')">${n.type==='pending_reviews'?'Revisar opiniones':'Marcar leída'}</button>`}</div>`).join('') || '<div class="empty">No hay notificaciones.</div>';
     } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
   }
 
@@ -167,7 +167,7 @@
     finally { if (button) { button.disabled = false; button.classList.remove('is-loading'); button.innerHTML = initialLabel || '<span class="fvmPdfIcon">PDF</span><span>Exportar PDF</span>'; } }
   };
 
-  window.fvmReadNotification = async function (id) { try { await api('/api/admin/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' }); loadNotifications(); } catch (e) { alert(e.message); } };
+  window.fvmReadNotification = async function (id) { if(id==='pending_reviews'){document.querySelector('.tab[data-view=reviews]')?.click();return;}try { await api('/api/admin/notifications/' + encodeURIComponent(id) + '/read', { method: 'POST' }); loadNotifications(); } catch (e) { alert(e.message); } };
 
   function mount() {
     if (mounted || !$('panel') || !document.querySelector('.navin')) return;

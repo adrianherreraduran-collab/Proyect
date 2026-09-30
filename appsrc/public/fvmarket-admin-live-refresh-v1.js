@@ -71,7 +71,7 @@
     try {
       if (view.id === 'view-products' && typeof window.loadProducts === 'function') {
         await window.loadProducts();
-      } else if (view.id === 'view-orders') {
+      } else if (['view-orders','view-delivered-orders'].includes(view.id)) {
         if (typeof window.loadOrders === 'function') await window.loadOrders();
         if (typeof window.loadAdminQuotes === 'function') await window.loadAdminQuotes();
       } else if (view.id === 'view-invoices' && typeof window.loadInvoices === 'function') {
