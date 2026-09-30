@@ -1495,7 +1495,8 @@ function orderForRutaFVCallback(d,payload={}){
     || (deliveryId&&String(order.transport?.deliveryId||'')===deliveryId)
   )||null;
 }
-function applyRutaFVCallbackStatus(d,order,payload,status){
+function applyRutaFVCallbackStatus(d,order,payload,status=normalizeRutaFVCallbackStatus(payload?.status||payload?.deliveryStatus||payload?.orderStatus)){
+  if(!status)return {ok:false,error:'El callback de RutaFV debe indicar Entregado o Incidencia'};
   operations.ensureOperationsData(d);
   const note=String(payload.incidentNote||payload.incidencia||payload.note||payload.message||'').trim().slice(0,2000);
   const at=String(payload.at||payload.updatedAt||new Date().toISOString());
