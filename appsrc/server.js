@@ -1552,7 +1552,7 @@ app.post('/api/integrations/rutafv/status',async(req,res)=>{
   const d=read();
   const order=orderForRutaFVCallback(d,payload);
   if(!order)return res.status(404).json({error:'No se encontró el pedido FVMarket asociado al reparto',externalOrderId:String(payload.externalOrderId||'')});
-  const result=applyRutaFVCallbackStatus(d,order,payload);
+  const result=applyRutaFVCallbackStatus(d,order,payload,status);
   if(!result.ok)return res.status(409).json({error:result.error});
   save(d);
   if(result.changed&&result.results.some(item=>item.to==='en_reparto'))scheduleOrderEmail(req,order.id,'delivery_in_transit');
