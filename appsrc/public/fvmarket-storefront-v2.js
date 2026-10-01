@@ -106,9 +106,14 @@
     const value = customer(), error = deliveryError(value, true);
     if (error) { if (message) message.textContent = error; return; }
     if (!$('orderTerms')?.checked || !$('orderPrivacy')?.checked) { if (message) message.textContent = 'Acepta las condiciones de compra y la política de privacidad.'; return; }
-    if (!rutaFVQuote && !await calculateTransport()) return;
-    if (message) message.textContent = 'Abriendo el pago seguro de Stripe…';
     try {
+      const previousPrices = JSON.stringify(cart.map(item => ({ id: item.id, qty: item.qty, price: cartProduct(item.id)?.customerPrice ?? cartProduct(item.id)?.salePrice ?? cartProduct(item.id)?.price })));
+      if (message) message.textContent = 'Comprobando tus precios…';
+      if (!await refreshCustomerPricing()) throw new Error('Vuelve a abrir el carrito para actualizar tus precios.');
+      const currentPrices = JSON.stringify(cart.map(item => ({ id: item.id, qty: item.qty, price: cartProduct(item.id)?.customerPrice ?? cartProduct(item.id)?.salePrice ?? cartProduct(item.id)?.price })));
+      if (previousPrices !== currentPrices) { if (message) message.textContent = 'El precio se ha actualizado. Revisa el total y pulsa de nuevo el botón de pago.'; return; }
+      if (!rutaFVQuote && !await calculateTransport()) return;
+      if (message) message.textContent = 'Abriendo el pago seguro de Stripe…';
       const result = await api('/api/checkout/stripe', { method: 'POST', body: JSON.stringify({ items: cart, customer: value, useRutaFV: true, rutaFVQuote, termsAccepted: true, privacyAccepted: true, guestSessionId }) });
       if (!result.url) throw new Error('Stripe no devolvió el enlace de pago.');
       window.location.assign(result.url);
@@ -149,7 +154,7 @@
   try { checkoutStripe = payWithStripe; } catch {}
 
   const baseOpenCart = window.openCart;
-  window.openCart = function () { fillFromAccount(); baseOpenCart?.apply(this, arguments); bind(); };
+  window.openCart = function () { fillFromAccount(); const result = baseOpenCart?.apply(this, arguments); bind(); return result; };
   try { openCart = window.openCart; } catch {}
   const baseRenderCart = window.renderCart;
   window.renderCart = function () { baseRenderCart?.apply(this, arguments); syncCheckoutState(); };

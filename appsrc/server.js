@@ -682,6 +682,7 @@ async function confirmStripePayment(req,session){
 
 app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',release:'2026-09-30-benefits-url-invoice',paymentProvider:'stripe',stripeConfigured:!!stripe,stripeWebhook:!!(stripe&&STRIPE_WEBHOOK_SECRET),emailConfigured:!!(RESEND_API_KEY&&EMAIL_FROM),billing:true,guestCheckout:false}));
 app.get('/api/products',optionalAuth,(req,res)=>{
+  res.set('Cache-Control','private, no-store').vary('Authorization');
   const d=read(),q=String(req.query.q||'').toLowerCase().trim(),category=String(req.query.category||'').toLowerCase().trim(),customer=req.user?(d.users||[]).find(x=>String(x.id||'')===String(req.user.id||'')):null;
   const aliases={
     reformas:['reformas','baño y cocina','fontanería','electricidad','pintura'],

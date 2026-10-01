@@ -29,13 +29,12 @@ function render(products, cart, quote = null) {
   return { context, elements, items: plain(elements.cartItems.innerHTML), total: plain(elements.cartTotal.innerHTML) };
 }
 
-test('el carrito con solo transporte gratis muestra precio original, descuento cero y precio final por unidad y en el resumen', () => {
+test('el carrito sin descuento muestra solo el precio real y conserva el transporte gratis independiente', () => {
   const result = render([{ id: 'p', title: 'Monomando', price: 82.6, regularPrice: 82.6, customerPrice: 82.6 }], [{ id: 'p', qty: 1 }], { regularAmount: 55.39, amount: 55.39, customerAmount: 0, freeTransport: true });
-  assert.match(result.items, /Precio original<\/span><strong>82,60 € \/ ud\./);
-  assert.match(result.items, /Descuento aplicado \(0 %\)<\/span><strong>0,00 € \/ ud\./);
-  assert.match(result.items, /Precio final<\/span><strong>82,60 € \/ ud\./);
-  assert.match(result.total, /Descuento aplicado \(0 %\): <b>0,00 €/);
-  assert.match(result.total, /Precio final de los productos: <b>82,60 €/);
+  assert.match(result.items, /Precio<\/span><strong>82,60 € \/ ud\./);
+  assert.doesNotMatch(result.items, /Descuento|Precio original|Precio final/);
+  assert.doesNotMatch(result.total, /Descuento|Precio original|Precio final/);
+  assert.match(result.total, /Precio de los productos: <b>82,60 €/);
   assert.match(result.total, /Precio del transporte: 55,39 €/);
   assert.match(result.total, /Transporte gratis: 0,00 €/);
   assert.match(result.total, /Total: 82,60 €/);
@@ -79,13 +78,17 @@ test('el porcentaje del resumen se pondera por precios y cantidades y mantiene p
 
 test('un carrito vacío no produce NaN y los documentos y títulos mantienen el desglose seguro', () => {
   const empty = render([], []);
-  assert.match(empty.total, /Descuento aplicado \(0 %\): <b>0,00 €/);
+  assert.doesNotMatch(empty.total, /Descuento aplicado|Precio original/);
   assert.doesNotMatch(empty.total, /NaN|Infinity/);
   assert.equal(empty.elements.cartCheckout.style.display, 'none');
   const result = render([{ id: 'p', title: '<img src=x onerror=alert(1)>', price: 10 }], [{ id: 'p', qty: 1 }]);
   assert.match(result.items, /&lt;img/); assert.doesNotMatch(result.items, /<img/);
   const order = result.context.window.fvmPriceBreakdown({ items: [{ regularUnitPrice: 10, unitPrice: 10, qty: 1 }], subtotal: 10, total: 10, regularDelivery: 25, delivery: 0, freeTransport: true }).replace(/\u00a0/g, ' ');
-  assert.match(order, /Descuento aplicado \(0 %\): <b>0,00 €/);
-  assert.match(order, /Precio final de los productos: <b>10,00 €/);
+  assert.doesNotMatch(order, /Descuento|Precio original|Precio final/);
+  assert.match(order, /Precio de los productos: <b>10,00 €/);
   assert.match(order, /Transporte gratis/);
+  const discounted = result.context.window.fvmPriceBreakdown({ items: [{ regularUnitPrice: 10, unitPrice: 8, qty: 2 }], subtotal: 16, total: 16, delivery: 0 }).replace(/\u00a0/g, ' ');
+  assert.match(discounted, /Precio original de los productos: <b>20,00 €/);
+  assert.match(discounted, /Descuento aplicado \(20 %\): <b>-4,00 €/);
+  assert.match(discounted, /Precio final de los productos: <b>16,00 €/);
 });

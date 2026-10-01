@@ -44,6 +44,26 @@ test('solo el admin concede beneficios y se validan los importes', async () => {
   const updated = await request('/api/admin/users/customer/discount', { method: 'PUT', body: { discountPct: 0, freeTransport: true } }); assert.equal(updated.status, 200); assert.equal(updated.data.customerLabel, 'Cliente preferente');
   const product = await request('/api/products', { id: 'customer', role: 'customer' }); assert.equal(product.data[0].customerPrice, 100); assert.equal(product.data[0].sourcePrice, undefined);
 });
+test('el catálogo autenticado usa el descuento actual del admin y el pago cobra el mismo precio', async () => {
+  reset();
+  const publicProducts = await request('/api/products', { anonymous: true });
+  assert.equal(publicProducts.data[0].customerPrice, 100);
+  const updated = await request('/api/admin/users/customer/discount', { method: 'PUT', body: { discountPct: 15, freeTransport: false } });
+  assert.equal(updated.status, 200);
+  const products = await request('/api/products', { id: 'customer', role: 'customer' });
+  assert.equal(products.data[0].regularPrice, 100);
+  assert.equal(products.data[0].customerDiscountPct, 15);
+  assert.equal(products.data[0].customerPrice, 85);
+  assert.match(products.headers.get('cache-control'), /no-store/);
+  assert.match(products.headers.get('vary'), /Authorization/);
+  const items = [{ id: 'p1', qty: 2, weightKg: 3 }], customer = { ...profile, ...profile.deliveryAddress };
+  const quote = server.decorateTransportQuote({ id: 'rfq-discount', amount: 25 }, profile.id, items, customer);
+  const result = await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body: { items, customer, rutaFVQuote: quote, termsAccepted: true, privacyAccepted: true } });
+  assert.equal(result.status, 200);
+  assert.equal(server.read().orders[0].subtotal, 170);
+  assert.equal(server.read().orders[0].total, 195);
+  assert.equal(checkoutCalls.at(-1).line_items[0].price_data.unit_amount, 8500);
+});
 test('un cliente no modifica sus beneficios asignando campos en su perfil', async () => {
   reset(); const updated = await request('/api/me/profile', { method: 'PUT', id: 'customer', role: 'customer', body: { ...profile, discountPct: 90, freeTransport: false } }); assert.equal(updated.status, 200); assert.equal(updated.data.user.discountPct, 20); assert.equal(updated.data.user.freeTransport, true);
 });
