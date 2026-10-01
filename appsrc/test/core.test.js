@@ -39,11 +39,13 @@ test('el plazo público no expone la isla ni reglas internas del proveedor', () 
   assert.equal('address' in product.deliveryEstimate, false);
 });
 
-test('las opiniones solo se habilitan para clientes con una compra y se agregan por producto', () => {
+test('las opiniones solo se habilitan para clientes con una compra recibida y se agregan por producto', () => {
   const data = fixture();
   data.users = [{ id: 'customer-1', role: 'customer', emailVerified: true, firstName: 'Ana', lastName: 'López', name: 'Ana López' }];
   data.orders = [{ id: 'order-1', number: 'FVM-1', userId: 'customer-1', status: 'pagado', paidAt: '2026-09-29T08:00:00.000Z', items: [{ productId: 'p1', qty: 1 }] }];
   data.reviews = [];
+  assert.equal(server.reviewEligibility(data, 'customer-1', 'p1').eligible, false);
+  data.orders[0].status='entregado';
   assert.equal(server.reviewEligibility(data, 'customer-1', 'p1').eligible, true);
   assert.equal(server.reviewEligibility(data, 'customer-1', 'p2').eligible, false);
   data.reviews.push({ id: 'rev-1', productId: 'p1', userId: 'customer-1', orderId: 'order-1', rating: 5, comment: 'Muy buen producto y entrega correcta.', createdAt: '2026-09-29T09:00:00.000Z', status: 'approved', reviewedAt: '2026-09-29T10:00:00Z', reviewedBy: {id:'admin',role:'admin'} });

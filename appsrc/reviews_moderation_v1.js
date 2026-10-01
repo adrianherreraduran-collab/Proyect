@@ -41,6 +41,20 @@ function adminReviews(d) {
 }
 
 function registerRoutes(app, {read, save, admin}) {
+  app.put('/api/admin/products/:id/recommendation', admin, (req, res) => {
+    if (req.user?.role !== 'admin') return res.status(403).json({error:'Solo el administrador puede publicar recomendaciones'});
+    const text = String(req.body?.text || '').trim();
+    if (text && (text.length < 5 || text.length > 2000)) return res.status(400).json({error:'Escribe entre 5 y 2.000 caracteres'});
+    const warning = moderationWarning({comment:text});
+    if (warning) return res.status(400).json({error:'Revisa el lenguaje del contenido promocional antes de publicarlo.'});
+    const d = read(), product = (d.products || []).find(p => String(p.id) === String(req.params.id));
+    if (!product) return res.status(404).json({error:'Producto no encontrado'});
+    product.recommendation = text ? {text, published:true, updatedAt:new Date().toISOString(), reviewedBy:{id:String(req.user.id),role:'admin'}} : null;
+    if (!Array.isArray(d.auditLog)) d.auditLog = [];
+    d.auditLog.push({id:'aud_recommendation_' + Date.now(),action:text?'recomendacion_publicada':'recomendacion_retirada',productId:product.id,actor:{id:String(req.user.id),role:'admin'},at:new Date().toISOString()});
+    save(d);
+    res.json({ok:true,recommendation:product.recommendation});
+  });
   app.get('/api/admin/reviews', admin, (req, res) => {
     const rows = adminReviews(read());
     const status = String(req.query?.status || 'pending');

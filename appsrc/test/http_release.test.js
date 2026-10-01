@@ -30,6 +30,7 @@ function reset() { fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixtur
 const sellerFixture = () => ({ fiscalName: 'Ana López García', fiscalNif: '42350448L', fiscalAddress: 'Calle Prueba 1', fiscalCity: 'Tuineje', fiscalPostalCode: '35620', legalEmail: 'ana@example.com', contactPhone: '600123123', legalIdentityConfirmed: true });
 function token(id = 'admin', role = 'admin') { return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '1h' }); }
 let listener, origin;
+test.after(async () => { if (listener) await new Promise(resolve => listener.close(resolve)); listener = null; global.fetch = nativeFetch; });
 async function ready() { if (!listener) { listener = app.listen(0, '127.0.0.1'); await new Promise(resolve => listener.once('listening', resolve)); origin = 'http://127.0.0.1:' + listener.address().port; } }
 async function request(url, { method = 'GET', id = 'admin', role = 'admin', body, headers = {}, anonymous = false } = {}) { await ready(); const response = await nativeFetch(origin + url, { method, redirect:'manual', headers: { ...(anonymous ? {} : { Authorization: 'Bearer ' + token(id, role) }), ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined }); const text = await response.text(); let data; try { data = JSON.parse(text); } catch { data = text; } return { status: response.status, data, headers: response.headers }; }
 test('la API exige autenticación, roles vigentes y cuentas activas', async () => {
@@ -199,7 +200,7 @@ test('el vendedor confirmado permite el pago y un cambio de domicilio vuelve a c
     const quote = server.decorateTransportQuote({ id: 'rfq-legal', amount: 25 }, profile.id, items, customer);
     const body = { items, customer, rutaFVQuote: quote, termsAccepted: true, privacyAccepted: true };
     assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 200);
-    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-devoluciones-v2');
+    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-cierre-ux-v1');
     const before = server.read().orders.length;
     assert.equal((await request('/api/admin/settings', { method: 'PUT', body: { fiscalAddress: 'Otra calle 3' } })).status, 200);
     assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 503);
@@ -269,7 +270,7 @@ test('las tres entradas informan de devoluciones a cargo de FVMarket sin exigir 
     const saved = server.read().orders.find(order=>order.id==='return-order');
     assert.equal(saved.returnsInformation.lines[0].returnPayer,'seller');
     assert.equal(saved.returnsInformation.lines[0].maxCostForQuantity,0);
-    assert.equal(saved.returnsInformation.version,'2026-10-01-devoluciones-v2');
+    assert.equal(saved.returnsInformation.version,'2026-10-01-cierre-ux-v1');
   } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
 });
 
@@ -317,5 +318,36 @@ test('los cambios de rol invalidan también el acceso a la factura impresa y las
   const data = server.read(); data.invoices.push({ id: 'private', userId: 'customer', orderId: 'delivered', issuedAt: new Date().toISOString(), lines: [] }); data.users.find(user => user.id === 'operator').active = false; server.save(data);
   assert.equal((await request('/api/invoices/private/print', { id: 'operator', role: 'admin' })).status, 401);
   assert.equal((await request('/api/no-such-route', { anonymous: true })).status, 404);
-  await new Promise(resolve => listener.close(resolve)); listener = null; global.fetch = nativeFetch;
+});
+
+test('la opinión de producto requiere recepción y otra compra no habilita un artículo distinto',async()=>{
+  reset();const data=server.read();data.orders.push({id:'bought',userId:'customer',status:'pagado',items:[{productId:'p1',qty:1}]});server.save(data);
+  let result=await request('/api/products/p1/reviews',{id:'customer',role:'customer'});assert.equal(result.data.eligibility.eligible,false);
+  assert.equal((await request('/api/products/p1/reviews',{method:'POST',id:'customer',role:'customer',body:{rating:5,comment:'Muy buen producto'}})).status,403);
+  const delivered=server.read();delivered.orders[0].status='entregado';server.save(delivered);
+  result=await request('/api/products/p1/reviews',{id:'customer',role:'customer'});assert.equal(result.data.eligibility.eligible,true);
+  result=await request('/api/products/p1/reviews',{method:'POST',id:'customer',role:'customer',body:{rating:5,comment:'Muy buen producto',status:'approved'}});assert.equal(result.status,201);assert.equal(result.data.review.status,'pending');
+  assert.equal((await request('/api/products/p1/reviews',{anonymous:true})).data.count,0);
+  await request('/api/admin/reviews/product/'+result.data.review.id,{method:'PATCH',body:{action:'approve'}});
+  assert.equal((await request('/api/products/p1/reviews',{anonymous:true})).data.count,1);
+});
+test('las recomendaciones son solo del admin y no crean reseñas ni estrellas verificadas',async()=>{
+  reset();const url='/api/admin/products/p1/recommendation';
+  assert.equal((await request(url,{method:'PUT',anonymous:true,body:{text:'Producto recomendado'}})).status,401);
+  assert.equal((await request(url,{method:'PUT',id:'customer',role:'customer',body:{text:'Producto recomendado'}})).status,403);
+  assert.equal((await request(url,{method:'PUT',body:{text:'Es una mierda'}})).status,400);
+  let result=await request(url,{method:'PUT',body:{text:'Recomendación <script> de FVMarket',rating:5,verifiedPurchase:true}});assert.equal(result.status,200);
+  const product=(await request('/api/products',{anonymous:true})).data[0];assert.equal(product.reviewSummary.count,0);assert.equal(product.recommendation.label,'Recomendación de FVMarket');assert.equal(product.recommendation.rating,undefined);assert.equal(product.recommendation.reviewedBy,undefined);assert.equal(server.read().reviews.length,0);
+  const data=server.read();data.users.push({id:'catalog',role:'catalog_manager',emailVerified:true});server.save(data);
+  assert.equal((await request(url,{method:'PUT',id:'catalog',role:'catalog_manager',body:{text:'Otra publicidad'}})).status,403);
+  await request('/api/admin/products/p1',{method:'PUT',id:'catalog',role:'catalog_manager',body:{recommendation:{text:'Reseña falsa',published:true,reviewedBy:{role:'admin'}}}});
+  assert.equal((await request('/api/products',{anonymous:true})).data[0].recommendation.text,'Recomendación <script> de FVMarket');
+  result=await request(url,{method:'PUT',body:{text:''}});assert.equal(result.status,200);assert.equal((await request('/api/products',{anonymous:true})).data[0].recommendation,undefined);
+});
+test('el enlace de condiciones calcula costes desde el catálogo y escapa los títulos',async()=>{
+  reset();const data=server.read();data.products[0].title='<img src=x onerror=x>';data.products[0].returnPolicy={mode:'non_postal',maxCostPerUnit:40};server.save(data);
+  const url='/legal/condiciones?items='+encodeURIComponent(JSON.stringify([{id:'p1',qty:2,maxCostPerUnit:1}]));
+  const result=await request(url,{anonymous:true});assert.equal(result.status,200);assert.match(result.headers.get('cache-control'),/no-store/);assert.match(result.data,/80,00/);assert.match(result.data,/&lt;img/);assert.doesNotMatch(result.data,/<img src=x/);assert.equal((result.data.match(/Correo ordinario:/g)||[]).length,1);
+  assert.equal((await request('/legal/condiciones?items='+encodeURIComponent(JSON.stringify([{id:'missing',qty:1}])),{anonymous:true})).status,400);
+  assert.equal((await request('/legal/condiciones?items='+encodeURIComponent(JSON.stringify([{id:'p1',qty:1.5}])),{anonymous:true})).status,400);
 });

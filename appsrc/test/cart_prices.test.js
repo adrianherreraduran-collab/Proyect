@@ -32,11 +32,12 @@ function render(products, cart, quote = null) {
 test('el carrito sin descuento muestra solo el precio real y conserva el transporte gratis independiente', () => {
   const result = render([{ id: 'p', title: 'Monomando', price: 82.6, regularPrice: 82.6, customerPrice: 82.6 }], [{ id: 'p', qty: 1 }], { regularAmount: 55.39, amount: 55.39, customerAmount: 0, freeTransport: true });
   assert.match(result.items, /Precio<\/span><strong>82,60 € \/ ud\./);
+  assert.doesNotMatch(result.items,/Subtotal \(1/);
   assert.doesNotMatch(result.items, /Descuento|Precio original|Precio final/);
   assert.doesNotMatch(result.total, /Descuento|Precio original|Precio final/);
-  assert.match(result.total, /Precio de los productos: <b>82,60 €/);
-  assert.match(result.total, /Precio del transporte: 55,39 €/);
-  assert.match(result.total, /Transporte gratis: 0,00 €/);
+  assert.match(result.total, /Productos: <b>82,60 €/);
+  assert.doesNotMatch(result.total, /Precio del transporte|55,39|Transporte gratis:|0,00/);
+  assert.match(result.total, /Transporte gratis/);
   assert.match(result.total, /Total: 82,60 €/);
 });
 
@@ -45,8 +46,8 @@ test('el descuento de cliente conserva precios unitarios y actualiza importe y a
   const result = render([product], [{ id: 'p', qty: 2 }]);
   assert.match(result.items, /Descuento aplicado \(20 %\)<\/span><strong>-20,00 € \/ ud\./);
   assert.match(result.items, /Subtotal \(2 unidades\)<\/span><strong>160,00 €/);
-  assert.match(result.total, /Precio original de los productos: <b>200,00 €/);
-  assert.match(result.total, /Descuento aplicado \(20 %\): <b>-40,00 €/);
+  assert.match(result.total, /Productos: <b>160,00 €/);
+  assert.doesNotMatch(result.total, /Precio original|Descuento aplicado|Precio final/);
   result.context.cart[0].qty = 3; result.context.renderCart();
   assert.match(result.elements.cartTotal.innerHTML.replace(/\u00a0/g, ' '), /Total: 240,00 €/);
 });
@@ -54,22 +55,24 @@ test('el descuento de cliente conserva precios unitarios y actualiza importe y a
 test('la oferta de producto se refleja aunque el cliente no tenga descuento personalizado', () => {
   const result = render([{ id: 'p', title: 'Producto en oferta', price: 100, regularPrice: 100, salePrice: 75, onOffer: true, discountPct: 25 }], [{ id: 'p', qty: 3 }], { amount: 25 });
   assert.match(result.items, /Descuento aplicado \(25 %\)<\/span><strong>-25,00 € \/ ud\./);
-  assert.match(result.total, /Descuento aplicado \(25 %\): <b>-75,00 €/);
+  assert.match(result.total, /Productos: <b>225,00 €/);
+  assert.doesNotMatch(result.total, /Descuento aplicado/);
   assert.match(result.total, /Total: 250,00 €/);
 });
 
 test('oferta y descuento de cliente muestran el ahorro efectivo sin sumar porcentajes incorrectamente', () => {
   const result = render([{ id: 'p', title: 'Producto', price: 100, regularPrice: 100, salePrice: 80, customerPrice: 72, onOffer: true, discountPct: 20, customerDiscountPct: 10 }], [{ id: 'p', qty: 3 }], { amount: 25 });
   assert.match(result.items, /Descuento aplicado \(28 %\)<\/span><strong>-28,00 € \/ ud\./);
-  assert.match(result.items, /Oferta: 20 % · Cliente preferente: 10 %/);
-  assert.match(result.total, /Descuento aplicado \(28 %\): <b>-84,00 €/);
-  assert.match(result.total, /Precio final de los productos: <b>216,00 €/);
+  assert.match(result.items, /Oferta y cliente preferente/);
+  assert.match(result.total, /Productos: <b>216,00 €/);
+  assert.doesNotMatch(result.total, /Descuento aplicado|Precio final/);
   assert.match(result.total, /Total: 241,00 €/);
 });
 
-test('el porcentaje del resumen se pondera por precios y cantidades y mantiene precisión en céntimos', () => {
+test('el resumen suma artículos con beneficios distintos y mantiene precisión en céntimos', () => {
   const result = render([{ id: 'a', title: 'Descontado', price: 100, customerPrice: 80 }, { id: 'b', title: 'Sin descuento', price: 50 }], [{ id: 'a', qty: 2 }, { id: 'b', qty: 3 }]);
-  assert.match(result.total, /Descuento aplicado \(11,43 %\): <b>-40,00 €/);
+  assert.match(result.total, /Productos: <b>310,00 €/);
+  assert.doesNotMatch(result.total, /Descuento aplicado/);
   assert.match(result.total, /Total: 310,00 €/);
   const cents = result.context.window.fvmProductPriceDetails({ price: 99.99, customerPrice: 82.49 }, 3);
   assert.equal(cents.original, 299.97); assert.equal(cents.subtotal, 247.47);

@@ -20,6 +20,6 @@
     const subtotal = Number(order.subtotal || 0), regularDelivery = Number(order.regularDelivery ?? order.delivery ?? 0);
     const discount = window.fvmDiscountBreakdown(original, subtotal);
     const products = discount.amount > 0 ? '<div>Precio original de los productos: <b>' + money(discount.original) + '</b></div><div>Descuento aplicado (' + percent(discount.pct) + '): <b>-' + money(discount.amount) + '</b></div><div>Precio final de los productos: <b>' + money(subtotal) + '</b></div>' : '<div>Precio de los productos: <b>' + money(subtotal) + '</b></div>';
-    return '<div style="margin-top:16px;font-size:13px;line-height:1.9">' + products + '<div>Precio del transporte: <b>' + money(regularDelivery) + '</b></div><div>' + (order.freeTransport ? 'Transporte gratis · Cliente preferente: <b>' + money(0) : 'Transporte: <b>' + money(order.delivery)) + '</b></div><div class="fvmOrderTotals"><span>Total</span><strong>' + money(order.total) + '</strong></div></div>';
+    return '<div style="margin-top:16px;font-size:13px;line-height:1.9">' + products + (order.freeTransport ? '<div>Transporte gratis</div>' : '<div>Transporte: <b>' + money(order.delivery) + '</b></div>') + '<div class="fvmOrderTotals"><span>Total</span><strong>' + money(order.total) + '</strong></div></div>';
   };
 })();
