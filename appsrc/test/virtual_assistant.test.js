@@ -40,6 +40,9 @@ test('datos sensibles, políticas, compras y transporte se resuelven localmente'
   let network=0;const assistant=createAssistant(deps,{env,fetch:async()=>{network++;return ok('AI');}});
   for(const message of ['Mi email es privado@example.com, MB0001','Mi DNI es 42350487N','teléfono 613700107','Transporte MB0001','Cómo comprar','garantía MB0001'])await query(assistant,message,{user});
   assert.equal(network,0);assert.equal(sensitive('Me llamo Ana y busco MB0001'),true);
+  const general={...data,products:[{...products[0],description:'Plazos de transporte y entrega'}]};
+  assert.equal((await query(assistant,'Transporte y plazos',{data:general})).products.length,0);
+  assert.equal((await query(assistant,'Transporte MB0001',{data:general})).products.length,1);
 });
 test('la IA exige confirmación del plan gratis; no usa otras claves API ni modelos de pago',async()=>{
   for(const configuration of [{},{...env,FVM_ASSISTANT_FREE_PLAN_CONFIRMED:'false'},{...env,CLOUDFLARE_ACCOUNT_ID:'../unsafe'},{OPENAI_API_KEY:'unused-key'}]){

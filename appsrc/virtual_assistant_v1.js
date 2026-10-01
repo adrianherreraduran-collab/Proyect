@@ -7,7 +7,7 @@ const MODEL = '@cf/meta/llama-3.2-3b-instruct';
 const normalize = value => String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const clean = (value, limit = 1200) => String(value || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, limit);
 const money = value => Number(value || 0).toLocaleString('es-ES', {style:'currency',currency:'EUR'});
-const stopWords = new Set('a al algo algun alguna aqui con cual cuales como de del el en es esta este hay la las lo los me mi para por precio producto productos que quiero se si sobre su tienes tiene un una y'.split(' '));
+const stopWords = new Set('a al algo algun alguna aqui con cual cuales como de del el en es esta este hay la las lo los me mi para por precio producto productos que quiero se si sobre su tienes tiene un una y ayuda busco buscar necesito encontrar dime informacion caracteristicas transporte envio envios entrega entregas plazo plazos comprar compra pagar pago pagos devolucion devoluciones devolver garantia descuento descuentos'.split(' '));
 
 function findProducts(products, message, productId = '') {
   const published = (products || []).filter(product => product.published);
