@@ -32,4 +32,9 @@ test('el carrito descarta respuestas antiguas, escapa títulos y vuelve a consul
   assert.equal(requests.length,3);
   requests[2].resolve({ok:true,json:async() => info(2,50)}); await third;
   assert.match(host.innerHTML,/100,00/);
+  delete product.returnPolicy; context.renderCart(); const fourth = tick();
+  requests[3].resolve({ok:true,json:async() => ({ready:true,lines:[{title:'Grifo',qty:2,mode:'seller_paid',maxCostPerUnit:0,maxCostForQuantity:0}]})}); await fourth;
+  assert.match(host.innerHTML,/FVMarket organiza y paga/); assert.match(host.innerHTML,/coste para ti: 0 €/);
+  assert.match(host.innerHTML,/Correo ordinario/); assert.match(host.innerHTML,/Artículos voluminosos/); assert.match(host.innerHTML,/Falta de información/);
+  assert.doesNotMatch(host.innerHTML,/pendiente de confirmar|antes de pagar\.<\/span>/);
 });

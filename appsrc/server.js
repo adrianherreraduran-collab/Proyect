@@ -650,7 +650,7 @@ function stripeIntegrationIdentifier(){const alphabet='abcdefghijklmnopqrstuvwxy
 async function createStripePaymentLink(req,d,o,accessToken=''){
   if(!stripe)throw new Error('Stripe no está configurado');
   if(!legalIdentity.paymentAllowed(d.settings,process.env.STRIPE_SECRET_KEY))throw new Error('Los pagos reales están temporalmente deshabilitados. Puedes contactar con FVMarket para consultar tu pedido.');
-  if(!returnsPolicy.paymentAllowed(d,o.items||[],process.env.STRIPE_SECRET_KEY))throw new Error('Falta confirmar la información de devolución antes del pago real.');
+  if(!returnsPolicy.paymentAllowed(d,o.items||[],process.env.STRIPE_SECRET_KEY))throw new Error('Algún artículo del pedido ya no está disponible. Revisa el pedido antes de pagar.');
   if(paidOrderStatus(o.status))throw new Error('Este pedido ya está pagado');
   const returnsInformation=returnsPolicy.information(d,o.items||[]),returnsFingerprint=returnsPolicy.fingerprint(returnsInformation);
   if(o.returnsDisclosureFingerprint===returnsFingerprint&&o.stripeSessionUrl&&Number(o.stripeSessionExpiresAt||0)>Date.now())return {id:String(o.stripeSessionId||''),url:o.stripeSessionUrl,reused:true};
@@ -696,7 +696,7 @@ async function confirmStripePayment(req,session){
   return {ok:true,order:o,invoice};
 }
 
-app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',release:'2026-10-01-devoluciones-v1',paymentProvider:'stripe',stripeConfigured:!!stripe,stripeWebhook:!!(stripe&&STRIPE_WEBHOOK_SECRET),emailConfigured:!!(RESEND_API_KEY&&EMAIL_FROM),billing:true,guestCheckout:false}));
+app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',release:'2026-10-01-devoluciones-v2',paymentProvider:'stripe',stripeConfigured:!!stripe,stripeWebhook:!!(stripe&&STRIPE_WEBHOOK_SECRET),emailConfigured:!!(RESEND_API_KEY&&EMAIL_FROM),billing:true,guestCheckout:false}));
 app.get('/api/products',optionalAuth,(req,res)=>{
   res.set('Cache-Control','private, no-store').vary('Authorization');
   const d=read(),q=String(req.query.q||'').toLowerCase().trim(),category=String(req.query.category||'').toLowerCase().trim(),customer=req.user?(d.users||[]).find(x=>String(x.id||'')===String(req.user.id||'')):null;
@@ -756,7 +756,7 @@ function requireSellerForLivePayment(req,res,next){
 }
 function requireReturnsForLivePayment(data,items,res){
   if(returnsPolicy.paymentAllowed(data,items,process.env.STRIPE_SECRET_KEY))return true;
-  res.status(503).json({error:'Falta confirmar la información y el coste de devolución de algún artículo. Contacta con FVMarket antes de pagar.',code:'RETURN_INFORMATION_PENDING'});
+  res.status(503).json({error:'Algún artículo del pedido ya no está disponible. Revisa el pedido antes de pagar.',code:'RETURN_ITEMS_UNAVAILABLE'});
   return false;
 }
 function legalPage(section='condiciones',settings={}){

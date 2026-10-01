@@ -199,7 +199,7 @@ test('el vendedor confirmado permite el pago y un cambio de domicilio vuelve a c
     const quote = server.decorateTransportQuote({ id: 'rfq-legal', amount: 25 }, profile.id, items, customer);
     const body = { items, customer, rutaFVQuote: quote, termsAccepted: true, privacyAccepted: true };
     assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 200);
-    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-devoluciones-v1');
+    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-devoluciones-v2');
     const before = server.read().orders.length;
     assert.equal((await request('/api/admin/settings', { method: 'PUT', body: { fiscalAddress: 'Otra calle 3' } })).status, 200);
     assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 503);
@@ -245,24 +245,31 @@ test('solo el administrador confirma las devoluciones y el catálogo público no
   assert.equal(server.read().products[0].returnPolicy.mode,'non_postal');
   await request('/api/admin/products/p1',{method:'PUT',body:{weightKg:59}});
   assert.equal(server.read().products[0].returnPolicy.mode,'pending');
-  assert.equal((await request('/api/admin/readiness')).data.returns.ready,false);
+  assert.equal((await request('/api/admin/readiness')).data.returns.ready,true);
+  assert.equal((await request('/api/products',{anonymous:true})).data[0].returnPolicy.mode,'seller_paid');
 });
 
-test('las tres entradas rechazan pagos reales sin información de devolución antes de crear o reutilizar sesiones', async () => {
+test('las tres entradas informan de devoluciones a cargo de FVMarket sin exigir clasificación manual', async () => {
   reset(); await request('/api/admin/settings',{method:'PUT',body:sellerFixture()});
   const previousKey = process.env.STRIPE_SECRET_KEY, count = checkoutCalls.length;
   const data = server.read(); delete data.products[0].returnPolicy;
-  data.orders.push({id:'return-order',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000});
+  data.orders.push({id:'return-order',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],stripeSessionId:'cs_return_old',stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000});
   data.quotes.push({id:'return-quote',userId:'customer',status:'aceptado',items:[{productId:'p1',qty:1}],orderId:'return-order'}); server.save(data);
-  const before = server.read(), customer = {...profile,...profile.deliveryAddress}, items = [{id:'p1',qty:1,weightKg:3}];
+  const customer = {...profile,...profile.deliveryAddress}, items = [{id:'p1',qty:1,weightKg:3}];
   const quote = server.decorateTransportQuote({id:'return-transport',amount:25},profile.id,items,customer);
   process.env.STRIPE_SECRET_KEY = 'sk_live_isolated_mock_never_sent';
   try {
     for (const [url,id,role] of [['/api/checkout/stripe','customer','customer'],['/api/quotes/return-quote/payment-link','customer','customer'],['/api/admin/orders/return-order/payment-link','admin','admin']]) {
       const response = await request(url,{method:'POST',id,role,body:{items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true}});
-      assert.equal(response.status,503,url); assert.equal(response.data.code,'RETURN_INFORMATION_PENDING');
+      assert.equal(response.status,200,url); assert.notEqual(response.data.url,'https://checkout.example.com/old');
+      assert.match(checkoutCalls.at(-1).custom_text.submit.message,/FVMarket organiza y paga/);
+      assert.match(checkoutCalls.at(-1).custom_text.submit.message,/0 € para ti/);
     }
-    assert.equal(checkoutCalls.length,count); assert.deepEqual(server.read().orders,before.orders); assert.deepEqual(server.read().quotes,before.quotes);
+    assert.equal(checkoutCalls.length,count+2);
+    const saved = server.read().orders.find(order=>order.id==='return-order');
+    assert.equal(saved.returnsInformation.lines[0].returnPayer,'seller');
+    assert.equal(saved.returnsInformation.lines[0].maxCostForQuantity,0);
+    assert.equal(saved.returnsInformation.version,'2026-10-01-devoluciones-v2');
   } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
 });
 
@@ -291,7 +298,7 @@ test('un pago informado conserva su tarifa y una modificación exige una sesión
   const data = server.read(); delete data.products[0].returnPolicy; server.save(data);
   const order = data.orders[0];
   const testLink = await request('/api/admin/orders/'+order.id+'/payment-link',{method:'POST'});
-  assert.equal(testLink.status,200); assert.match(checkoutCalls.at(-1).custom_text.submit.message,/pago de prueba/);
+  assert.equal(testLink.status,200); assert.match(checkoutCalls.at(-1).custom_text.submit.message,/FVMarket organiza y paga/);
 });
 
 test('si Stripe no puede cerrar el enlace anterior no se crea una segunda sesión', async () => {
