@@ -33,6 +33,19 @@ let listener, origin;
 test.after(async () => { if (listener) await new Promise(resolve => listener.close(resolve)); listener = null; global.fetch = nativeFetch; });
 async function ready() { if (!listener) { listener = app.listen(0, '127.0.0.1'); await new Promise(resolve => listener.once('listening', resolve)); origin = 'http://127.0.0.1:' + listener.address().port; } }
 async function request(url, { method = 'GET', id = 'admin', role = 'admin', body, headers = {}, anonymous = false } = {}) { await ready(); const response = await nativeFetch(origin + url, { method, redirect:'manual', headers: { ...(anonymous ? {} : { Authorization: 'Bearer ' + token(id, role) }), ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined }); const text = await response.text(); let data; try { data = JSON.parse(text); } catch { data = text; } return { status: response.status, data, headers: response.headers }; }
+test('el asistente usa precios actuales y no acepta identidad ni información de proveedor del navegador',async()=>{
+  reset();
+  const status=await request('/api/assistant/status',{anonymous:true});assert.equal(status.status,200);assert.equal(status.data.aiConfigured,false);
+  const anon=await request('/api/assistant/message',{anonymous:true,method:'POST',body:{message:'TP0001',userId:'customer',discountPct:99}});assert.equal(anon.status,200);assert.equal(anon.data.products[0].price,100);assert.equal(anon.data.products[0].originalPrice,undefined);assert.doesNotMatch(JSON.stringify(anon.data),/Proveedor privado|sourcePrice|sourceProvider/);
+  const own=await request('/api/assistant/message',{id:'customer',role:'customer',method:'POST',body:{message:'TP0001'}});assert.equal(own.status,200);assert.equal(own.data.products[0].price,80);assert.equal(own.data.products[0].originalPrice,100);assert.match(own.headers.get('cache-control'),/no-store/);
+  for(const message of ['', 'x'.repeat(501),{bad:'input'}])assert.equal((await request('/api/assistant/message',{anonymous:true,method:'POST',body:{message}})).status,400);
+});
+test('el asistente solo consulta pedidos de la sesión y rechaza tokens no válidos',async()=>{
+  reset();const data=server.read();data.orders.push({id:'one',number:'FVM-111',userId:'customer',status:'entregado',items:[],total:100},{id:'other',number:'FVM-222',userId:'admin',status:'entregado',customer:{name:'PRIVATE OTHER'},items:[],total:10});server.save(data);
+  const own=await request('/api/assistant/message',{id:'customer',role:'customer',method:'POST',body:{message:'Mis pedidos',userId:'admin'}});assert.match(own.data.answer,/FVM-111: Pedido entregado/);assert.doesNotMatch(JSON.stringify(own.data),/FVM-222|PRIVATE OTHER/);
+  const anon=await request('/api/assistant/message',{anonymous:true,method:'POST',body:{message:'pedido FVM-111'}});assert.doesNotMatch(anon.data.answer,/FVM-111/);
+  const bad=await request('/api/assistant/message',{anonymous:true,headers:{Authorization:'Bearer invalid'},method:'POST',body:{message:'TP0001'}});assert.equal(bad.status,401);
+});
 test('la API exige autenticación, roles vigentes y cuentas activas', async () => {
   reset(); assert.equal((await request('/api/admin/users', { anonymous: true })).status, 401);
   assert.equal((await request('/api/admin/users', { id: 'customer', role: 'admin' })).status, 403);
