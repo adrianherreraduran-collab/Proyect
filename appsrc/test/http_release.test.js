@@ -9,10 +9,10 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 process.env.DATA_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fvm-http-')), 'data.json');
 process.env.JWT_SECRET = 'http-integration-secret'; process.env.STRIPE_SECRET_KEY = 'sk_test_isolated'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_isolated'; process.env.RESEND_API_KEY = 're_isolated'; process.env.EMAIL_FROM = 'test@example.com'; process.env.PUBLIC_URL = 'http://localhost';
-const checkoutCalls = []; let quoteCalls = 0; let emails = 0; let counter = 0;
+const checkoutCalls = [], expiredSessions = []; let expirationFailure = false; let quoteCalls = 0; let emails = 0; let counter = 0;
 const originalLoad = Module._load;
 Module._load = function (name, ...args) {
-  if (name === 'stripe') return class { constructor() { this.checkout = { sessions: { create: async payload => { checkoutCalls.push(payload); return { id: 'cs_' + (++counter), url: 'https://checkout.stripe.com/isolated', expires_at: Math.floor(Date.now() / 1000) + 1200 }; } } }; this.webhooks = { constructEvent: (body, signature) => { if (signature !== 'isolated-signature') throw Error('invalid'); return JSON.parse(body); } }; } };
+  if (name === 'stripe') return class { constructor() { this.checkout = { sessions: { create: async payload => { checkoutCalls.push(payload); return { id: 'cs_' + (++counter), url: 'https://checkout.stripe.com/isolated', expires_at: Math.floor(Date.now() / 1000) + 1200 }; }, expire: async id => { if(expirationFailure)throw Error('isolated expiration failure'); expiredSessions.push(id); return {id,status:'expired'}; }, retrieve: async () => ({status:'open'}) } }; this.webhooks = { constructEvent: (body, signature) => { if (signature !== 'isolated-signature') throw Error('invalid'); return JSON.parse(body); } }; } };
   return originalLoad.call(this, name, ...args);
 };
 const { app, _test: server } = require('../server'); Module._load = originalLoad;
@@ -25,7 +25,7 @@ global.fetch = async (url, options) => {
 process.env.RUTAFV_API_URL = ''; // No real transport or customer email calls are allowed.
 const profile = { id: 'customer', role: 'customer', name: 'Ana López', firstName: 'Ana', lastName: 'López', email: 'ana@example.com', emailVerified: true, nifNie: '42350448L', phone: '600123123', billingAddress: 'Calle Uno 1', billingCity: 'Costa Calma', billingPostalCode: '35627', deliveryAddress: { address: 'Calle Uno 1', city: 'Costa Calma', postalCode: '35627', validated: true }, discountPct: 20, freeTransport: true };
 const passwordHash = bcrypt.hashSync('isolated-password-123', 4);
-const fixture = () => ({ users: [{ id: 'admin', username: 'admin-test', role: 'admin', email: 'admin@example.com', password: passwordHash, emailVerified: true }, { ...profile, password: passwordHash }, { id: 'operator', role: 'operator', password: passwordHash, emailVerified: true }], settings: { adminCredentialsInitializedV14: true, igic: 7 }, products: [{ id: 'p1', title: 'Producto prueba', ref: 'TP0001', price: 100, weightKg: 3, published: true, sourcePrice: 40, sourceProvider: 'Proveedor privado', images: [{ url: 'https://images.example.com/p1.jpg' }] }], orders: [], quotes: [], invoices: [], reviews: [], orderReviews: [] });
+const fixture = () => ({ users: [{ id: 'admin', username: 'admin-test', role: 'admin', email: 'admin@example.com', password: passwordHash, emailVerified: true }, { ...profile, password: passwordHash }, { id: 'operator', role: 'operator', password: passwordHash, emailVerified: true }], settings: { adminCredentialsInitializedV14: true, igic: 7 }, products: [{ id: 'p1', title: 'Producto prueba', ref: 'TP0001', price: 100, weightKg: 3, published: true, returnPolicy: {mode:'postal',maxCostPerUnit:null}, sourcePrice: 40, sourceProvider: 'Proveedor privado', images: [{ url: 'https://images.example.com/p1.jpg' }] }], orders: [], quotes: [], invoices: [], reviews: [], orderReviews: [] });
 function reset() { fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture())); }
 const sellerFixture = () => ({ fiscalName: 'Ana López García', fiscalNif: '42350448L', fiscalAddress: 'Calle Prueba 1', fiscalCity: 'Tuineje', fiscalPostalCode: '35620', legalEmail: 'ana@example.com', contactPhone: '600123123', legalIdentityConfirmed: true });
 function token(id = 'admin', role = 'admin') { return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '1h' }); }
@@ -199,12 +199,110 @@ test('el vendedor confirmado permite el pago y un cambio de domicilio vuelve a c
     const quote = server.decorateTransportQuote({ id: 'rfq-legal', amount: 25 }, profile.id, items, customer);
     const body = { items, customer, rutaFVQuote: quote, termsAccepted: true, privacyAccepted: true };
     assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 200);
-    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-identidad-v1');
+    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-devoluciones-v1');
     const before = server.read().orders.length;
     assert.equal((await request('/api/admin/settings', { method: 'PUT', body: { fiscalAddress: 'Otra calle 3' } })).status, 200);
     assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 503);
     assert.equal(server.read().orders.length, before);
   } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
+});
+
+test('devoluciones y modelo son públicos, opcionales y no condicionan el desistimiento a comprar al proveedor', async () => {
+  reset(); await request('/api/admin/settings', {method:'PUT',body:sellerFixture()});
+  const page = await request('/legal/devoluciones', {anonymous:true});
+  assert.equal(page.status,200); assert.match(page.data,/14 días naturales/); assert.match(page.data,/3 años/);
+  assert.match(page.data,/sin explicar el motivo/); assert.match(page.data,/lo que ocurra primero/);
+  assert.match(page.data,/no elimina este derecho/); assert.match(page.data,/FVMarket organiza y paga/);
+  assert.doesNotMatch(page.data,/reembolsos aprobados|caso por caso/i);
+  const conditions = await request('/legal/condiciones', {anonymous:true});
+  assert.match(conditions.data,/30 días naturales/); assert.doesNotMatch(conditions.data,/antes de que se encargue la mercancía/);
+  const count = emails, form = await request('/legal/desistimiento', {anonymous:true});
+  assert.equal(form.status,200); assert.match(form.data,/No envía una solicitud/);
+  assert.match(form.data,/ana@example.com/); assert.doesNotMatch(form.data,/id="withdrawalReason"/);
+  const download = await request('/legal/desistimiento/modelo.txt', {anonymous:true});
+  assert.equal(download.status,200); assert.match(download.headers.get('content-disposition'),/attachment/);
+  assert.match(download.data,/Ana López García/); assert.match(download.data,/solo si se presenta en papel/);
+  assert.equal(emails,count);
+});
+
+test('solo el administrador confirma las devoluciones y el catálogo público no expone su identidad interna', async () => {
+  reset();
+  const url = '/api/admin/products/p1/return-policy';
+  const policy = {mode:'non_postal',maxCostPerUnit:25.75,confirmed:true};
+  assert.equal((await request(url,{method:'PUT',id:'customer',role:'customer',body:policy})).status,403);
+  assert.equal((await request(url,{method:'PUT',body:{...policy,confirmed:false}})).status,400);
+  assert.equal((await request(url,{method:'PUT',body:{...policy,maxCostPerUnit:null}})).status,400);
+  assert.equal((await request(url,{method:'PUT',body:policy})).status,200);
+  const products = await request('/api/products',{anonymous:true});
+  assert.deepEqual(products.data[0].returnPolicy,{mode:'non_postal',maxCostPerUnit:25.75});
+  assert.equal(products.data[0].sourceProvider,undefined);
+  const info = await request('/api/returns/information',{method:'POST',anonymous:true,body:{items:[{id:'p1',qty:3,returnPolicy:{mode:'postal',maxCostPerUnit:0}}]}});
+  assert.equal(info.status,200); assert.equal(info.data.nonPostalMaxCost,77.25);
+  assert.equal(info.data.lines[0].reviewedBy,undefined);
+  assert.equal((await request('/api/returns/information',{method:'POST',anonymous:true,body:{items:[{id:'private',qty:1}]}})).status,400);
+  assert.equal((await request('/api/returns/information',{method:'POST',anonymous:true,body:{items:[{id:'p1',qty:0.5}]}})).status,400);
+  await request('/api/admin/products/p1',{method:'PUT',body:{returnPolicy:{mode:'postal'}}});
+  assert.equal(server.read().products[0].returnPolicy.mode,'non_postal');
+  await request('/api/admin/products/p1',{method:'PUT',body:{weightKg:59}});
+  assert.equal(server.read().products[0].returnPolicy.mode,'pending');
+  assert.equal((await request('/api/admin/readiness')).data.returns.ready,false);
+});
+
+test('las tres entradas rechazan pagos reales sin información de devolución antes de crear o reutilizar sesiones', async () => {
+  reset(); await request('/api/admin/settings',{method:'PUT',body:sellerFixture()});
+  const previousKey = process.env.STRIPE_SECRET_KEY, count = checkoutCalls.length;
+  const data = server.read(); delete data.products[0].returnPolicy;
+  data.orders.push({id:'return-order',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000});
+  data.quotes.push({id:'return-quote',userId:'customer',status:'aceptado',items:[{productId:'p1',qty:1}],orderId:'return-order'}); server.save(data);
+  const before = server.read(), customer = {...profile,...profile.deliveryAddress}, items = [{id:'p1',qty:1,weightKg:3}];
+  const quote = server.decorateTransportQuote({id:'return-transport',amount:25},profile.id,items,customer);
+  process.env.STRIPE_SECRET_KEY = 'sk_live_isolated_mock_never_sent';
+  try {
+    for (const [url,id,role] of [['/api/checkout/stripe','customer','customer'],['/api/quotes/return-quote/payment-link','customer','customer'],['/api/admin/orders/return-order/payment-link','admin','admin']]) {
+      const response = await request(url,{method:'POST',id,role,body:{items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true}});
+      assert.equal(response.status,503,url); assert.equal(response.data.code,'RETURN_INFORMATION_PENDING');
+    }
+    assert.equal(checkoutCalls.length,count); assert.deepEqual(server.read().orders,before.orders); assert.deepEqual(server.read().quotes,before.quotes);
+  } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
+});
+
+test('un pago informado conserva su tarifa y una modificación exige una sesión con la información actualizada', async () => {
+  reset(); await request('/api/admin/settings',{method:'PUT',body:sellerFixture()});
+  await request('/api/admin/products/p1/return-policy',{method:'PUT',body:{mode:'non_postal',maxCostPerUnit:30,confirmed:true}});
+  const previousKey = process.env.STRIPE_SECRET_KEY;
+  process.env.STRIPE_SECRET_KEY = 'rk_live_isolated_mock_never_sent';
+  try {
+    const customer = {...profile,...profile.deliveryAddress}, items = [{id:'p1',qty:2,weightKg:3}];
+    const quote = server.decorateTransportQuote({id:'return-known',amount:25},profile.id,items,customer);
+    const created = await request('/api/checkout/stripe',{method:'POST',id:'customer',role:'customer',body:{items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true}});
+    assert.equal(created.status,200);
+    const order = server.read().orders[0]; assert.equal(order.returnsInformation.nonPostalMaxCost,60);
+    assert.match(checkoutCalls.at(-1).custom_text.submit.message,/60,00/);
+    assert.equal(checkoutCalls.at(-1).line_items[0].price_data.unit_amount,8000);
+    const count = checkoutCalls.length, expiredCount = expiredSessions.length;
+    const reused = await request('/api/admin/orders/'+order.id+'/payment-link',{method:'POST'});
+    assert.equal(reused.data.reused,true); assert.equal(checkoutCalls.length,count);
+    await request('/api/admin/products/p1/return-policy',{method:'PUT',body:{mode:'non_postal',maxCostPerUnit:35,confirmed:true}});
+    const retained = server.publicOrder(server.read().orders[0]); assert.equal(retained.returnsInformation.nonPostalMaxCost,60);
+    const renewed = await request('/api/admin/orders/'+order.id+'/payment-link',{method:'POST'});
+    assert.equal(renewed.status,200); assert.equal(renewed.data.reused,false); assert.equal(checkoutCalls.length,count+1); assert.equal(expiredSessions.length,expiredCount+1); assert.equal(expiredSessions.at(-1),order.stripeSessionId);
+    assert.match(checkoutCalls.at(-1).custom_text.submit.message,/70,00/);
+  } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
+  const data = server.read(); delete data.products[0].returnPolicy; server.save(data);
+  const order = data.orders[0];
+  const testLink = await request('/api/admin/orders/'+order.id+'/payment-link',{method:'POST'});
+  assert.equal(testLink.status,200); assert.match(checkoutCalls.at(-1).custom_text.submit.message,/pago de prueba/);
+});
+
+test('si Stripe no puede cerrar el enlace anterior no se crea una segunda sesión', async () => {
+  reset(); const data = server.read();
+  data.orders.push({id:'renew-fails',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],stripeSessionId:'cs_old',stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000}); server.save(data);
+  const before = server.read().orders, count = checkoutCalls.length; expirationFailure = true;
+  try {
+    const result = await request('/api/admin/orders/renew-fails/payment-link',{method:'POST'});
+    assert.equal(result.status,502); assert.match(result.data.error,/cerrar el enlace anterior/);
+    assert.equal(checkoutCalls.length,count); assert.deepEqual(server.read().orders,before);
+  } finally { expirationFailure = false; }
 });
 
 test('los cambios de rol invalidan también el acceso a la factura impresa y las rutas desconocidas devuelven JSON', async () => {

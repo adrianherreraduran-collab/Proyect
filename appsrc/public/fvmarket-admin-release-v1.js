@@ -61,7 +61,7 @@
     const check = async () => {
       try {
         const status = await api('/api/admin/readiness');
-        const checks = [['Datos en Postgres', status.persistence.enabled && status.persistence.healthy], ['Stripe en modo real', status.stripe.live && status.stripe.webhook], ['Correo transaccional', status.email.configured], ['Correo de alertas del admin', !!status.email.adminRecipient], ['Identificación legal del vendedor confirmada', status.sellerIdentity?.ready === true]];
+        const checks = [['Datos en Postgres', status.persistence.enabled && status.persistence.healthy], ['Stripe en modo real', status.stripe.live && status.stripe.webhook], ['Correo transaccional', status.email.configured], ['Correo de alertas del admin', !!status.email.adminRecipient], ['Identificación legal del vendedor confirmada', status.sellerIdentity?.ready === true], ['Información de devolución del catálogo confirmada', status.returns?.ready === true]];
         $('fvmReadinessResult').innerHTML = checks.map(([label, valid]) => '<p style="color:' + (valid ? '#397820' : '#a32323') + '"><b>' + (valid ? '✓ ' : 'Pendiente: ') + '</b>' + label + '</p>').join('') + '<small>La permanencia de la base de datos y las copias de seguridad se comprueban en Render.</small>';
         window.fvmRenderSellerIdentity(status.sellerIdentity);
         if ($('adminAlertEmail') && ! $('adminAlertEmail').value && status.email.adminRecipient) $('adminAlertEmail').value = status.email.adminRecipient;
