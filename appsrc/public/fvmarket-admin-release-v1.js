@@ -53,22 +53,5 @@
     if (!box || !status) return;
     box.innerHTML = status.ready ? '<b>Datos del vendedor confirmados.</b> Antes de abrir ventas reales debes completar también fiscalidad, condiciones, devoluciones y los demás controles de revisión.' : '<b>Identificación del vendedor pendiente.</b>' + (status.issues?.length ? '<ul>' + status.issues.map(issue => '<li>' + esc(issue.label) + '</li>').join('') + '</ul>' : '<p>Revisa los datos y marca la casilla de confirmación al guardar.</p>') + '<p>Los pagos reales están deshabilitados mientras este punto siga pendiente. Stripe en modo de pruebas puede seguir utilizándose.</p>';
   };
-  async function readiness() {
-    if (role() !== 'admin' || !$('view-settings') || $('fvmReadiness')) return;
-    const box = document.createElement('section'); box.id = 'fvmReadiness'; box.className = 'card';
-    box.innerHTML = '<h2>Comprobación de producción</h2><div id="fvmReadinessResult">Comprobando configuración…</div><button type="button" class="btn navy">Actualizar comprobación</button>';
-    $('view-settings').appendChild(box);
-    const check = async () => {
-      try {
-        const status = await api('/api/admin/readiness');
-        const checks = [['Datos en Postgres', status.persistence.enabled && status.persistence.healthy], ['Stripe en modo real', status.stripe.live && status.stripe.webhook], ['Correo transaccional', status.email.configured], ['Correo de alertas del admin', !!status.email.adminRecipient], ['Identificación legal del vendedor confirmada', status.sellerIdentity?.ready === true], ['Información de devoluciones antes del pago', status.returns?.ready === true]];
-        $('fvmReadinessResult').innerHTML = checks.map(([label, valid]) => '<p style="color:' + (valid ? '#397820' : '#a32323') + '"><b>' + (valid ? '✓ ' : 'Pendiente: ') + '</b>' + label + '</p>').join('') + '<small>La permanencia de la base de datos y las copias de seguridad se comprueban en Render.</small>';
-        window.fvmRenderSellerIdentity(status.sellerIdentity);
-        if ($('adminAlertEmail') && ! $('adminAlertEmail').value && status.email.adminRecipient) $('adminAlertEmail').value = status.email.adminRecipient;
-      } catch (error) { $('fvmReadinessResult').textContent = error.message; }
-    };
-    box.querySelector('button').onclick = check; await check();
-  }
-  setInterval(readiness, 2000);
 })();
 
