@@ -27,6 +27,7 @@ const profile = { id: 'customer', role: 'customer', name: 'Ana López', firstNam
 const passwordHash = bcrypt.hashSync('isolated-password-123', 4);
 const fixture = () => ({ users: [{ id: 'admin', username: 'admin-test', role: 'admin', email: 'admin@example.com', password: passwordHash, emailVerified: true }, { ...profile, password: passwordHash }, { id: 'operator', role: 'operator', password: passwordHash, emailVerified: true }], settings: { adminCredentialsInitializedV14: true, igic: 7 }, products: [{ id: 'p1', title: 'Producto prueba', ref: 'TP0001', price: 100, weightKg: 3, published: true, sourcePrice: 40, sourceProvider: 'Proveedor privado', images: [{ url: 'https://images.example.com/p1.jpg' }] }], orders: [], quotes: [], invoices: [], reviews: [], orderReviews: [] });
 function reset() { fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture())); }
+const sellerFixture = () => ({ fiscalName: 'Ana López García', fiscalNif: '42350448L', fiscalAddress: 'Calle Prueba 1', fiscalCity: 'Tuineje', fiscalPostalCode: '35620', legalEmail: 'ana@example.com', contactPhone: '600123123', legalIdentityConfirmed: true });
 function token(id = 'admin', role = 'admin') { return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '1h' }); }
 let listener, origin;
 async function ready() { if (!listener) { listener = app.listen(0, '127.0.0.1'); await new Promise(resolve => listener.once('listening', resolve)); origin = 'http://127.0.0.1:' + listener.address().port; } }
@@ -138,6 +139,74 @@ test('una opinión antigua ofensiva se retira de la portada, vuelve a revisión 
   assert.equal((await request('/api/admin/reviews/experience/offensive-old',{method:'PATCH',body:{action:'approve'}})).status,400);
   assert.equal((await request('/api/admin/reviews/experience/offensive-old',{method:'PATCH',body:{action:'reject',reason:'Lenguaje ofensivo'}})).status,200);
 });
+test('aviso legal accesible y privacidad coherente con la cuenta obligatoria', async () => {
+  reset();
+  const page = await request('/legal/aviso', { anonymous: true });
+  assert.equal(page.status, 200);
+  assert.match(page.data, /Titular legal/);
+  assert.match(page.data, /Pendiente de completar/);
+  assert.match(page.data, /pagos reales están temporalmente deshabilitados/);
+  const privacy = await request('/legal/privacidad', { anonymous: true });
+  assert.match(privacy.data, /Para comprar necesitas una cuenta/);
+  assert.doesNotMatch(privacy.data, /Crear una cuenta es opcional/);
+  const home = await request('/', { anonymous: true });
+  assert.match(home.data, /href="\/legal\/aviso"/);
+});
+
+test('solo el admin confirma el vendedor y los datos no válidos se rechazan sin guardarse', async () => {
+  reset();
+  assert.equal((await request('/api/admin/settings', { method: 'PUT', id: 'customer', role: 'customer', body: sellerFixture() })).status, 403);
+  assert.equal((await request('/api/admin/settings', { method: 'PUT', body: { legalIdentityConfirmed: true } })).status, 400);
+  const invalid = await request('/api/admin/settings', { method: 'PUT', body: { fiscalNif: '42350448A' } });
+  assert.equal(invalid.status, 400);
+  assert.notEqual(server.read().settings.fiscalNif, '42350448A');
+  const data = server.read(); data.settings.rutaFVOrigin = 'Origen logístico elegido'; data.settings.rutaFVOriginAuto = false; server.save(data);
+  const saved = await request('/api/admin/settings', { method: 'PUT', body: sellerFixture() });
+  assert.equal(saved.status, 200); assert.equal(saved.data.legalIdentityStatus.ready, true);
+  assert.equal(saved.data.rutaFVOrigin, 'Origen logístico elegido');
+  const readyState = await request('/api/admin/readiness');
+  assert.equal(readyState.data.sellerIdentity.ready, true);
+  const page = await request('/legal/aviso', { anonymous: true });
+  assert.match(page.data, /Ana López García/); assert.match(page.data, /42350448L/);
+  assert.doesNotMatch(page.data, /identificación del vendedor está pendiente/);
+  await request('/api/admin/settings', { method: 'PUT', body: { fiscalAddress: 'Domicilio actualizado 2', legalIdentityConfirmedHash: saved.data.legalIdentityConfirmedHash, legalIdentityConfirmedAt: saved.data.legalIdentityConfirmedAt } });
+  assert.equal((await request('/api/admin/settings')).data.legalIdentityStatus.ready, false);
+});
+
+test('ninguna entrada crea ni reutiliza un pago real con el vendedor pendiente', async () => {
+  reset(); const previousKey = process.env.STRIPE_SECRET_KEY, count = checkoutCalls.length;
+  const data = server.read(); data.orders.push({ id: 'order-legal', userId: 'customer', status: 'pendiente_pago', stripeSessionUrl: 'https://checkout.example.com/existing', stripeSessionExpiresAt: Date.now() + 60000 });
+  data.quotes.push({ id: 'quote-legal', userId: 'customer', status: 'aceptado', orderId: 'order-legal' }); server.save(data);
+  const before = server.read();
+  process.env.STRIPE_SECRET_KEY = 'sk_live_isolated_mock_never_sent';
+  try {
+    for (const [url, id, role] of [['/api/checkout/stripe', 'customer', 'customer'], ['/api/quotes/quote-legal/payment-link', 'customer', 'customer'], ['/api/admin/orders/order-legal/payment-link', 'admin', 'admin']]) {
+      const response = await request(url, { method: 'POST', id, role, body: { items: [{ id: 'p1', qty: 1 }] } });
+      assert.equal(response.status, 503, url); assert.equal(response.data.code, 'SELLER_IDENTITY_PENDING');
+    }
+    assert.equal(checkoutCalls.length, count);
+    assert.deepEqual(server.read().orders, before.orders);
+    assert.deepEqual(server.read().quotes, before.quotes);
+  } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
+});
+
+test('el vendedor confirmado permite el pago y un cambio de domicilio vuelve a cerrarlo', async () => {
+  reset(); await request('/api/admin/settings', { method: 'PUT', body: sellerFixture() });
+  const previousKey = process.env.STRIPE_SECRET_KEY;
+  process.env.STRIPE_SECRET_KEY = 'sk_live_isolated_mock_never_sent';
+  try {
+    const customer = { ...profile, ...profile.deliveryAddress }, items = [{ id: 'p1', qty: 1, weightKg: 3 }];
+    const quote = server.decorateTransportQuote({ id: 'rfq-legal', amount: 25 }, profile.id, items, customer);
+    const body = { items, customer, rutaFVQuote: quote, termsAccepted: true, privacyAccepted: true };
+    assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 200);
+    assert.equal(server.read().orders[0].consent.termsVersion, '2026-10-01-identidad-v1');
+    const before = server.read().orders.length;
+    assert.equal((await request('/api/admin/settings', { method: 'PUT', body: { fiscalAddress: 'Otra calle 3' } })).status, 200);
+    assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body })).status, 503);
+    assert.equal(server.read().orders.length, before);
+  } finally { process.env.STRIPE_SECRET_KEY = previousKey; }
+});
+
 test('los cambios de rol invalidan también el acceso a la factura impresa y las rutas desconocidas devuelven JSON', async () => {
   const invoice = server.read().invoices[0]; // Current fixture has no invoice: use a private independent document.
   const data = server.read(); data.invoices.push({ id: 'private', userId: 'customer', orderId: 'delivered', issuedAt: new Date().toISOString(), lines: [] }); data.users.find(user => user.id === 'operator').active = false; server.save(data);
