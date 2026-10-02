@@ -15,6 +15,27 @@
   document.body.append(launcher,panel);
   const messages=$('fvmAssistantMessages'),input=$('fvmAssistantQuestion'),send=$('fvmAssistantSend');
   function message(text,role='assistant') {const node=make('div','fvmAssistantMessage'+(role==='user'?' user':''),text);messages.appendChild(node);messages.scrollTop=messages.scrollHeight;return node;}
+  function writeAnswer(node,text,request,token,signal) {
+    const active=()=>state.open && request===state.request && token===identity() && !signal.aborted;
+    if(!active())return Promise.resolve(false);
+    if(window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){node.textContent=text;return Promise.resolve(true);}
+    const letters=typeof Intl.Segmenter==='function'?[...new Intl.Segmenter('es',{granularity:'grapheme'}).segment(text)].map(part=>part.segment):Array.from(text);
+    const step=Math.max(2,Math.ceil(letters.length/300));
+    node.classList.add('isTyping');node.setAttribute('aria-busy','true');
+    return new Promise(resolve=>{
+      let position=0,timer;
+      const finish=completed=>{clearTimeout(timer);signal.removeEventListener('abort',cancel);node.classList.remove('isTyping');node.setAttribute('aria-busy','false');resolve(completed);};
+      const cancel=()=>finish(false);
+      const tick=()=>{
+        if(!active()){finish(false);return;}
+        const follow=messages.scrollHeight-messages.scrollTop-messages.clientHeight<70;
+        position=Math.min(position+step,letters.length);node.textContent=letters.slice(0,position).join('');
+        if(follow)messages.scrollTop=messages.scrollHeight;
+        if(position===letters.length)finish(true);else timer=setTimeout(tick,24);
+      };
+      signal.addEventListener('abort',cancel,{once:true});tick();
+    });
+  }
   function welcome() {
     messages.replaceChildren();message('Hola, puedo ayudarte a encontrar artículos y resolver dudas sobre tus compras. Escribe el nombre o la referencia de un producto.');
     const suggestions=make('div','fvmAssistantSuggestions');
@@ -33,8 +54,9 @@
       close();window.openProductDetail?.(id);
     }catch{message('Este artículo ya no está disponible. Actualiza el catálogo para comprobarlo.');}
   }
-  function render(result) {
-    const node=message(result.answer || 'No he podido encontrar esa información.');
+  async function render(result,request,token,signal) {
+    const node=message('');
+    if(!await writeAnswer(node,result.answer || 'No he podido encontrar esa información.',request,token,signal))return;
     if(result.mode==='ai')node.appendChild(make('div','fvmAssistantSource','Respuesta generada con IA · Consulta la ficha para confirmar.'));
     const rows=Array.isArray(result.products)?result.products:[];state.productId=rows.length===1?String(rows[0].id):'';
     for(const product of rows){const button=make('button','fvmAssistantProduct');button.type='button';button.appendChild(make('strong','',product.title));button.appendChild(make('small','','Ref. '+product.ref));const price=make('div');if(product.originalPrice>product.price){price.appendChild(make('s','',money(product.originalPrice)));price.appendChild(make('b','',money(product.price)));button.appendChild(price);button.appendChild(make('small','','Descuento aplicado: '+Number(product.discountPct).toLocaleString('es-ES')+' %'));}else{price.appendChild(make('b','',money(product.price)));button.appendChild(price);}button.appendChild(make('small','','Plazo estimado: '+product.deliveryEstimate));button.appendChild(make('small','','Ver artículo →'));button.addEventListener('click',()=>showProduct(product.id,product.ref));node.appendChild(button);}
@@ -51,7 +73,7 @@
     const request=++state.request,token=identity(),controller=new AbortController();state.controller=controller;const timeout=setTimeout(()=>controller.abort(),15000);
     try {
       const response=await fetch('/api/assistant/message',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({message:value,...(state.productId?{productId:state.productId}:{})}),signal:controller.signal});
-      const result=await response.json();if(!state.open || request!==state.request)return;if(token!==identity()){welcome();message('La sesión ha cambiado. Vuelve a realizar tu consulta.');return;}if(!response.ok)throw Error(result.error || 'No se pudo consultar la información.');render(result);
+      const result=await response.json();clearTimeout(timeout);if(!state.open || request!==state.request)return;if(token!==identity()){welcome();message('La sesión ha cambiado. Vuelve a realizar tu consulta.');return;}if(!response.ok)throw Error(result.error || 'No se pudo consultar la información.');busy.textContent='Escribiendo…';await render(result,request,token,controller.signal);
     }catch(error){if(state.open && request===state.request)message(error.name==='AbortError'?'La consulta está tardando demasiado. Inténtalo de nuevo.':error.message || 'No se pudo consultar la información.');}
     finally{clearTimeout(timeout);busy.remove();if(request===state.request){state.controller=null;state.busy=false;send.disabled=false;input.disabled=false;if(state.open)input.focus();}}
   }
