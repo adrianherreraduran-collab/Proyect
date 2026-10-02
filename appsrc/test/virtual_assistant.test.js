@@ -96,6 +96,22 @@ test('los espacios al copiar la clave se limpian y los saltos interiores no se t
   const invalid=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:'invalid\nheader'},fetch:()=>{throw Error('Must not transmit');}});
   assert.equal(invalid.status().aiConfigured,false);assert.equal((await query(invalid,'Describe MB0001')).mode,'help');
 });
+test('la configuración inválida identifica solo el ajuste que falla sin publicar valores',async()=>{
+  for(const [configuration,fields] of [
+    [{...env,CLOUDFLARE_AI_TOKEN:'SECRET invalid\nheader'},['token_format']],
+    [{...env,CLOUDFLARE_AI_TOKEN:' \n'},['token_missing']],
+    [{...env,CLOUDFLARE_ACCOUNT_ID:'SECRET invalid account'},['account_id_format']],
+    [{...env,FVM_ASSISTANT_FREE_PLAN_CONFIRMED:'false'},['free_plan_confirmation']]
+  ]){
+    const diagnostics=[];
+    const assistant=createAssistant(deps,{env:configuration,warn:details=>diagnostics.push(details),fetch:()=>{throw Error('Must not transmit');}});
+    assert.deepEqual(diagnostics,[{reason:'configuration_error',fields}]);
+    assert.deepEqual(assistant.status(),{aiConfigured:false,mode:'help',provider:null});
+    assert.equal((await query(assistant,'Describe MB0001')).mode,'help');
+    assert.deepEqual(diagnostics,[{reason:'configuration_error',fields}]);
+    assert.doesNotMatch(JSON.stringify(diagnostics),/SECRET|isolated-non-production-token|a{32}/);
+  }
+});
 test('no se lanzan más de dos consultas IA simultáneas',async()=>{
   const pending=[];const assistant=createAssistant(deps,{env,fetch:()=>new Promise(resolve=>pending.push(resolve))});
   const first=query(assistant,'MB0001'),second=query(assistant,'MB0001');assert.equal((await query(assistant,'MB0001')).mode,'help');assert.equal(pending.length,2);pending.forEach(resolve=>resolve(ok('Grifo de acero inoxidable.')));await Promise.all([first,second]);

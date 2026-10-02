@@ -108,7 +108,18 @@ function createAssistant(deps, options={}) {
   }
   const buckets=new Map();let day='',calls=0,busy=0,blockedUntil=0;
   const apiToken=()=>String(env.CLOUDFLARE_AI_TOKEN || '').trim();
-  const configured=()=>env.FVM_ASSISTANT_AI_ENABLED==='true' && env.FVM_ASSISTANT_FREE_PLAN_CONFIRMED==='true' && /^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || '') && !!apiToken() && !/\s/.test(apiToken());
+  const configurationProblems=()=>[
+    ...(env.FVM_ASSISTANT_AI_ENABLED!=='true'?['ai_enabled']:[]),
+    ...(env.FVM_ASSISTANT_FREE_PLAN_CONFIRMED!=='true'?['free_plan_confirmation']:[]),
+    ...(!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || '')?['account_id_format']:[]),
+    ...(!apiToken()?['token_missing']:/\s/.test(apiToken())?['token_format']:[])
+  ];
+  const configured=()=>configurationProblems().length===0;
+  // Report setting names once at startup, never their values or credential shape.
+  if(env.FVM_ASSISTANT_AI_ENABLED==='true'){
+    const fields=configurationProblems();
+    if(fields.length)try {warn({reason:'configuration_error',fields});} catch {}
+  }
   function status() { return {aiConfigured:configured(),mode:configured()?'ai':'help',provider:configured()?'Cloudflare':null}; }
   function limit(key) {
     const now=clock();for(const [id,value] of buckets)if(value.until<=now)buckets.delete(id);
