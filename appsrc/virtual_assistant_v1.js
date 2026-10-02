@@ -107,12 +107,14 @@ function createAssistant(deps, options={}) {
     try {warn({reason,...(Number.isInteger(status)?{status}:{}),...(codes.length?{codes}: {}),...(networkCode?{networkCode}: {})});} catch {}
   }
   const buckets=new Map();let day='',calls=0,busy=0,blockedUntil=0;
-  const apiToken=()=>String(env.CLOUDFLARE_AI_TOKEN || '').trim();
+  // A pasted Authorization header or wrapped token can contain formatting;
+  // strip that formatting before constructing the single Bearer header.
+  const apiToken=()=>String(env.CLOUDFLARE_AI_TOKEN || '').trim().replace(/^Bearer[ \t\r\n]+/i,'').replace(/[ \t\r\n]/g,'');
   const configurationProblems=()=>[
     ...(env.FVM_ASSISTANT_AI_ENABLED!=='true'?['ai_enabled']:[]),
     ...(env.FVM_ASSISTANT_FREE_PLAN_CONFIRMED!=='true'?['free_plan_confirmation']:[]),
     ...(!/^[a-f0-9]{32}$/i.test(env.CLOUDFLARE_ACCOUNT_ID || '')?['account_id_format']:[]),
-    ...(!apiToken()?['token_missing']:/\s/.test(apiToken())?['token_format']:[])
+    ...(!apiToken()?['token_missing']:/[\s\x00-\x1f\x7f]/.test(apiToken())?['token_format']:[])
   ];
   const configured=()=>configurationProblems().length===0;
   // Report setting names once at startup, never their values or credential shape.

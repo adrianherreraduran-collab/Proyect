@@ -19,6 +19,8 @@ Desplegar. `/api/assistant/status` indica `aiConfigured: true` cuando esas varia
 
 ## Límites y privacidad
 
+Al leer la clave se eliminan los espacios, tabulaciones y saltos de línea que pueda introducir el copiado, así como un prefijo `Bearer`. La cabecera enviada contiene siempre un único `Bearer`. No se modifican las variables guardadas en Render ni se registran sus valores.
+
 Workers Free aplica actualmente un límite de 10.000 neuronas diarias, según https://developers.cloudflare.com/workers-ai/platform/pricing/ . La cantidad de preguntas depende del consumo de cada una; esa cuota no equivale a 10.000 consultas. Mantener el plan gratuito: los límites locales no garantizan evitar cargos si se contrata un plan de pago o se utiliza la cuenta desde otros servicios.
 
 El servidor admite hasta 100 llamadas IA por día UTC y proceso, dos concurrentes, 256 tokens de salida y 20 preguntas por visitante en diez minutos. Espera hasta 20 segundos al proveedor; la interfaz cancela una consulta tras 30 segundos. La conexión HTTPS utiliza IPv4, mantiene la validación del certificado y no sigue redirecciones ni proxies externos. Los contadores locales se reinician al reiniciar el proceso; el límite del proveedor persiste. Un error del proveedor devuelve automáticamente la ayuda local, sin recurrir a ninguna API de pago. El diagnóstico registra solo el tipo de fallo, estado HTTP, códigos numéricos del proveedor y códigos conocidos de conexión, sin su mensaje de error ni el contenido de la consulta. Si la IA está habilitada con una configuración inválida, al arrancar registra únicamente los nombres de los ajustes que fallan; nunca sus valores. Este diagnóstico no se expone en el estado público del asistente.

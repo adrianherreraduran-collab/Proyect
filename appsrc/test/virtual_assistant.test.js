@@ -89,16 +89,18 @@ test('el transporte conserva TLS, evita redirecciones de la clave y reconoce err
   assert.equal(received.headers.Authorization,request.headers.Authorization);assert(received.timeout>0);assert(received.maxContentLength>0);
   await assert.rejects(cloudflareRequest('https://other.example/ai',request,()=>{throw Error('Should not transmit');}),/Invalid assistant provider destination/);
 });
-test('los espacios al copiar la clave se limpian y los saltos interiores no se transmiten',async()=>{
-  let header;
-  const assistant=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:'\n '+env.CLOUDFLARE_AI_TOKEN+' \n'},fetch:async(url,options)=>{header=options.headers.Authorization;return ok('Grifo de acero inoxidable.');}});
-  assert.equal((await query(assistant,'Describe MB0001')).mode,'ai');assert.equal(header,'Bearer '+env.CLOUDFLARE_AI_TOKEN);
-  const invalid=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:'invalid\nheader'},fetch:()=>{throw Error('Must not transmit');}});
+test('las claves copiadas con espacios, saltos o Bearer generan un único encabezado correcto',async()=>{
+  for(const token of ['\n '+env.CLOUDFLARE_AI_TOKEN+' \n','Bearer '+env.CLOUDFLARE_AI_TOKEN,' bearer\r\n'+env.CLOUDFLARE_AI_TOKEN.slice(0,10)+' \t\r\n'+env.CLOUDFLARE_AI_TOKEN.slice(10)]){
+    let header;
+    const assistant=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:token},fetch:async(url,options)=>{header=options.headers.Authorization;return ok('Grifo de acero inoxidable.');}});
+    assert.equal((await query(assistant,'Describe MB0001')).mode,'ai');assert.equal(header,'Bearer '+env.CLOUDFLARE_AI_TOKEN);
+  }
+  const invalid=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:'invalid\u0000header'},fetch:()=>{throw Error('Must not transmit');}});
   assert.equal(invalid.status().aiConfigured,false);assert.equal((await query(invalid,'Describe MB0001')).mode,'help');
 });
 test('la configuración inválida identifica solo el ajuste que falla sin publicar valores',async()=>{
   for(const [configuration,fields] of [
-    [{...env,CLOUDFLARE_AI_TOKEN:'SECRET invalid\nheader'},['token_format']],
+    [{...env,CLOUDFLARE_AI_TOKEN:'SECRET invalid\u0000header'},['token_format']],
     [{...env,CLOUDFLARE_AI_TOKEN:' \n'},['token_missing']],
     [{...env,CLOUDFLARE_ACCOUNT_ID:'SECRET invalid account'},['account_id_format']],
     [{...env,FVM_ASSISTANT_FREE_PLAN_CONFIRMED:'false'},['free_plan_confirmation']]
