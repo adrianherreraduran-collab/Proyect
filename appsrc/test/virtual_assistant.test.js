@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {createAssistant,findProducts,sensitive,MODEL}=require('../virtual_assistant_v1');
+const {createAssistant,findProducts,sensitive,MODEL,cloudflareRequest}=require('../virtual_assistant_v1');
 const {benefits}=require('../customer_benefits_v1');
 const products=[{id:'bath',title:'Monomando de bañera Benotti',ref:'MB0001',description:'Grifo de acero inoxidable. <b>Montaje mural</b>.',price:82.6,published:true,sourceProvider:'Proveedor PRIVADO',sourcePrice:39,sourceRef:'PRIVADO-1'}, {id:'cement',title:'Cemento de obra',ref:'CE0001',description:'Saco de cemento',price:10,published:true}, {id:'hidden',title:'Taladro secreto',ref:'SEC01',price:1,published:false}];
 const data={products,users:[],orders:[],settings:{legalEmail:'atencion@example.com',contactPhone:'600000000'}};
@@ -75,6 +75,26 @@ test('el diagnóstico permite identificar fallos sin registrar claves, preguntas
   assert.doesNotMatch(JSON.stringify(diagnostics),/SECRET|MB0001|isolated-non-production-token/);
   const timeout=createAssistant(deps,{env,warn:details=>diagnostics.push(details),fetch:async()=>{const error=new Error('SECRET network details');error.name='TimeoutError';throw error;}});
   await query(timeout,'Describe MB0001');assert.deepEqual(diagnostics.at(-1),{reason:'timeout'});
+  const connection=createAssistant(deps,{env,warn:details=>diagnostics.push(details),fetch:async()=>{const error=new Error(env.CLOUDFLARE_AI_TOKEN);error.cause={code:'ENETUNREACH'};throw error;}});
+  await query(connection,'Describe MB0001');assert.deepEqual(diagnostics.at(-1),{reason:'network_error',networkCode:'ENETUNREACH'});
+});
+test('el transporte conserva TLS, evita redirecciones de la clave y reconoce errores HTTP del proveedor',async()=>{
+  const url='https://api.cloudflare.com/client/v4/accounts/'+env.CLOUDFLARE_ACCOUNT_ID+'/ai/run/'+MODEL;
+  const request={method:'POST',headers:{Authorization:'Bearer isolated-test'},body:JSON.stringify({messages:[]}),signal:new AbortController().signal};
+  let received;
+  const response=await cloudflareRequest(url,request,async config=>{received=config;return {status:403,data:{success:false,errors:[{code:5016}]}};});
+  assert.equal(response.ok,false);assert.equal(response.status,403);assert.equal((await response.json()).errors[0].code,5016);
+  assert.equal(received.httpsAgent.options.family,4);assert.notEqual(received.httpsAgent.options.rejectUnauthorized,false);
+  assert.equal(received.maxRedirects,0);assert.equal(received.proxy,false);assert.equal(received.signal,request.signal);
+  assert.equal(received.headers.Authorization,request.headers.Authorization);assert(received.timeout>0);assert(received.maxContentLength>0);
+  await assert.rejects(cloudflareRequest('https://other.example/ai',request,()=>{throw Error('Should not transmit');}),/Invalid assistant provider destination/);
+});
+test('los espacios al copiar la clave se limpian y los saltos interiores no se transmiten',async()=>{
+  let header;
+  const assistant=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:'\n '+env.CLOUDFLARE_AI_TOKEN+' \n'},fetch:async(url,options)=>{header=options.headers.Authorization;return ok('Grifo de acero inoxidable.');}});
+  assert.equal((await query(assistant,'Describe MB0001')).mode,'ai');assert.equal(header,'Bearer '+env.CLOUDFLARE_AI_TOKEN);
+  const invalid=createAssistant(deps,{env:{...env,CLOUDFLARE_AI_TOKEN:'invalid\nheader'},fetch:()=>{throw Error('Must not transmit');}});
+  assert.equal(invalid.status().aiConfigured,false);assert.equal((await query(invalid,'Describe MB0001')).mode,'help');
 });
 test('no se lanzan más de dos consultas IA simultáneas',async()=>{
   const pending=[];const assistant=createAssistant(deps,{env,fetch:()=>new Promise(resolve=>pending.push(resolve))});
