@@ -67,6 +67,15 @@ test('el límite diario se aplica antes de consultar al proveedor y vuelve a abr
   for(let i=0;i<101;i++)await query(assistant,'MB0001');assert.equal(calls,100);
   now+=86400000;assert.equal((await query(assistant,'MB0001')).mode,'ai');assert.equal(calls,101);
 });
+test('el diagnóstico permite identificar fallos sin registrar claves, preguntas ni mensajes del proveedor',async()=>{
+  const diagnostics=[];
+  const assistant=createAssistant(deps,{env,warn:details=>diagnostics.push(details),fetch:async()=>new Response(JSON.stringify({errors:[{code:5016,message:'SECRET provider details'},{code:'unsafe-code',message:env.CLOUDFLARE_AI_TOKEN}]}),{status:403})});
+  assert.equal((await query(assistant,'Describe MB0001')).mode,'help');
+  assert.deepEqual(diagnostics,[{reason:'http_error',status:403,codes:[5016]}]);
+  assert.doesNotMatch(JSON.stringify(diagnostics),/SECRET|MB0001|isolated-non-production-token/);
+  const timeout=createAssistant(deps,{env,warn:details=>diagnostics.push(details),fetch:async()=>{const error=new Error('SECRET network details');error.name='TimeoutError';throw error;}});
+  await query(timeout,'Describe MB0001');assert.deepEqual(diagnostics.at(-1),{reason:'timeout'});
+});
 test('no se lanzan más de dos consultas IA simultáneas',async()=>{
   const pending=[];const assistant=createAssistant(deps,{env,fetch:()=>new Promise(resolve=>pending.push(resolve))});
   const first=query(assistant,'MB0001'),second=query(assistant,'MB0001');assert.equal((await query(assistant,'MB0001')).mode,'help');assert.equal(pending.length,2);pending.forEach(resolve=>resolve(ok('Grifo de acero inoxidable.')));await Promise.all([first,second]);

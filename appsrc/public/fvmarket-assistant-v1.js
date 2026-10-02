@@ -70,7 +70,7 @@
     if(identity()!==state.identity){state.identity=identity();welcome();}
     message(value,'user');input.value='';state.busy=true;send.disabled=true;input.disabled=true;
     const busy=make('div','fvmAssistantBusy','Consultando…');messages.appendChild(busy);messages.scrollTop=messages.scrollHeight;
-    const request=++state.request,token=identity(),controller=new AbortController();state.controller=controller;const timeout=setTimeout(()=>controller.abort(),15000);
+    const request=++state.request,token=identity(),controller=new AbortController();state.controller=controller;const timeout=setTimeout(()=>controller.abort(),30000);
     try {
       const response=await fetch('/api/assistant/message',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({message:value,...(state.productId?{productId:state.productId}:{})}),signal:controller.signal});
       const result=await response.json();clearTimeout(timeout);if(!state.open || request!==state.request)return;if(token!==identity()){welcome();message('La sesión ha cambiado. Vuelve a realizar tu consulta.');return;}if(!response.ok)throw Error(result.error || 'No se pudo consultar la información.');busy.textContent='Escribiendo…';await render(result,request,token,controller.signal);
