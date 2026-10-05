@@ -1619,14 +1619,32 @@ function validRutaFVCallbackToken(req){
   return expected.length===actual.length&&expected.length>0&&crypto.timingSafeEqual(expected,actual);
 }
 function orderForRutaFVCallback(d,payload={}){
-  const externalId=String(payload.externalOrderId||payload.orderId||'').trim();
-  const externalNumber=String(payload.externalOrderNumber||payload.orderNumber||'').trim();
-  const deliveryId=String(payload.deliveryId||payload.expeditionId||'').trim();
-  return (d.orders||[]).find(order=>
-    (externalId&&String(order.id||'')===externalId)
-    || (externalNumber&&String(order.number||'')===externalNumber)
-    || (deliveryId&&String(order.transport?.deliveryId||'')===deliveryId)
-  )||null;
+  const wanted=[
+    payload.externalOrderId,
+    payload.orderId,
+    payload.externalOrderNumber,
+    payload.orderNumber,
+    payload.deliveryId,
+    payload.expeditionId,
+  ].map(value=>String(value||'').trim()).filter(Boolean);
+  if(!wanted.length)return null;
+  return (d.orders||[]).find(order=>{
+    const transport=order?.transport&&typeof order.transport==='object'?order.transport:{};
+    const identifiers=[
+      order.id,
+      order.externalOrderId,
+      order.orderId,
+      order.number,
+      order.externalOrderNumber,
+      order.orderNumber,
+      order.reference,
+      transport.deliveryId,
+      transport.expeditionId,
+      transport.externalOrderId,
+      transport.externalOrderNumber,
+    ].map(value=>String(value||'').trim()).filter(Boolean);
+    return wanted.some(value=>identifiers.includes(value));
+  })||null;
 }
 function applyRutaFVCallbackStatus(d,order,payload,status=normalizeRutaFVCallbackStatus(payload?.status||payload?.deliveryStatus||payload?.orderStatus)){
   if(!status)return {ok:false,error:'El callback de RutaFV debe indicar Entregado o Incidencia'};
