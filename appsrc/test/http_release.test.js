@@ -121,6 +121,23 @@ test('la factura rechaza acceso anónimo y la firma de un usuario ajeno', async 
   assert.equal((await request('/api/invoices/' + invoice.id + '/print?token=incorrect', { anonymous: true })).status, 401);
   assert.match((await request('/api/invoices/' + invoice.id + '/print')).data, /Transporte gratis/);
 });
+test('Stripe registra fallos diferidos, permite reintentar el presupuesto y descarta eventos de la sesión anterior', async () => {
+  reset(); const data = server.read();
+  data.orders.push({ id: 'retry-order', number: 'FVM-RETRY', userId: 'customer', quoteId: 'retry-quote', status: 'pendiente_pago', subtotal: 80, delivery: 0, total: 80, items: [{ productId: 'p1', title: 'Producto prueba', ref: 'TP0001', qty: 1, unitPrice: 80, lineTotal: 80 }], customer: { email: profile.email }, stripeSessionId: 'cs_async_failed', stripeSessionUrl: 'https://checkout.example.com/failed', stripeSessionExpiresAt: Date.now() + 60000 });
+  data.quotes.push({ id: 'retry-quote', userId: 'customer', orderId: 'retry-order', status: 'aceptado', validUntil: new Date(Date.now() + 86400000).toISOString() }); server.save(data);
+  const event = { type: 'checkout.session.async_payment_failed', data: { object: { id: 'cs_async_failed', client_reference_id: 'retry-order', payment_status: 'unpaid' } } };
+  const expiredCount = expiredSessions.length;
+  assert.equal((await request('/api/stripe/webhook', { anonymous: true, method: 'POST', headers: { 'stripe-signature': 'isolated-signature' }, body: event })).status, 200);
+  let order = server.read().orders[0]; assert.equal(order.status, 'pendiente_pago'); assert.equal(order.stripePaymentStatus, 'failed'); assert.ok(order.stripePaymentFailedAt); assert.equal(order.stripeSessionUrl, ''); assert.equal(order.stripeSessionExpiresAt, 0);
+  const summary = await request('/api/me/summary', { id: 'customer', role: 'customer' }); assert.equal(summary.data.payments[0].status, 'pago_fallido');
+  const beforeRetry = checkoutCalls.length;
+  const retry = await request('/api/quotes/retry-quote/payment-link', { method: 'POST', id: 'customer', role: 'customer' });
+  assert.equal(retry.status, 200); assert.equal(checkoutCalls.length, beforeRetry + 1); assert.equal(expiredSessions.length, expiredCount);
+  order = server.read().orders[0]; assert.notEqual(order.stripeSessionId, 'cs_async_failed'); assert.ok(order.stripeSessionUrl); assert.equal(order.stripePaymentStatus, 'pending'); assert.equal(order.stripePaymentFailedAt, undefined);
+  assert.equal((await request('/api/stripe/webhook', { anonymous: true, method: 'POST', headers: { 'stripe-signature': 'isolated-signature' }, body: event })).status, 200);
+  order = server.read().orders[0]; assert.equal(order.stripeSessionUrl, retry.data.url); assert.equal(order.stripePaymentStatus, 'pending');
+  const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8'); assert.match(index, /pago_fallido:'Pago no completado'/);
+});
 test('las cantidades fraccionarias y el transporte manipulado no crean pedidos', async () => {
   const count = server.read().orders.length;
   assert.equal((await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body: { items: [{ id: 'p1', qty: 1.5 }] } })).status, 400);

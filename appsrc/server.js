@@ -85,7 +85,9 @@ app.post('/api/stripe/webhook',express.raw({type:'application/json'}),async(req,
   const signature=String(req.headers['stripe-signature']||'');let event;
   try{event=stripe.webhooks.constructEvent(req.body,signature,STRIPE_WEBHOOK_SECRET)}catch{return res.status(400).json({error:'Firma de Stripe no válida'})}
   try{
-    if(event.type==='checkout.session.completed'||event.type==='checkout.session.async_payment_succeeded'){
+    if(event.type==='checkout.session.async_payment_failed'){
+      recordStripeAsyncPaymentFailure(event.data.object||{});
+    }else if(event.type==='checkout.session.completed'||event.type==='checkout.session.async_payment_succeeded'){
       const session=event.data.object||{};
       if(session.payment_status==='paid'||event.type.endsWith('succeeded'))await confirmStripePayment(req,session);
     }
@@ -675,8 +677,23 @@ async function createStripePaymentLink(req,d,o,accessToken=''){
   const cancel=new URL(base+'/?payment=cancel');cancel.searchParams.set('order',o.id);
   const checkout=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:success.toString().replace('%7BCHECKOUT_SESSION_ID%7D','{CHECKOUT_SESSION_ID}'),cancel_url:cancel.toString(),client_reference_id:o.id,customer_email:o.customer?.email||undefined,billing_address_collection:'required',phone_number_collection:{enabled:true},locale:'es',custom_text:{submit:{message:returnsPolicy.checkoutText(returnsInformation,base)}},integration_identifier:stripeIntegrationIdentifier(),metadata:{source:'FVMarket',orderId:o.id,orderNumber:o.number,quoteId:String(o.quoteId||''),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(o.delivery||0)}});
   o.returnsInformation=returnsInformation;o.returnsDisclosureFingerprint=returnsFingerprint;o.returnsDisclosedAt=new Date().toISOString();
-  o.stripeSessionId=String(checkout.id||'');o.stripeSessionUrl=String(checkout.url||'');o.stripeSessionExpiresAt=Number(checkout.expires_at||0)*1000;o.paymentMethod='stripe';o.paymentChannel='checkout';
+  o.stripeSessionId=String(checkout.id||'');o.stripeSessionUrl=String(checkout.url||'');o.stripeSessionExpiresAt=Number(checkout.expires_at||0)*1000;o.stripePaymentStatus='pending';delete o.stripePaymentFailedAt;o.paymentMethod='stripe';o.paymentChannel='checkout';
   return {id:o.stripeSessionId,url:o.stripeSessionUrl,reused:false};
+}
+
+function recordStripeAsyncPaymentFailure(session={}){
+  const orderId=String(session?.metadata?.orderId||session?.client_reference_id||'');
+  if(!orderId)return {ok:false,reason:'order_missing'};
+  const d=read(),o=(d.orders||[]).find(x=>x.id===orderId);
+  if(!o)return {ok:false,reason:'order_not_found'};
+  if(o.stripeSessionId&&String(session.id)!==String(o.stripeSessionId))return {ok:false,reason:'session_mismatch'};
+  if(o.paidAt||paidOrderStatus(o.status))return {ok:true,ignored:'already_paid'};
+  o.stripePaymentStatus='failed';o.stripePaymentFailedAt=o.stripePaymentFailedAt||new Date().toISOString();
+  // A completed Checkout session cannot be expired or reused. Clearing its URL
+  // and expiry lets an accepted quote create a fresh session for a retry.
+  o.stripeSessionUrl='';o.stripeSessionExpiresAt=0;
+  save(d);
+  return {ok:true};
 }
 
 async function confirmStripePayment(req,session){
@@ -689,7 +706,7 @@ async function confirmStripePayment(req,session){
   const expected=Math.round(Number(o.total||0)*100),received=Number(session.amount_total||0);
   if(received!==expected||String(session.currency||'').toLowerCase()!=='eur')throw new Error(`Importe Stripe no válido para ${o.number}`);
   const firstConfirmation=!o.paidAt;if(!firstConfirmation)return {ok:true,order:o,invoice:(d.invoices||[]).find(invoice=>invoice.orderId===o.id)||null};
-  o.status=paidOrderStatus(o.status)?o.status:'pagado';o.paidAt=o.paidAt||new Date().toISOString();o.stripeSessionId=String(session.id||o.stripeSessionId||'');o.paymentIntentId=String(typeof session.payment_intent==='string'?session.payment_intent:session.payment_intent?.id||o.paymentIntentId||'');o.stripePaymentStatus='paid';o.paymentMethod='stripe';o.fulfillment=o.fulfillment||{status:'pendiente_compra_proveedor',readyForRutaFV:false};
+  o.status=paidOrderStatus(o.status)?o.status:'pagado';o.paidAt=o.paidAt||new Date().toISOString();o.stripeSessionId=String(session.id||o.stripeSessionId||'');o.paymentIntentId=String(typeof session.payment_intent==='string'?session.payment_intent:session.payment_intent?.id||o.paymentIntentId||'');o.stripePaymentStatus='paid';delete o.stripePaymentFailedAt;o.paymentMethod='stripe';o.fulfillment=o.fulfillment||{status:'pendiente_compra_proveedor',readyForRutaFV:false};
   operations.recordPaymentConfirmation(d,o,{id:'stripe_webhook',name:'Stripe',role:'system'});procurementV2.ensureData(d);
   if(o.quoteId){const q=(d.quotes||[]).find(x=>x.id===o.quoteId);if(q){q.status='pagado';q.paidAt=q.paidAt||o.paidAt}}
   const invoice=issueInvoiceForOrder(d,o);if(invoice)operations.recordInvoiceIssued(d,o,invoice,{id:'stripe_webhook',name:'Stripe',role:'system'});
@@ -938,7 +955,7 @@ function profileSummary(d,u){
   const storedDeliveredOrders=deliveredOrders.filter(o=>o.storedDelivered);
   const orders=allOrders.filter(o=>o.customerStatus!=='entregado');
   const invoices=(d.invoices||[]).filter(x=>x.userId===u.id).sort((a,b)=>String(b.issuedAt||'').localeCompare(String(a.issuedAt||''))).map(publicInvoice);
-  const payments=allOrders.map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:'Pago seguro (Stripe)',status:o.status==='reembolsado'?'reembolsado':o.status==='reembolso_parcial'?'reembolso parcial':paidOrderStatus(o.status)?'pagado':'pendiente',createdAt:o.createdAt}));
+  const payments=(d.orders||[]).filter(o=>o.userId===u.id).sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))).map(o=>({id:o.id,orderNumber:o.number,amount:o.total,method:'Pago seguro (Stripe)',status:o.status==='reembolsado'?'reembolsado':o.status==='reembolso_parcial'?'reembolso parcial':paidOrderStatus(o.status)?'pagado':o.stripePaymentStatus==='failed'?'pago_fallido':'pendiente',createdAt:o.createdAt}));
   const notifications=customerNotificationsFor(d,u.id);
   return {quotes,orders,deliveredOrders,storedDeliveredOrders,archivedOrders:storedDeliveredOrders,invoices,payments,notifications};
 }
@@ -1843,4 +1860,4 @@ const purchaseAlerts=createAlertWorker({read,save,send:sendResendEmail,configure
 
 async function start(){const state=await persistence.init();if((process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.RENDER_POSTGRES_URL)&&!state.enabled)throw Error('Postgres no disponible: se cancela el arranque para proteger los datos');read();const listener=app.listen(PORT,'0.0.0.0',()=>{console.log(`FVMarket listening on ${PORT}`);purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message))});const timer=setInterval(()=>purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message)),5*60*1000);timer.unref();process.once('SIGTERM',()=>{clearInterval(timer);listener.close(async()=>{await persistence.flush();process.exit(0)})});return listener}
 if(require.main===module)start();
-module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment,issueInvoiceForOrder,buildOrderFromQuote,safeUser,extractProductFromHtml,confirmStripePayment,read,save,publicQuote}};
+module.exports={app,start,_test:{publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment,issueInvoiceForOrder,buildOrderFromQuote,safeUser,extractProductFromHtml,confirmStripePayment,recordStripeAsyncPaymentFailure,read,save,publicQuote}};
