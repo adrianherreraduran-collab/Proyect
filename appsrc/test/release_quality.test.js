@@ -92,3 +92,36 @@ test('los documentos del cliente ocultan proveedores, operaciones y direcciones 
 test('un archivo de datos ilegible causa un error y se conserva sin reemplazarlo por ejemplos', () => {
   fs.writeFileSync(process.env.DATA_FILE, '{invalid'); assert.throws(() => server.read(), /No se pueden leer/); assert.equal(fs.readFileSync(process.env.DATA_FILE, 'utf8'), '{invalid'); fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture()));
 });
+
+test('la factura conserva los datos del emisor y el pie capturados al emitirse', () => {
+  const { data, order } = build();
+  order.status = 'pagado';
+  order.paidAt = '2026-09-30T12:00:00Z';
+  Object.assign(data.settings, {
+    storeName: 'FVMarket anterior',
+    fiscalName: 'Titular anterior de prueba',
+    fiscalNif: 'B12345674',
+    fiscalAddress: 'Calle Anterior 1',
+    fiscalCity: 'Tuineje',
+    fiscalPostalCode: '35620',
+    invoiceFooter: 'Pie anterior'
+  });
+  const invoice = server.issueInvoiceForOrder(data, order);
+  Object.assign(data.settings, {
+    storeName: 'FVMarket nuevo',
+    fiscalName: 'Titular nuevo de prueba',
+    fiscalNif: 'B12345683',
+    fiscalAddress: 'Calle Nueva 9',
+    fiscalCity: 'Pájara',
+    fiscalPostalCode: '35628',
+    invoiceFooter: 'Pie nuevo'
+  });
+  const html = server.professionalInvoiceHtml(invoice, data.settings);
+  assert.equal(invoice.issuerSnapshot.storeName, 'FVMarket anterior');
+  for (const value of ['Titular anterior de prueba', 'B12345674', 'Calle Anterior 1', 'Tuineje', 'Pie anterior']) {
+    assert.ok(html.includes(value), value);
+  }
+  for (const value of ['Titular nuevo de prueba', 'B12345683', 'Calle Nueva 9', 'Pájara', '35628', 'Pie nuevo']) {
+    assert.equal(html.includes(value), false, value);
+  }
+});
