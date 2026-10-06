@@ -117,7 +117,8 @@ test('la factura conserva los datos del emisor y el pie capturados al emitirse',
     invoiceFooter: 'Pie nuevo'
   });
   const html = server.professionalInvoiceHtml(invoice, data.settings);
-  for (const value of ['FVMarket anterior', 'Titular anterior de prueba', 'B12345674', 'Calle Anterior 1', 'Tuineje', 'Pie anterior']) {
+  assert.equal(invoice.issuerSnapshot.storeName, 'FVMarket anterior');
+  for (const value of ['Titular anterior de prueba', 'B12345674', 'Calle Anterior 1', 'Tuineje', 'Pie anterior']) {
     assert.ok(html.includes(value), value);
   }
   for (const value of ['Titular nuevo de prueba', 'Calle Nueva 9', 'Pie nuevo']) {
