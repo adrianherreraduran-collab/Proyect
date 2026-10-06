@@ -121,7 +121,7 @@ test('la factura conserva los datos del emisor y el pie capturados al emitirse',
   for (const value of ['Titular anterior de prueba', 'B12345674', 'Calle Anterior 1', 'Tuineje', 'Pie anterior']) {
     assert.ok(html.includes(value), value);
   }
-  for (const value of ['Titular nuevo de prueba', 'Calle Nueva 9', 'Pie nuevo']) {
+  for (const value of ['Titular nuevo de prueba', 'B12345683', 'Calle Nueva 9', 'Pájara', '35628', 'Pie nuevo']) {
     assert.equal(html.includes(value), false, value);
   }
 });
