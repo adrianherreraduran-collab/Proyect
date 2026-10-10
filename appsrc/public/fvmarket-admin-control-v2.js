@@ -8,6 +8,7 @@
   const trackingStatuses = new Set(['enviado_a_rutafv', 'en_reparto', 'entregado']);
   const paymentStatuses = new Set(['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial', 'reembolsado']);
   let mounted = false;
+  let rutaFVSendBusy = false;
 
   function addStyle() {
     if ($('fvmAdminControlV3Style')) return;
@@ -15,6 +16,8 @@
     s.textContent = `.fvmBoard{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin-bottom:16px}.fvmBoardColumn{border-radius:12px;padding:14px;border:1px solid}.fvmBoardColumn.paid{background:#f3faef;border-color:#b8dda3}.fvmBoardColumn.tracking{background:#f2f7fd;border-color:#b8d1e8}.fvmBoardColumn.tracking h3{color:#165b92}.fvmBoardColumn h3{margin:0 0 10px;font-size:15px;color:#397820}.fvmBoardCard{background:#fff;border:1px solid #e1e9ef;border-radius:10px;padding:11px;margin:8px 0}.fvmBoardCard header{background:none;color:inherit;padding:0;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.fvmBoardCard header b{color:var(--navy);font-size:12px}.fvmBoardCard small{color:var(--muted)}.fvmBoardStatus{display:inline-flex;padding:4px 7px;border-radius:999px;background:#eaf7e4;color:#397820;font-size:10px;font-weight:900}.fvmBoardMeta{font-size:11px;line-height:1.5;margin:8px 0}.fvmBoardItems{border-top:1px solid #edf1f4;margin-top:8px;padding-top:7px;font-size:10px}.fvmBoardEmpty{padding:16px;text-align:center;color:var(--muted);font-size:12px}.fvmChecklist{display:grid;gap:4px;margin-top:9px;padding:8px;border:1px solid #edf1f4;border-radius:8px;background:#fbfdff}.fvmChecklist label{display:flex;align-items:center;gap:5px;font-size:10px;color:#6b7787;padding:2px 3px;border-radius:5px}.fvmChecklist label.actionable{cursor:pointer;color:var(--navy);background:#f4f8fb}.fvmChecklist label.done{color:#397820;font-weight:850}.fvmChecklist input{accent-color:#5fa92f;margin:0}.fvmChecklist input:not(:disabled){cursor:pointer}.fvmChecklist input:disabled{opacity:1}.fvmIncidentNote{margin-top:6px;padding:7px 8px;border-left:3px solid #d48a22;background:#fff8e8;color:#76500e;border-radius:5px;font-size:10px;line-height:1.4}.fvmNotification{display:flex;gap:10px;align-items:flex-start;border:1px solid #dfe7ee;border-radius:9px;padding:11px;margin:8px 0;background:#fff}.fvmNotification.unread{border-left:4px solid var(--lime);background:#f8fbf5}.fvmNotification b{color:var(--navy)}.fvmNotification small{display:block;color:var(--muted);margin-top:3px}.fvmNotification button{margin-left:auto;white-space:nowrap}`;
     s.textContent += `.fvmBoardItems{font-size:14px;line-height:1.5}.fvmBoardToolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:4px 0 16px}.fvmBoardToolbar .sub{max-width:620px}.fvmBoardToolbarActions{display:flex;align-items:center;gap:8px;flex-shrink:0}.fvmPdfButton{display:inline-flex;align-items:center;gap:9px;border:1px solid #c7d8e6;background:linear-gradient(180deg,#fff,#f3f8fc);color:#0c3358;border-radius:9px;padding:9px 13px;font-weight:850;font-size:12px;box-shadow:0 2px 5px rgba(12,51,88,.08);transition:transform .15s ease,box-shadow .15s ease,background .15s ease}.fvmPdfButton:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 5px 12px rgba(12,51,88,.14);background:#fff}.fvmPdfButton:focus-visible{outline:3px solid rgba(56,138,211,.28);outline-offset:2px}.fvmPdfButton:disabled{opacity:.72;cursor:wait}.fvmPdfIcon{display:inline-grid;place-items:center;min-width:25px;height:22px;border-radius:5px;background:#d9534f;color:#fff;font-size:9px;letter-spacing:.3px;font-weight:950}.fvmBoardPdfHint{margin:0;color:#718096;font-size:10px}@media(max-width:760px){.fvmBoardToolbar{align-items:flex-start;flex-direction:column}.fvmBoardToolbarActions{width:100%;justify-content:space-between}.fvmPdfButton{flex:1;justify-content:center}}`;
     s.textContent += `.fvmBoardProduct{border:1px solid #e1e9ef;border-radius:8px;padding:8px;margin:6px 0;background:#fff}.fvmBoardProduct.delivered{border:2px solid #55a532}.fvmBoardProduct.incident{border:2px solid #d92d20}`;
+
+    s.textContent += `.fvmSendConfirm{width:calc(100% - 32px);max-width:480px;box-sizing:border-box;border:1px solid #c7d8e6;border-radius:14px;padding:22px;color:#0c3358;background:#fff;box-shadow:0 16px 50px rgba(12,51,88,.22)}.fvmSendConfirm::backdrop{background:rgba(12,31,48,.5)}.fvmSendConfirm h2{margin:0 0 14px;font-size:20px}.fvmSendConfirm p{font-size:14px;line-height:1.5}.fvmSendConfirmActions{display:flex;justify-content:flex-end;gap:10px;margin-top:20px;flex-wrap:wrap}.fvmSendConfirm button{padding:10px 16px}.fvmSendError{margin-top:10px;padding:10px;border:1px solid #d92d20;border-radius:8px;color:#9d201b;background:#fff4f2;font-size:13px;line-height:1.5}`;
     document.head.appendChild(s);
   }
 
@@ -97,7 +100,7 @@
     const supplierRows = (order.supplierSummary || []).map(t => { const estimate=t.deliveryEstimate||{}; const location=[t.island, t.address].filter(Boolean).join(' · '); return `<div><b>${esc(t.name)}</b> (${esc(t.status || 'pendiente')})${location?` · ${esc(location)}`:''}<br><span>Entrega estimada del proveedor: <b>${esc(estimate.label || 'Pendiente de calcular')}</b></span></div>`; }).join('') || 'Proveedor pendiente';
     const deliveryId = order.transport?.deliveryId || order.transport?.rutaFVDeliveryId || '';
     const deliveryMeta = deliveryId ? `<br><b>Reparto RutaFV:</b> ${esc(deliveryId)}` : '';
-    return `<article class="fvmBoardCard"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.regularDelivery??order.delivery)}${order.freeTransport?' · Cliente preferente: transporte gratis':''}${deliveryMeta}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}</article>`;
+    return `<article class="fvmBoardCard" data-order-id="${esc(order.id)}"><header><div><b>${esc(order.number || order.id)}</b><br><small>${esc(order.customer?.name || 'Cliente')} · ${new Date(order.createdAt || Date.now()).toLocaleString('es-ES')}</small></div><span class="fvmBoardStatus">${esc(labels[order.status] || order.status)}</span></header><div class="fvmBoardMeta"><b>Proveedor:</b><div>${supplierRows}</div><b>Total:</b> ${money(order.total)} · <b>RutaFV:</b> ${money(order.regularDelivery??order.delivery)}${order.freeTransport?' · Cliente preferente: transporte gratis':''}${deliveryMeta}</div><div class="fvmBoardItems">${items || 'Sin detalle de productos'}</div>${checklist(order)}</article>`;
   }
 
   function renderBoard(data) {
@@ -115,8 +118,68 @@
     try { renderBoard(await api('/api/admin/procurement-board')); } catch (e) { host.innerHTML = `<div class="notice">${esc(e.message)}</div>`; }
   }
 
+
+  function confirmRutaFVSend(input) {
+    const reference = input.closest('.fvmBoardCard')?.querySelector('header b')?.textContent || 'este pedido';
+    return new Promise((resolve, reject) => {
+      const dialog = document.createElement('dialog');
+      dialog.id = 'fvmRutaFVSendConfirm';
+      dialog.className = 'fvmSendConfirm';
+      dialog.setAttribute('aria-labelledby', 'fvmRutaFVSendTitle');
+      dialog.setAttribute('aria-describedby', 'fvmRutaFVSendDescription');
+      dialog.innerHTML = `<h2 id="fvmRutaFVSendTitle">Enviar pedido a RutaFV</h2><p id="fvmRutaFVSendDescription">¿Crear el reparto del pedido <strong>${esc(reference)}</strong> en RutaFV?</p><p>Comprueba el número del pedido antes de confirmar.</p><div class="fvmSendConfirmActions"><button type="button" class="btn ghost fvmSendCancel">Cancelar</button><button type="button" class="btn navy fvmSendApprove">Enviar a RutaFV</button></div>`;
+      let settled = false;
+      const finish = approved => {
+        if (settled) return;
+        settled = true;
+        if (dialog.open) dialog.close();
+        dialog.remove();
+        resolve(approved);
+      };
+      dialog.querySelector('.fvmSendCancel').addEventListener('click', () => finish(false));
+      dialog.querySelector('.fvmSendApprove').addEventListener('click', () => finish(true));
+      dialog.addEventListener('cancel', event => { event.preventDefault(); finish(false); });
+      dialog.addEventListener('close', () => finish(false));
+      document.body.appendChild(dialog);
+      try { dialog.showModal(); dialog.querySelector('.fvmSendCancel').focus(); }
+      catch (error) { dialog.remove(); reject(error); }
+    });
+  }
+
+  function showRutaFVSendError(orderId, error) {
+    const card = [...document.querySelectorAll('.fvmBoardCard')].find(node => node.dataset.orderId === orderId);
+    const host = card || $('fvmControlBoard');
+    if (!host) return;
+    let notice = host.querySelector('.fvmSendError');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.className = 'fvmSendError';
+      notice.setAttribute('role', 'alert');
+      host.appendChild(notice);
+    }
+    notice.textContent = 'No se ha podido enviar el pedido a RutaFV. ' + (error?.message || 'Inténtalo de nuevo.');
+  }
+
   window.fvmChecklistAction = async function (orderId, action, input) {
     if (!input?.checked) { if (input) input.checked = true; return; }
+    if (action === 'enviar_a_rutafv') {
+      input.checked = false;
+      if (rutaFVSendBusy) return;
+      rutaFVSendBusy = true;
+      input.disabled = true;
+      input.closest('.fvmBoardCard')?.querySelector('.fvmSendError')?.remove();
+      try {
+        if (!await confirmRutaFVSend(input)) return;
+        await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/procurement-action', { method: 'POST', body: JSON.stringify({ action, note: '', purchaseReference: '' }) });
+        await Promise.all([loadBoard(), loadNotifications()]);
+      } catch (error) { showRutaFVSendError(orderId, error); }
+      finally {
+        rutaFVSendBusy = false;
+        if (input.isConnected) { input.disabled = false; input.focus(); }
+      }
+      return;
+    }
+
     if (action === 'incidencia' && !confirm('¿Registrar una incidencia para este pedido?')) { input.checked = false; return; }
     const note = action === 'incidencia' ? prompt('Describe la incidencia. Esta nota quedará guardada en la trazabilidad:', '') : '';
     if (action === 'incidencia' && !String(note || '').trim()) { alert('Debes indicar una nota para la incidencia.'); input.checked = false; return; }
@@ -137,7 +200,6 @@
     }
     const purchaseReference = action === 'comprada' ? prompt('Referencia, ticket o factura de la compra (opcional):', '') : '';
     const cost = action === 'comprada' ? prompt('Coste real de compra (opcional):', '') : '';
-    if (action === 'enviar_a_rutafv' && !confirm('¿Crear ahora el reparto en RutaFV para este pedido?')) { input.checked = false; return; }
     try {
       await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/procurement-action', { method: 'POST', body: JSON.stringify({ action, note: note || '', purchaseReference: purchaseReference || '', actualCost: cost == null || cost === '' ? undefined : Number(String(cost).replace(',', '.')) }) });
       await Promise.all([loadBoard(), loadNotifications()]);
