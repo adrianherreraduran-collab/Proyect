@@ -59,18 +59,20 @@
     const status = String(order.status || ''), rank = { pagado: 0, en_compra_proveedor: 1, mercancia_recogida: 2, listo_para_rutafv: 3, enviado_a_rutafv: 4, en_reparto: 5, entregado: 6 }[status] ?? -1;
     const tasks = Array.isArray(order.procurementTasks) ? order.procurementTasks : [];
     const supplierRows = Array.isArray(order.supplierSummary) ? order.supplierSummary : [];
-    const bought = tasks.length ? tasks.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['comprada', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
-    const collected = tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
+    const bought = tasks.length ? tasks.every(t => ['comprada', 'lista_para_recogida', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['comprada', 'lista_para_recogida', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2;
+    const readyForPickup = tasks.length ? tasks.every(t => ['lista_para_recogida', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['lista_para_recogida', 'recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : !!order.fulfillment?.readyForPickup;
+    const collected = order.transport?.rutaFVPickupStatus === 'recogido' || (tasks.length ? tasks.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : supplierRows.length ? supplierRows.every(t => ['recogida', 'recibida', 'lista'].includes(String(t.status || ''))) : rank >= 2);
     const incident = status === 'incidencia' || (Array.isArray(order.procurementActions) && order.procurementActions.some(x => x.action === 'incidencia'));
     const sent = !!order.transport?.deliveryId || ['enviado_a_rutafv', 'en_reparto', 'entregado'].includes(status);
     const delivered = [order.customerStatus,status,order.deliveryStatus,order.rutaFVStatus,order.transport?.rutaFVStatus,order.transport?.status].some(value => ['entregado','entregada','delivered','completado','completada'].includes(String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim())) || !!order.deliveredAt || !!order.transport?.rutaFVDeliveredAt || !!order.workflow?.deliveredAt;
-    return { status, pending: paymentStatuses.has(status), bought, collected, incident, sent, delivered, refunded: status === 'reembolsado', cancelled: status === 'cancelado' };
+    return { status, pending: paymentStatuses.has(status), bought, readyForPickup, collected, incident, sent, delivered, refunded: status === 'reembolsado', cancelled: status === 'cancelado' };
   }
 
   function canChecklistAction(state, action) {
     if (action === 'comprada') return !state.bought && ['pagado', 'incidencia'].includes(state.status);
+    if (action === 'listo_para_recogida') return !state.readyForPickup && state.bought && ['en_compra_proveedor', 'mercancia_recogida', 'incidencia'].includes(state.status);
     if (action === 'mercancia_recogida') return !state.collected && state.bought && ['en_compra_proveedor', 'incidencia'].includes(state.status);
-    if (action === 'enviar_a_rutafv') return !state.sent && state.collected && ['mercancia_recogida', 'listo_para_rutafv', 'incidencia'].includes(state.status);
+    if (action === 'enviar_a_rutafv') return !state.sent && (state.readyForPickup || state.collected) && ['en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'incidencia'].includes(state.status);
     if (action === 'incidencia') return !state.incident && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto'].includes(state.status);
     if (action === 'reembolsado') return !state.refunded && !state.cancelled && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'entregado', 'incidencia', 'reembolso_parcial'].includes(state.status);
     if (action === 'cancelado') return !state.cancelled && !state.refunded && ['pagado', 'en_compra_proveedor', 'mercancia_recogida', 'listo_para_rutafv', 'enviado_a_rutafv', 'en_reparto', 'incidencia'].includes(state.status);
@@ -83,8 +85,9 @@
       ['Pendiente compra al proveedor', state.pending, '', true],
       ['Comprado', state.bought, 'comprada', !state.bought && canChecklistAction(state, 'comprada')],
       ['Incidencia', state.incident, 'incidencia', !state.incident && canChecklistAction(state, 'incidencia')],
-      ['Recogido', state.collected, 'mercancia_recogida', !state.collected && canChecklistAction(state, 'mercancia_recogida')],
-      ['Enviar a RutaFV', state.sent, 'enviar_a_rutafv', !state.sent && canChecklistAction(state, 'enviar_a_rutafv')],
+      ['Proveedor confirma mercancía lista', state.readyForPickup, 'listo_para_recogida', !state.readyForPickup && canChecklistAction(state, 'listo_para_recogida')],
+      ['Crear reparto y etiquetas en RutaFV', state.sent, 'enviar_a_rutafv', !state.sent && canChecklistAction(state, 'enviar_a_rutafv')],
+      ['Recogido por RutaFV', state.collected, '', false],
       ['Entregado', state.delivered, '', false],
       ['Reembolsado', state.refunded, 'reembolsado', !state.refunded && canChecklistAction(state, 'reembolsado')],
       ['Cancelado', state.cancelled, 'cancelado', !state.cancelled && canChecklistAction(state, 'cancelado')]
