@@ -1622,6 +1622,7 @@ app.post('/api/rutafv/quote',optionalAuth,async(req,res)=>{
 app.get('/api/rutafv/address-search',optionalAuth,async(req,res)=>{try{if(!checkoutActorId(req))return res.status(400).json({error:'No se pudo identificar esta sesión'});const q=String(req.query.q||'').trim();if(q.length<3)return res.json({results:[]});const data=await rutaFVGet('/api/integrations/fvmarket/address-search',{q,limit:'5'});res.json(data)}catch(e){res.status(503).json({error:e.message})}});
 function normalizeRutaFVCallbackStatus(value){
   const normalized=String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  if(['recogido','recogida','picked up','picked_up'].includes(normalized))return 'recogido';
   if(['entregado','entregada','delivered','completado','completada'].includes(normalized))return 'entregado';
   if(['incidencia','incident','incidence','fallido','fallida'].includes(normalized))return 'incidencia';
   return '';
@@ -1665,10 +1666,41 @@ function orderForRutaFVCallback(d,payload={}){
   })||null;
 }
 function applyRutaFVCallbackStatus(d,order,payload,status=normalizeRutaFVCallbackStatus(payload?.status||payload?.deliveryStatus||payload?.orderStatus)){
-  if(!status)return {ok:false,error:'El callback de RutaFV debe indicar Entregado o Incidencia'};
+  if(!status)return {ok:false,error:'El callback de RutaFV debe indicar Recogido, Entregado o Incidencia'};
+  const at=String(payload.at||payload.pickedUpAt||payload.updatedAt||new Date().toISOString());
+  if(status==='recogido'){
+    order.transport=order.transport&&typeof order.transport==='object'?order.transport:{};
+    const eventId=String(payload.eventId||payload.statusEventId||'').trim();
+    if(eventId&&String(order.transport.rutaFVPickupEventId||'')===eventId)return {ok:true,changed:false,results:[]};
+    const supplierId=String(payload.supplierId||payload.pickupLocation?.supplierId||'').trim();
+    const driver=String(payload.driverLabel||payload.pickedUpBy||payload.assignment?.driverLabel||'RutaFV').trim();
+    const vehicle=String(payload.vehicleLabel||payload.assignment?.vehicleLabel||'').trim();
+    order.transport.rutaFVPickupStatus='recogido';
+    order.transport.rutaFVPickupStatusLabel='Recogido por RutaFV';
+    order.transport.rutaFVPickupAt=at;
+    order.transport.rutaFVLastPickupEventId=eventId;
+    if(supplierId)order.transport.rutaFVPickupSupplierId=supplierId;
+    if(driver)order.transport.rutaFVPickupDriver=driver;
+    if(vehicle)order.transport.rutaFVPickupVehicle=vehicle;
+    order.transport.rutaFVPickupEventId=eventId||order.transport.rutaFVPickupEventId||'';
+    const tasks=(d.procurementTasks||[]).filter(task=>String(task.orderId||'')===String(order.id||'')&&(!supplierId||String(task.supplierId||'')===supplierId));
+    for(const task of tasks){
+      task.rutaFVPickedUpAt=at;
+      task.rutaFVPickedUpBy=driver;
+      task.rutaFVPickupEventId=eventId||task.rutaFVPickupEventId||'';
+      if(!['entregada','entregado'].includes(String(task.status||'').toLowerCase()))task.status='recogida';
+      task.updatedAt=at;
+    }
+    const historyKey=eventId||('rutafv:recogido:'+at+':'+String(payload.externalOrderId||order.id||''));
+    order.history=Array.isArray(order.history)?order.history:[];
+    if(!order.history.some(entry=>String(entry?.key||'')===historyKey)){
+      order.history.push({key:historyKey,at,action:'RutaFV recogió la mercancía en el proveedor',note:supplierId?'Proveedor '+String(payload.supplierName||supplierId):'',user:driver});
+      order.history=order.history.slice(-100);
+    }
+    return {ok:true,changed:true,results:[]};
+  }
   operations.ensureOperationsData(d);
   const note=String(payload.incidentNote||payload.incidencia||payload.note||payload.message||'').trim().slice(0,2000);
-  const at=String(payload.at||payload.updatedAt||new Date().toISOString());
   const actor={id:'rutafv-integration',username:'RutaFV',name:'RutaFV',role:'integration'};
   const current=String(order.status||'pendiente_pago');
   const results=[];
@@ -1718,7 +1750,7 @@ app.post('/api/integrations/rutafv/status',async(req,res)=>{
   if(!validRutaFVCallbackToken(req))return res.status(RUTAFV_STATUS_CALLBACK_KEY?401:503).json({error:RUTAFV_STATUS_CALLBACK_KEY?'Credenciales RutaFV no válidas':'Callback RutaFV no configurado'});
   const payload=req.body&&typeof req.body==='object'?req.body:{};
   const status=normalizeRutaFVCallbackStatus(payload.status||payload.deliveryStatus||payload.orderStatus);
-  if(!status)return res.status(400).json({error:'El callback de RutaFV debe indicar Entregado o Incidencia'});
+  if(!status)return res.status(400).json({error:'El callback de RutaFV debe indicar Recogido, Entregado o Incidencia'});
   const d=read();
   const order=orderForRutaFVCallback(d,payload);
   if(!order)return res.status(404).json({error:'No se encontró el pedido FVMarket asociado al reparto',externalOrderId:String(payload.externalOrderId||'')});
@@ -1727,9 +1759,10 @@ app.post('/api/integrations/rutafv/status',async(req,res)=>{
   save(d);
   if(result.changed&&result.results.some(item=>item.to==='en_reparto'))scheduleOrderEmail(req,order.id,'delivery_in_transit');
   if(result.changed&&result.results.some(item=>item.to==='entregado'))scheduleOrderEmail(req,order.id,'delivery_completed');
-  res.json({ok:true,orderId:order.id,orderNumber:order.number,status:order.status,notificationTitles:['Pedido entregado','Incidencia'].filter((title,index)=>status==='entregado'?index===0:index===1),changed:result.changed});
+  const notificationTitles=status==='entregado'?['Pedido entregado']:status==='incidencia'?['Incidencia']:[];
+  res.json({ok:true,orderId:order.id,orderNumber:order.number,status:order.status,notificationTitles,changed:result.changed});
 });
-function orderReadyForRutaFV(o={}){if(o.fulfillment?.readyForRutaFV===true||o.readyForRutaFV===true)return true;const ready=new Set(['available','available_at_supplier','received','recibido','listo','ready']);const items=Array.isArray(o.items)?o.items:[];return items.length>0&&items.every(x=>ready.has(String(x.procurement?.status||x.fulfillmentStatus||'').toLowerCase()))}
+function orderReadyForRutaFV(o={}){if(o.fulfillment?.readyForRutaFV===true||o.readyForRutaFV===true)return true;const ready=new Set(['available','available_at_supplier','received','recibido','listo','ready','lista_para_recogida','ready_for_pickup']);const items=Array.isArray(o.items)?o.items:[];return items.length>0&&items.every(x=>ready.has(String(x.procurement?.status||x.fulfillmentStatus||'').toLowerCase()))}
 function rutaFVAssignment(value={}){
   const root=value&&typeof value==='object'?value:{};
   const source=root.assignment&&typeof root.assignment==='object'?root.assignment:(root.delivery&&typeof root.delivery==='object'?root.delivery:(root.data&&typeof root.data==='object'?root.data:root));
@@ -1741,6 +1774,43 @@ function rutaFVAssignment(value={}){
   const driverLabel=String(source.driverLabel||source.driverName||driver.name||driver.fullName||'').trim();
   return {vehicleId,vehicleLabel,driverId,driverLabel};
 }
+function rutaFVSupplierPickup(d,o={}){
+  const tasks=(d.procurementTasks||[]).filter(task=>String(task.orderId||'')===String(o.id||''));
+  const itemRefs=(o.items||[]).map(item=>({
+    id:String(item.procurement?.supplierId||item.supplierId||'').trim(),
+    name:String(item.procurement?.provider||item.sourceProvider||item.supplierName||'').trim(),
+    address:String(item.procurement?.supplierAddress||item.supplierAddress||'').trim(),
+    city:String(item.procurement?.supplierCity||item.supplierCity||'').trim(),
+    postalCode:String(item.procurement?.supplierPostalCode||item.supplierPostalCode||'').trim(),
+    island:String(item.procurement?.supplierIsland||item.supplierIsland||'').trim()
+  }));
+  const refs=[...tasks.map(task=>({
+    id:String(task.supplierId||'').trim(),
+    name:String(task.supplierName||'').trim(),
+    address:String(task.pickupAddress||task.supplierAddress||'').trim(),
+    city:String(task.supplierCity||'').trim(),
+    postalCode:String(task.supplierPostalCode||'').trim(),
+    island:String(task.supplierIsland||'').trim()
+  })),...itemRefs].filter(ref=>ref.id||ref.name);
+  const keys=[...new Set(refs.map(ref=>ref.id||ref.name.toLocaleLowerCase('es-ES')))];
+  if(keys.length>1)throw new Error('El pedido incluye productos de varios proveedores. Separa la compra en repartos distintos para crear una recogida por proveedor.');
+  const ref=refs[0]||{};
+  const supplier=(d.suppliers||[]).find(value=>
+    (ref.id&&String(value.id||'')===ref.id)
+    ||(!ref.id&&ref.name&&String(value.name||'').trim().toLocaleLowerCase('es-ES')===ref.name.toLocaleLowerCase('es-ES'))
+  )||{};
+  const task=tasks.find(value=>!ref.id||String(value.supplierId||'')===ref.id)||tasks[0]||{};
+  const supplierId=String(ref.id||supplier.id||task.supplierId||'').trim();
+  const name=String(supplier.name||supplier.company||task.supplierName||ref.name||'Proveedor FVMarket').trim();
+  const address=String(supplier.address||supplier.pickupAddress||supplier.street||task.pickupAddress||task.supplierAddress||ref.address||'').trim();
+  const city=String(supplier.city||supplier.pickupCity||task.supplierCity||ref.city||'').trim();
+  const postalCode=String(supplier.postalCode||supplier.pickupPostalCode||task.supplierPostalCode||ref.postalCode||'').trim();
+  const island=String(supplier.island||supplier.pickupIsland||task.supplierIsland||ref.island||'').trim();
+  if(!address)throw new Error('El proveedor no tiene dirección de recogida. Completa su dirección en FVMarket antes de enviar a RutaFV.');
+  const label=[name,address,[postalCode,city,island].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  return {id:supplier.rutaFVOriginId||supplierId||'',supplierId,name,supplierName:name,address,city,postalCode,island,label,source:'FVMarket'};
+}
+
 async function createRutaFVDelivery(d,o){
   if(!o?.transport?.requested) return null;
   if(!paidOrderStatus(o.status)) throw new Error('El pedido aún no está pagado');
@@ -1754,8 +1824,8 @@ async function createRutaFVDelivery(d,o){
   const notes=String(savedDestination.notes||o.customer?.notes||o.notes||'').trim();
   const destination={address,city,postalCode,notes};
   if(!address||!city||!postalCode) throw new Error('El pedido no tiene una dirección de entrega completa');
-  const originDetails=o.transport.originDetails||fvmarketOriginSnapshot(d);
-  const origin=String(originDetails.label||o.transport.origin||fvmarketOrigin(d)).trim();
+  const originDetails=rutaFVSupplierPickup(d,o);
+  const origin=String(originDetails.label||'').trim();
   const probableDate=String(o.transport.estimatedDeliveryDate||probableDeliveryDate(o.deliveryEstimate||{})||'').trim();
   const client=operations.rutaFVClient(d,RUTAFV_CLIENT_CODE);
   const items=(o.items||[]).map(x=>{const weightKg=normalizeWeightKg(x.weightKg||x.procurement?.weightKg),qty=Math.max(1,Number(x.qty)||1);return {id:String(x.productId||x.id||''),ref:String(x.ref||''),title:String(x.title||''),qty,weightKg,totalWeightKg:Math.round(weightKg*qty*1000)/1000,supplierId:String(x.procurement?.supplierId||x.supplierId||''),sourceProvider:String(x.procurement?.provider||x.sourceProvider||''),sourceUrl:String(x.sourceUrl||''),sourceRef:String(x.sourceRef||'')}});
