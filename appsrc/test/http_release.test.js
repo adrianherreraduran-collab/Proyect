@@ -381,3 +381,70 @@ test('el enlace de condiciones calcula costes desde el catálogo y escapa los t�
   assert.equal((await request('/legal/condiciones?items='+encodeURIComponent(JSON.stringify([{id:'missing',qty:1}])),{anonymous:true})).status,400);
   assert.equal((await request('/legal/condiciones?items='+encodeURIComponent(JSON.stringify([{id:'p1',qty:1.5}])),{anonymous:true})).status,400);
 });
+
+test('crear productos exige peso válido incluso para borradores en ambas rutas', async () => {
+  const invalid = [undefined, null, '', '   ', 0, '0', -1, '-2', 'no es un peso', 'Infinity', 0.0001, false, [], [2], {}];
+  for (const route of ['/api/admin/products', '/api/admin/suppliers/supplier-weight/products']) {
+    for (const weightKg of invalid) {
+      reset();
+      const data = server.read();
+      data.suppliers = [{ id: 'supplier-weight', name: 'Proveedor prueba peso', defaultMargin: 40 }];
+      server.save(data);
+      const before = server.read().products;
+      const result = await request(route, { method: 'POST', body: {
+        title: 'Producto prueba peso', category: 'Fontanería', sourcePrice: 10, price: 14,
+        published: false, weightKg
+      } });
+      assert.equal(result.status, 400, route + ' rejects ' + JSON.stringify(weightKg));
+      assert.match(result.data.error, /peso.*kg.*mayor que 0/i);
+      assert.deepEqual(server.read().products, before, 'a rejected save must not create a product');
+    }
+  }
+});
+test('crear productos conserva pesos positivos, ligeros y con coma decimal', async () => {
+  for (const route of ['/api/admin/products', '/api/admin/suppliers/supplier-weight/products']) {
+    for (const [weightKg, expected] of [[0.001, 0.001], [0.25, 0.25], [12, 12], ['2,5', 2.5]]) {
+      reset();
+      const data = server.read();
+      data.suppliers = [{ id: 'supplier-weight', name: 'Proveedor prueba peso', defaultMargin: 40 }];
+      server.save(data);
+      const result = await request(route, { method: 'POST', body: {
+        title: 'Producto prueba peso', category: 'Fontanería', sourcePrice: 10, price: 14,
+        published: false, weightKg
+      } });
+      assert.equal(result.status, 200, route);
+      const product = result.data.product || result.data;
+      assert.equal(product.weightKg, expected);
+      assert.equal(server.read().products.find(item => item.id === product.id).weightKg, expected);
+    }
+  }
+});
+test('editar no permite borrar el peso y admite cambios parciales que lo conservan', async () => {
+  for (const weightKg of [null, '', 0, -1, 'Infinity', false, [2]]) {
+    reset();
+    const result = await request('/api/admin/products/p1', { method: 'PUT', body: {
+      title: 'No debe guardarse', weightKg
+    } });
+    assert.equal(result.status, 400);
+    assert.equal(server.read().products[0].weightKg, 3);
+    assert.equal(server.read().products[0].title, 'Producto prueba');
+  }
+  reset();
+  const result = await request('/api/admin/products/p1', { method: 'PUT', body: { title: 'Título corregido' } });
+  assert.equal(result.status, 200);
+  assert.equal(result.data.weightKg, 3);
+});
+test('publicar un borrador anterior sin peso requiere completarlo primero', async () => {
+  reset();
+  const data = server.read();
+  data.products[0].weightKg = 0;
+  data.products[0].published = false;
+  server.save(data);
+  const rejected = await request('/api/admin/products/p1', { method: 'PUT', body: { published: true } });
+  assert.equal(rejected.status, 400);
+  assert.equal(server.read().products[0].published, false);
+  const accepted = await request('/api/admin/products/p1', { method: 'PUT', body: { published: true, weightKg: 0.5 } });
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.data.weightKg, 0.5);
+  assert.equal(accepted.data.published, true);
+});
