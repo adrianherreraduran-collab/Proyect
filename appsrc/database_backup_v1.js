@@ -55,4 +55,26 @@ function initialState(seedState, currentUsers = []) {
   return next;
 }
 
-module.exports = { FORMAT, VERSION, createBackup, parseBackup, preserveAdministrators, initialState };
+
+function clearTestData(current = {}) {
+  const products = Array.isArray(current.products) ? current.products : [];
+  const suppliers = Array.isArray(current.suppliers) ? current.suppliers : [];
+  const productIds = new Set(products.map(product => product.id));
+  const settings = plainObject(current.settings) ? clone(current.settings) : {};
+  settings.invoiceSequence = 0;
+  return {
+    users: (Array.isArray(current.users) ? current.users : [])
+      .filter(user => user?.role === 'admin' && user.id).map(clone),
+    products: clone(products),
+    suppliers: clone(suppliers),
+    supplierCaptures: (Array.isArray(current.supplierCaptures) ? current.supplierCaptures : [])
+      .filter(capture => productIds.has(capture.productId)).map(clone),
+    catalogTaxonomy: plainObject(current.catalogTaxonomy) ? clone(current.catalogTaxonomy) : {},
+    settings,
+    orders: [],
+    quotes: [],
+    reviews: []
+  };
+}
+
+module.exports = { FORMAT, VERSION, createBackup, parseBackup, preserveAdministrators, initialState, clearTestData };

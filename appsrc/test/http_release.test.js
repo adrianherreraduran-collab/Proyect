@@ -448,3 +448,71 @@ test('publicar un borrador anterior sin peso requiere completarlo primero', asyn
   assert.equal(accepted.data.weightKg, 0.5);
   assert.equal(accepted.data.published, true);
 });
+
+test('vaciar pruebas exige administrador y confirmación propia sin modificar datos', async () => {
+  reset();
+  const before = server.read();
+  const route = '/api/admin/database/clear-test-data';
+  assert.equal((await request(route, { anonymous: true, method: 'POST', body: { confirmation: 'LIMPIAR PRUEBAS' } })).status, 401);
+  assert.equal((await request(route, { id: 'customer', role: 'customer', method: 'POST', body: { confirmation: 'LIMPIAR PRUEBAS' } })).status, 403);
+  for (const confirmation of [undefined, '', 'REINICIAR', 'IMPORTAR']) {
+    assert.equal((await request(route, { method: 'POST', body: { confirmation } })).status, 400);
+  }
+  assert.deepEqual(server.read(), before);
+});
+test('vaciar pruebas conserva el catálogo y acceso, elimina operaciones y no crea copias', async () => {
+  reset();
+  const data = server.read();
+  Object.assign(data.settings, { invoiceSequence: 9, invoicePrefix: 'FVM-FAC', customSetting: 'conservar' });
+  data.suppliers = [{ id: 'supplier-clear', name: 'Proveedor de prueba', address: 'Dirección de prueba', defaultMargin: 40 }];
+  data.products[0].supplierId = 'supplier-clear';
+  data.supplierCaptures = [
+    { id: 'capture-keep', productId: 'p1', supplierId: 'supplier-clear', capture: 'data:image/png;base64,AAAA' },
+    { id: 'capture-orphan', productId: 'deleted-product', supplierId: 'supplier-clear' }
+  ];
+  data.catalogTaxonomy = { 'Categoría propia': ['Subcategoría propia'] };
+  data.orders = [{ id: 'clear-order', number: 'FVM-TEST', status: 'pagado', userId: 'customer', items: [], total: 10 }];
+  data.quotes = [{ id: 'clear-quote', userId: 'customer', items: [] }];
+  data.invoices = [{ id: 'clear-invoice', orderId: 'clear-order', number: 'FVM-FAC-2026-00009', total: 10 }];
+  data.orderReviews = [{ id: 'clear-review', userId: 'customer', orderId: 'clear-order' }];
+  data.customerNotifications = [{ id: 'clear-notice', userId: 'customer', orderId: 'clear-order' }];
+  data.accountingEntries = [{ id: 'clear-entry', amount: 10 }];
+  data.cashClosures = [{ id: 'clear-closeout' }];
+  data.legacyOperationalEvents = [{ id: 'clear-legacy' }];
+  server.save(data);
+  const before = server.read();
+  const directory = path.dirname(process.env.DATA_FILE);
+  const filesBefore = fs.readdirSync(directory).sort();
+  const databaseBackup = require('../database_backup_v1');
+  const originalCreateBackup = databaseBackup.createBackup;
+  let backupCalls = 0;
+  databaseBackup.createBackup = (...args) => { backupCalls++; return originalCreateBackup(...args); };
+  let result;
+  try {
+    result = await request('/api/admin/database/clear-test-data', { method: 'POST', body: { confirmation: 'LIMPIAR PRUEBAS' } });
+  } finally {
+    databaseBackup.createBackup = originalCreateBackup;
+  }
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.data.kept, { products: 1, suppliers: 1, administrators: 1 });
+  assert.match(result.data.message, /sin crear copias/);
+  const after = server.read();
+  assert.deepEqual(after.products, before.products);
+  assert.deepEqual(after.suppliers, before.suppliers);
+  assert.deepEqual(after.supplierCaptures, [before.supplierCaptures[0]]);
+  assert.deepEqual(after.catalogTaxonomy, before.catalogTaxonomy);
+  assert.deepEqual(after.users, before.users.filter(user => user.role === 'admin'));
+  assert.equal(after.settings.customSetting, 'conservar');
+  assert.equal(after.settings.invoicePrefix, 'FVM-FAC');
+  assert.equal(after.settings.invoiceSequence, 0);
+  assert.equal(after.legacyOperationalEvents, undefined);
+  for (const [key, value] of Object.entries(after)) {
+    if (Array.isArray(value) && !['users', 'products', 'suppliers', 'supplierCaptures'].includes(key)) {
+      assert.equal(value.length, 0, key + ' must be empty after clearing test data');
+    }
+  }
+  assert.equal(backupCalls, 0);
+  assert.deepEqual(fs.readdirSync(directory).sort(), filesBefore);
+  assert.equal((await request('/api/admin/products')).data.length, 1);
+  assert.equal((await request('/api/admin/orders')).data.length, 0);
+});

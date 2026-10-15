@@ -1105,6 +1105,15 @@ app.post('/api/admin/database/import',admin,async(req,res)=>{
     res.json({ok:true,message:'Copia importada correctamente. Las cuentas administradoras existentes se han mantenido.'});
   }catch(error){res.status(400).json({error:error.message||'No se pudo importar la copia.'})}
 });
+app.post('/api/admin/database/clear-test-data',admin,async(req,res)=>{
+  if(String(req.body?.confirmation||'').trim()!=='LIMPIAR PRUEBAS')return res.status(400).json({error:'Confirma la limpieza escribiendo LIMPIAR PRUEBAS.'});
+  try{
+    const current=read();
+    const fresh=databaseBackup.clearTestData(current);
+    normalizeState(fresh);await replaceState(fresh);
+    res.json({ok:true,kept:{products:fresh.products.length,suppliers:fresh.suppliers.length,administrators:fresh.users.filter(user=>user.role==='admin').length},message:`Datos de prueba eliminados sin crear copias. Se conservan ${fresh.suppliers.length} proveedor(es), ${fresh.products.length} producto(s), las categorías, la configuración y el acceso de administrador.`});
+  }catch(error){res.status(500).json({error:error.message||'No se pudieron vaciar los datos de prueba.'})}
+});
 app.post('/api/admin/database/reset',admin,async(req,res)=>{
   if(String(req.body?.confirmation||'').trim()!=='REINICIAR')return res.status(400).json({error:'Confirma el reinicio escribiendo REINICIAR.'});
   try{
