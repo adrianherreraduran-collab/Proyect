@@ -309,7 +309,7 @@ test('correos y páginas legales reflejan Stripe, Klarna elegible y la validaci�
   assert.match(server.legalPage('condiciones', fixture().settings), /métodos de pago a plazo.*Klarna/i);
 });
 
-test('la tienda inicia sin sesión ni búsqueda y ofrece Stripe con métodos dinámicos', () => {
+test('la tienda recupera su estado y ofrece Stripe con métodos dinámicos', () => {
   const storefront = fs.readFileSync(path.join(__dirname, '..', 'public', 'fvmarket-storefront-v2.js'), 'utf8');
   const index = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
   const source = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');

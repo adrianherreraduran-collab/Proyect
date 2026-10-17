@@ -7,7 +7,7 @@
   const $ = id => document.getElementById(id);
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const money = value => Number(value || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
-  const typeLabels = { venta_productos: 'Venta de productos', transporte_cobrado: 'Transporte cobrado', coste_proveedor: 'Coste de proveedor', reembolso: 'Reembolso' };
+  const typeLabels = { comision_stripe: 'Comisión real de Stripe', venta_productos: 'Venta de productos', transporte_cobrado: 'Transporte cobrado', coste_proveedor: 'Coste de proveedor', reembolso: 'Reembolso' };
   const appLabels = { FVMarket: 'FVMarket', RutaFV: 'RutaFV', Compartido: 'Compartido' };
   let report = null;
 
@@ -45,7 +45,7 @@
     const ruta = apps.RutaFV || { income: 0, costs: 0, net: 0 };
     const cards = [
       ['fvmAccCard', money(fvm.income), 'FVMarket · ventas y otros ingresos'],
-      ['fvmAccCard fvmAccCost', money(fvm.costs), 'FVMarket · compras a proveedores'],
+      ['fvmAccCard fvmAccCost', money(fvm.costs), 'FVMarket · compras y comisiones'],
       ['fvmAccCard fvmAccRuta', money(ruta.income), 'RutaFV · transporte cobrado'],
       ['fvmAccCard', money(fvm.net), 'Resultado analítico FVMarket'],
       ['fvmAccCard fvmAccRuta', money(ruta.net), 'Resultado analítico RutaFV'],

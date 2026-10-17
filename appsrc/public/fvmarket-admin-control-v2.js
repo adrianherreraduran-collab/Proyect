@@ -190,7 +190,7 @@
       const reason = prompt('Indica el motivo de la cancelación:', '');
       if (!String(reason || '').trim()) { alert('Debes indicar un motivo para cancelar el pedido.'); input.checked = false; return; }
       if (!confirm('¿Confirmar la cancelación de este pedido?')) { input.checked = false; return; }
-      try { await api('/api/admin/orders/' + encodeURIComponent(orderId), { method: 'PUT', body: JSON.stringify({ status: 'cancelado', note: String(reason).trim() }) }); await Promise.all([loadBoard(), loadNotifications()]); } catch (e) { input.checked = false; alert(e.message); }
+      try { await api('/api/admin/orders/' + encodeURIComponent(orderId), { method: 'PUT', body: JSON.stringify({ status: 'cancelado', note: String(reason).trim() }) }); if(result.refundStatus!=='succeeded'){input.checked=false;alert('Stripe está procesando el reembolso. El pedido se actualizará al confirmarse.')} await Promise.all([loadBoard(), loadNotifications()]); } catch (e) { input.checked = false; alert(e.message); }
       return;
     }
     if (action === 'reembolsado') {
@@ -198,7 +198,7 @@
       if (amount === null) { input.checked = false; return; }
       if (amount !== null && String(amount).trim() !== '' && (!Number.isFinite(Number(String(amount).replace(',', '.'))) || Number(String(amount).replace(',', '.')) <= 0)) { alert('Indica un importe válido mayor que cero.'); input.checked = false; return; }
       if (!confirm('¿Confirmar el reembolso mediante Stripe?')) { input.checked = false; return; }
-      try { const body = String(amount).trim() === '' ? {} : { amount: Number(String(amount).replace(',', '.')) }; await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/refund', { method: 'POST', body: JSON.stringify(body) }); await Promise.all([loadBoard(), loadNotifications()]); } catch (e) { input.checked = false; alert(e.message); }
+      try { const body = String(amount).trim() === '' ? {} : { amount: Number(String(amount).replace(',', '.')) }; body.requestId=crypto.randomUUID(); const result=await api('/api/admin/orders/' + encodeURIComponent(orderId) + '/refund', { method: 'POST', body: JSON.stringify(body) }); if(result.refundStatus!=='succeeded'){input.checked=false;alert('Stripe está procesando el reembolso. El pedido se actualizará al confirmarse.')} await Promise.all([loadBoard(), loadNotifications()]); } catch (e) { input.checked = false; alert(e.message); }
       return;
     }
     const purchaseReference = action === 'comprada' ? prompt('Referencia, ticket o factura de la compra (opcional):', '') : '';
