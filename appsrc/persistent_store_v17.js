@@ -26,7 +26,7 @@ async function init(){
 }
 function writeRaw(raw){const job=writeQueue.then(()=>pool.query(`INSERT INTO fvmarket_state(state_key,payload,updated_at) VALUES('main',$1,NOW()) ON CONFLICT(state_key) DO UPDATE SET payload=EXCLUDED.payload,updated_at=NOW()`,[raw]));writeQueue=job.catch(()=>{});return job}
 async function flush(){
-  timer=null;if(!enabled||!pool||pending==null)return;const raw=pending;pending=null;
+  if(timer){clearTimeout(timer);timer=null}if(!enabled||!pool)return;if(pending==null){await writeQueue;return}const raw=pending;pending=null;
   try{await writeRaw(raw);lastError=''}catch(e){lastError=String(e.message||e);console.error('FVMarket persistence write failed:',lastError);if(pending==null)pending=raw}
   if(pending!=null){if(lastError){timer=setTimeout(flush,5000)}else scheduleRaw(pending);}
 }

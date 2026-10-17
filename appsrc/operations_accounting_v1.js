@@ -3,6 +3,8 @@
 
 const {deliveryEstimate, supplierLocation, probableDeliveryDate} = require('./supplier_delivery_v1');
 
+const commercial = require('./commercial_rules_v1');
+
 const STATUS_LABELS = {
   pendiente_pago: 'Pendiente de pago',
   pagado: 'Pagado',
@@ -34,6 +36,7 @@ const ACCOUNTING_APPS = {
 const ACCOUNTING_META = {
   venta_productos: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '700000', label: 'Venta de productos' },
   transporte_cobrado: { analyticApp: ACCOUNTING_APPS.RUTAFV, accountCode: '705000', label: 'Transporte cobrado' },
+  comision_stripe: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '626000', label: 'Comisión real de Stripe' },
   coste_proveedor: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '600000', label: 'Coste de proveedor' },
   reembolso: { analyticApp: ACCOUNTING_APPS.FVMARKET, accountCode: '708000', label: 'Reembolso de cliente' }
 };
@@ -275,6 +278,7 @@ function ensureLedgerForOrder(d, order) {
     addLedger(d, order, 'venta_productos', order.subtotal, { description: 'Venta de productos FVMarket', sourceKey: `${order.id}:sale` });
     if (Number(order.delivery) > 0) addLedger(d, order, 'transporte_cobrado', order.delivery, { description: 'Transporte a obra RutaFV', sourceKey: `${order.id}:transport` });
   }
+  if (order.stripeAccounting?.status === 'confirmed') addLedger(d, order, 'comision_stripe', -Number(order.stripeAccounting.fee), { description: 'Comisión real de Stripe', sourceKey: order.id + ':stripe-fee:' + order.stripeAccounting.balanceTransactionId, metadata: { taxRate: 0, chargeId: order.stripeAccounting.chargeId, balanceTransactionId: order.stripeAccounting.balanceTransactionId, classificationPending: true } });
   const tasks = d.procurementTasks.filter(x => x.orderId === order.id);
   if (paidStatuses.has(normalizeStatus(order.status))) for (const task of tasks) if (!['pendiente_compra', 'incidencia'].includes(String(task.status || '')) && Number(task.actualCost || task.sourceCost) > 0) addLedger(d, order, 'coste_proveedor', -Number(task.actualCost || task.sourceCost), { description: `Coste proveedor: ${task.supplierName}`, sourceKey: `${order.id}:supplier:${task.id}`, metadata: { supplierId: task.supplierId, supplierName: task.supplierName } });
 }
@@ -449,6 +453,7 @@ function accountingReport(d, query = {}) {
     applications: Object.values(ACCOUNTING_APPS),
     types: Object.keys(ACCOUNTING_META),
     statuses: Object.keys(STATUS_LABELS),
+    margins: (d.orders || []).filter(order => order.paidAt).map(order => commercial.orderMargin(order, d.settings, d.procurementTasks || [])),
     audit: (d.auditLog || []).slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 500)
   };
 }

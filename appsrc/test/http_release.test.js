@@ -9,10 +9,11 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 process.env.DATA_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fvm-http-')), 'data.json');
 process.env.JWT_SECRET = 'http-integration-secret'; process.env.STRIPE_SECRET_KEY = 'sk_test_isolated'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_isolated'; process.env.RESEND_API_KEY = 're_isolated'; process.env.EMAIL_FROM = 'test@example.com'; process.env.PUBLIC_URL = 'http://localhost';
+const refundCalls=[];let refundStatus='succeeded';
 const checkoutCalls = [], expiredSessions = []; let expirationFailure = false; let quoteCalls = 0; let emails = 0; let counter = 0;
 const originalLoad = Module._load;
 Module._load = function (name, ...args) {
-  if (name === 'stripe') return class { constructor() { this.checkout = { sessions: { create: async payload => { checkoutCalls.push(payload); return { id: 'cs_' + (++counter), url: 'https://checkout.stripe.com/isolated', expires_at: Math.floor(Date.now() / 1000) + 1200 }; }, expire: async id => { if(expirationFailure)throw Error('isolated expiration failure'); expiredSessions.push(id); return {id,status:'expired'}; }, retrieve: async () => ({status:'open'}) } }; this.webhooks = { constructEvent: (body, signature) => { if (signature !== 'isolated-signature') throw Error('invalid'); return JSON.parse(body); } }; } };
+  if (name === 'stripe') return class { constructor() { this.checkout = { sessions: { create: async payload => { checkoutCalls.push(payload); return { id: 'cs_' + (++counter), url: 'https://checkout.stripe.com/isolated', expires_at: Math.floor(Date.now() / 1000) + 1200 }; }, expire: async id => { if(expirationFailure)throw Error('isolated expiration failure'); expiredSessions.push(id); return {id,status:'expired'}; }, retrieve: async () => ({status:'open'}) } }; this.refunds={create:async(payload,options)=>{refundCalls.push({payload,options});return{id:'re_'+refundCalls.length,amount:payload.amount,currency:'eur',status:refundStatus,payment_intent:payload.payment_intent,metadata:payload.metadata}}}; this.webhooks = { constructEvent: (body, signature) => { if (signature !== 'isolated-signature') throw Error('invalid'); return JSON.parse(body); } }; } };
   return originalLoad.call(this, name, ...args);
 };
 const { app, _test: server } = require('../server'); Module._load = originalLoad;
@@ -26,7 +27,7 @@ process.env.RUTAFV_API_URL = ''; // No real transport or customer email calls ar
 const profile = { id: 'customer', role: 'customer', name: 'Ana López', firstName: 'Ana', lastName: 'López', email: 'ana@example.com', emailVerified: true, nifNie: '42350448L', phone: '600123123', billingAddress: 'Calle Uno 1', billingCity: 'Costa Calma', billingPostalCode: '35627', deliveryAddress: { address: 'Calle Uno 1', city: 'Costa Calma', postalCode: '35627', validated: true }, discountPct: 20, freeTransport: true };
 const passwordHash = bcrypt.hashSync('isolated-password-123', 4);
 const fixture = () => ({ users: [{ id: 'admin', username: 'admin-test', role: 'admin', email: 'admin@example.com', password: passwordHash, emailVerified: true }, { ...profile, password: passwordHash }, { id: 'operator', role: 'operator', password: passwordHash, emailVerified: true }], settings: { adminCredentialsInitializedV14: true, igic: 7 }, products: [{ id: 'p1', title: 'Producto prueba', ref: 'TP0001', price: 100, weightKg: 3, published: true, returnPolicy: {mode:'postal',maxCostPerUnit:null}, sourcePrice: 40, sourceProvider: 'Proveedor privado', images: [{ url: 'https://images.example.com/p1.jpg' }] }], orders: [], quotes: [], invoices: [], reviews: [], orderReviews: [] });
-function reset() { fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture())); }
+function reset() { server.clearRequestBuckets();refundStatus='succeeded';fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture())); }
 const sellerFixture = () => ({ fiscalName: 'Ana López García', fiscalNif: '42350448L', fiscalAddress: 'Calle Prueba 1', fiscalCity: 'Tuineje', fiscalPostalCode: '35620', legalEmail: 'ana@example.com', contactPhone: '600123123', legalIdentityConfirmed: true });
 function token(id = 'admin', role = 'admin') { return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '1h' }); }
 let listener, origin;
@@ -515,4 +516,51 @@ test('vaciar pruebas conserva el catálogo y acceso, elimina operaciones y no cr
   assert.deepEqual(fs.readdirSync(directory).sort(), filesBefore);
   assert.equal((await request('/api/admin/products')).data.length, 1);
   assert.equal((await request('/api/admin/orders')).data.length, 0);
+});
+
+
+test('reintentar o hacer doble clic en el pago conserva un único pedido y un único Checkout',async()=>{
+ reset();const items=[{id:'p1',qty:2,weightKg:3}],customer={...profile,...profile.deliveryAddress};const quote=server.decorateTransportQuote({id:'duplicate',amount:25},profile.id,items,customer);
+ const body={items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true},before=checkoutCalls.length;
+ const results=await Promise.all([request('/api/checkout/stripe',{method:'POST',id:'customer',role:'customer',body}),request('/api/checkout/stripe',{method:'POST',id:'customer',role:'customer',body})]);
+ assert.ok(results.every(x=>x.status===200));assert.equal(results[0].data.orderId,results[1].data.orderId);assert.equal(checkoutCalls.length,before+1);assert.equal(server.read().orders.length,1);
+});
+test('las reglas comerciales requieren admin y el cliente no puede falsificar precios ni coste del transporte',async()=>{
+ reset();assert.equal((await request('/api/admin/commercial',{id:'customer',role:'customer'})).status,403);
+ assert.equal((await request('/api/admin/commercial',{method:'PUT',body:{shipping:{enabled:true,rules:[]}}})).status,400);
+ const settings={fee:{percent:1.5,fixed:.25},shipping:{enabled:true,rules:[{id:'zone',name:'Costa Calma',cities:['Costa Calma'],postalCodes:['35627'],minSubtotal:150,maxWeightKg:100,maxShippingCost:40}]}};
+ assert.equal((await request('/api/admin/commercial',{method:'PUT',body:settings})).status,200);
+ const d=server.read();d.users.find(x=>x.id==='customer').freeTransport=false;server.save(d);
+ const items=[{id:'p1',qty:2,weightKg:3}],customer={...profile,...profile.deliveryAddress},quote=server.decorateTransportQuote({id:'promo',amount:25},profile.id,items,customer);
+ const preview=await request('/api/cart/benefits',{id:'customer',role:'customer',method:'POST',body:{items:[{id:'p1',qty:2,unitPrice:1,weightKg:0}],destination:customer,quote}});
+ assert.equal(preview.data.promotion.subtotal,160);assert.equal(preview.data.promotion.freeTransport,true);assert.doesNotMatch(JSON.stringify(preview.data),/sourcePrice|supplierId|fee|margin/);
+ const result=await request('/api/checkout/stripe',{id:'customer',role:'customer',method:'POST',body:{items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true}});assert.equal(result.status,200);
+ const order=server.read().orders[0];assert.equal(order.total,160);assert.equal(order.delivery,0);assert.equal(order.regularDelivery,25);
+ const calculated=await request('/api/admin/commercial/price',{method:'POST',body:{targetNet:50}});assert.equal(calculated.data.price,51.02);assert.equal(calculated.data.estimatedNet,50);
+});
+test('no se puede cambiar el destino modificando tanto la dirección como el contenido de una cotización firmada',()=>{
+ reset();const items=[{id:'p1',qty:1,weightKg:3}],destination={address:'Calle Uno 1',city:'Costa Calma',postalCode:'35627'};
+ const quote=server.decorateTransportQuote({id:'signed',amount:25},'customer',items,destination);
+ const other={address:'Otra dirección 50',city:'Corralejo',postalCode:'35660'};quote._fvmDestination=other;
+ assert.equal(server.validTransportQuote(quote,'customer',items,other),false);
+});
+test('un reembolso pendiente no se marca completado ni genera gasto hasta que Stripe lo confirma',async()=>{
+ reset();const d=server.read();d.orders.push({id:'refund-order',number:'FVM-REFUND',userId:'customer',paymentMethod:'stripe',paymentIntentId:'pi_refund',paidAt:new Date().toISOString(),status:'pagado',subtotal:10,total:10,items:[]});server.save(d);refundStatus='pending';
+ const input={amount:5,requestId:'refund-request-unique-001'},before=refundCalls.length;
+ let result=await request('/api/admin/orders/refund-order/refund',{method:'POST',body:input});assert.equal(result.status,200);assert.equal(result.data.refundStatus,'pending');assert.equal(result.data.refundedAmount,0);assert.equal(server.read().orders[0].status,'pagado');assert.equal(server.read().accountingEntries.filter(x=>x.type==='reembolso').length,0);
+ result=await request('/api/admin/orders/refund-order/refund',{method:'POST',body:input});assert.equal(result.data.reused,true);assert.equal(refundCalls.length,before+1);
+ const refund=server.read().orders[0].refunds[0];const event={type:'refund.updated',data:{object:{id:refund.stripeRefundId,amount:500,currency:'eur',payment_intent:'pi_refund',status:'succeeded'}}};
+ for(let i=0;i<2;i++)assert.equal((await request('/api/stripe/webhook',{anonymous:true,method:'POST',headers:{'stripe-signature':'isolated-signature'},body:event})).status,200);
+ assert.equal(server.read().orders[0].status,'reembolso_parcial');assert.equal(server.read().orders[0].refundedAmount,5);assert.equal(server.read().accountingEntries.filter(x=>x.type==='reembolso').length,1);
+});
+
+
+test('un reembolso fallido no reduce el saldo ni se contabiliza como realizado',async()=>{
+ reset();const d=server.read();d.orders.push({id:'failed-refund',number:'FVM-FAILED-REFUND',paymentMethod:'stripe',paymentIntentId:'pi_failed_refund',paidAt:new Date().toISOString(),status:'pagado',subtotal:10,total:10,items:[]});server.save(d);refundStatus='failed';
+ const result=await request('/api/admin/orders/failed-refund/refund',{method:'POST',body:{amount:5,requestId:'failed-refund-request-001'}});assert.equal(result.status,200);assert.equal(result.data.refundStatus,'failed');assert.equal(result.data.refundedAmount,0);assert.equal(server.read().orders[0].status,'pagado');assert.equal(server.read().accountingEntries.filter(x=>x.type==='reembolso').length,0);
+});
+test('la comprobación de producción reconoce claves restringidas reales y oculta los costes internos al cliente',async()=>{
+ reset();const previous=process.env.STRIPE_SECRET_KEY;try{process.env.STRIPE_SECRET_KEY='rk_live_isolated';const readiness=await request('/api/admin/readiness');assert.equal(readiness.data.stripe.live,true);}finally{process.env.STRIPE_SECRET_KEY=previous;}
+ const order={id:'private-fields',userId:'customer',status:'pagado',total:10,items:[],stripeAccounting:{fee:1,net:9},paymentCostEstimate:{amount:1},checkoutFingerprint:'private'};
+ const output=server.publicOrder(order);assert.equal(output.stripeAccounting,undefined);assert.equal(output.paymentCostEstimate,undefined);assert.equal(output.checkoutFingerprint,undefined);
 });

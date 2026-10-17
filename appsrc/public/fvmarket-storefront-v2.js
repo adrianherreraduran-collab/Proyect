@@ -101,12 +101,16 @@
   }
 
   async function payWithStripe() {
+    if (window.fvmCheckoutBusy) return;
     const message = $('cartMsg');
     if (!session) { if (message) message.textContent = 'Inicia sesión para realizar el pago.'; if (typeof openAccount === 'function') openAccount(); return; }
     const value = customer(), error = deliveryError(value, true);
     if (error) { if (message) message.textContent = error; return; }
     if (!$('orderTerms')?.checked || !$('orderPrivacy')?.checked) { if (message) message.textContent = 'Acepta las condiciones de compra y la política de privacidad.'; return; }
+    window.fvmCheckoutBusy = true;
     try {
+      const pending=window.FVMStoreState?.pendingCheckout(localStorage,session);
+      if(pending){const previous=await api('/api/payments/stripe/status?order='+encodeURIComponent(pending.orderId));if(previous.paid){const remaining=window.FVMStoreState.finishCheckout(localStorage,session,pending.orderId,cart);if(remaining){cart=remaining;rutaFVQuote=null;updateCart();renderCart()}if(message)message.textContent='El pedido '+previous.orderNumber+' ya está pagado. Revisa Mis pedidos.';return}}
       const previousPrices = JSON.stringify(cart.map(item => ({ id: item.id, qty: item.qty, price: cartProduct(item.id)?.customerPrice ?? cartProduct(item.id)?.salePrice ?? cartProduct(item.id)?.price })));
       if (message) message.textContent = 'Comprobando tus precios…';
       if (!await refreshCustomerPricing()) throw new Error('Vuelve a abrir el carrito para actualizar tus precios.');
@@ -116,8 +120,11 @@
       if (message) message.textContent = 'Abriendo el pago seguro de Stripe…';
       const result = await api('/api/checkout/stripe', { method: 'POST', body: JSON.stringify({ items: cart, customer: value, useRutaFV: true, rutaFVQuote, termsAccepted: true, privacyAccepted: true, guestSessionId }) });
       if (!result.url) throw new Error('Stripe no devolvió el enlace de pago.');
+      window.FVMStoreState?.save(localStorage, session, cart);
+      window.FVMStoreState?.saveCheckout(localStorage, session, result.orderId, cart);
       window.location.assign(result.url);
-    } catch (error) { if (message) message.textContent = error.message; }
+    } catch (error) { if (error.status === 409) { rutaFVQuote = null; try { for (const key of Object.keys(sessionStorage)) if (key.startsWith('fvm_rutafv_quote_')) sessionStorage.removeItem(key); } catch {} } if (message) message.textContent = error.message; }
+    finally { window.fvmCheckoutBusy = false; }
   }
 
   function toast(text, ok = true) {
@@ -125,18 +132,34 @@
     if (!ok) node.style.background = '#9b2c2c'; document.body.appendChild(node); setTimeout(() => node.remove(), 8000);
   }
 
+  let paymentReturnBusy = false;
   async function handlePaymentReturn() {
+    if (paymentReturnBusy) return;
     const params = new URLSearchParams(window.location.search), state = params.get('payment');
-    if (!['return', 'cancel'].includes(state)) return;
-    if (state === 'cancel') { toast('Pago cancelado. Tu carrito sigue preparado.', false); window.history.replaceState({}, document.title, window.location.pathname); return; }
-    const query = new URLSearchParams({ order: params.get('order') || '', session_id: params.get('session_id') || '', access: params.get('access') || '' });
+    const pending = window.FVMStoreState?.pendingCheckout(localStorage, session);
+    if (!['return', 'cancel'].includes(state) && !pending) return;
+    if (state === 'cancel') {
+      toast('Pago cancelado. Tu carrito sigue preparado.', false);
+      window.history.replaceState({}, document.title, window.location.pathname);
+      if (session) Promise.resolve(openCart()).catch(() => {});
+      return;
+    }
+    if (!session && !params.get('access')) return;
+    paymentReturnBusy = true;
+    const orderId = params.get('order') || pending?.orderId || '';
+    const query = new URLSearchParams({ order: orderId, session_id: params.get('session_id') || '', access: params.get('access') || '' });
     try {
       const result = await api('/api/payments/stripe/status?' + query.toString());
-      if (!result.paid) throw new Error('El pago aún se está confirmando. Recibirás la confirmación por correo.');
-      clearCart(); toast('Pago confirmado. Pedido ' + result.orderNumber + ' recibido correctamente.');
-    } catch (error) { toast(error.message || 'Estamos verificando el pago con Stripe.', false); }
-    window.history.replaceState({}, document.title, window.location.pathname);
+      if (result.paid) {
+        const remaining = window.FVMStoreState?.finishCheckout(localStorage, session, orderId, cart);
+        if (remaining) { cart = remaining; rutaFVQuote = null; updateCart(); renderCart(); }
+        toast('Pago confirmado. Pedido ' + result.orderNumber + ' recibido correctamente.');
+      } else if (state === 'return') toast('El pago aún se está confirmando. Recibirás la confirmación por correo.', false);
+    } catch (error) { if (state === 'return') toast(error.message || 'Estamos verificando el pago con Stripe.', false); }
+    finally { paymentReturnBusy = false; }
+    if (state === 'return') window.history.replaceState({}, document.title, window.location.pathname);
   }
+  window.addEventListener('pageshow', event => { if (event.persisted) handlePaymentReturn(); });
 
   function bind() {
     installStyle(); fillFromAccount(); syncCheckoutState();
