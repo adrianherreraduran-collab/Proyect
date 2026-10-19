@@ -44,7 +44,15 @@ function createReconciler({ stripe, read, save }) {
     const pending = run(orderId, chargeId).finally(() => inflight.delete(orderId)); inflight.set(orderId, pending); return pending;
   }
   async function sweep(limit = 20, { retryTransientOnly = false } = {}) {
-    const ids = read().orders.filter(x => x.paidAt && x.paymentIntentId && x.stripeAccounting?.status !== 'confirmed' && (!retryTransientOnly || retryableStatuses.has(x.stripeAccounting?.status))).slice(-limit).map(x => x.id);
+    const attemptTime = order => {
+      const value = Date.parse(order.stripeAccounting?.lastAttemptAt || order.paidAt || order.createdAt || '');
+      return Number.isFinite(value) ? value : 0;
+    };
+    const ids = read().orders
+      .filter(x => x.paidAt && x.paymentIntentId && x.stripeAccounting?.status !== 'confirmed' && (!retryTransientOnly || retryableStatuses.has(x.stripeAccounting?.status)))
+      .sort((a, b) => attemptTime(a) - attemptTime(b) || String(a.id).localeCompare(String(b.id)))
+      .slice(0, Math.max(0, Math.floor(Number(limit) || 0)))
+      .map(x => x.id);
     const results = []; for (const id of ids) results.push({ orderId: id, ...await reconcile(id) }); return results;
   }
   return { reconcile, sweep };
