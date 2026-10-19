@@ -27,6 +27,13 @@ test('el barrido periódico reintenta estados transitorios y evita errores de co
  assert.equal(data.orders.find(x=>x.id==='permission').stripeAccounting.status,'permission_required');
  assert.equal(data.orders.find(x=>x.id==='mismatch').stripeAccounting.status,'balance_mismatch');
 });
+test('el barrido periódico rota los lotes para que las conciliaciones antiguas no queden postergadas',async()=>{
+ let data=fixture();const original=data.orders[0];
+ data.orders=Array.from({length:22},(_,index)=>({...original,id:`o${index}`,paymentIntentId:`pi_${index}`,stripeAccounting:{status:'awaiting_balance_transaction',lastAttemptAt:new Date(Date.now()-(22-index)*60000).toISOString()}}));
+ const calls=[];const reconciler=createReconciler({stripe:{charges:{list:async args=>{calls.push(args.payment_intent);return{data:[]}}}},read:()=>structuredClone(data),save:d=>{data=d}});
+ await reconciler.sweep(20,{retryTransientOnly:true});assert.equal(calls.length,20);assert.deepEqual(calls,['pi_0','pi_1','pi_2','pi_3','pi_4','pi_5','pi_6','pi_7','pi_8','pi_9','pi_10','pi_11','pi_12','pi_13','pi_14','pi_15','pi_16','pi_17','pi_18','pi_19']);
+ calls.length=0;await reconciler.sweep(20,{retryTransientOnly:true});assert.equal(calls.length,20);assert.ok(calls.includes('pi_20'));assert.ok(calls.includes('pi_21'));
+});
 test('rechaza movimientos de otro pago, otra moneda o importes incompatibles',()=>{
  const order=fixture().orders[0];let c=charge();c.payment_intent='pi_other';assert.throws(()=>actualFee(order,c),/charge_mismatch/);
  c=charge();c.balance_transaction.currency='usd';assert.throws(()=>actualFee(order,c),/currency_mismatch/);
