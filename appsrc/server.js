@@ -9,6 +9,7 @@ const axios = require('axios');
 const cheerio = require('cheerio');
 const Stripe = require('stripe');
 const multer = require('multer');
+const sharp = require('sharp');
 const pdfParse = require('pdf-parse');
 const {prepareImages} = require('./free_image_prep');
 const {parseRequiredWeightKg} = require('./product_weight_v1');
@@ -110,9 +111,12 @@ app.post('/api/stripe/webhook',express.raw({type:'application/json'}),async(req,
 app.use(express.json({limit:'30mb'}));
 const requestBuckets=new Map();
 function requestLimit(req,res,next){
-  const path=String(req.path||''),rule=path==='/api/auth/login'||path==='/api/auth/forgot-password'?{limit:20,windowMs:15*60*1000}:path==='/api/checkout/stripe'?{limit:15,windowMs:10*60*1000}:path==='/api/rutafv/quote'?{limit:60,windowMs:10*60*1000}:req.method==='POST'&&path.startsWith('/api/products/')&&path.endsWith('/reviews')?{limit:10,windowMs:15*60*1000}:null;
-  if(!rule)return next();const now=Date.now(),key=`${req.ip}:${path}`,current=requestBuckets.get(key);const bucket=!current||current.resetAt<=now?{count:0,resetAt:now+rule.windowMs}:current;bucket.count+=1;requestBuckets.set(key,bucket);
-  if(requestBuckets.size>2000)for(const [storedKey,value] of requestBuckets)if(value.resetAt<=now)requestBuckets.delete(storedKey);
+  const path=String(req.path||''),rule=path==='/api/auth/login'?{limit:20,windowMs:15*60*1000}:path==='/api/auth/forgot-password'?{limit:10,windowMs:15*60*1000}:path==='/api/auth/register'?{limit:8,windowMs:60*60*1000}:path==='/api/auth/resend-verification'?{limit:5,windowMs:15*60*1000}:path==='/api/auth/reset-password'?{limit:10,windowMs:15*60*1000}:path==='/api/checkout/stripe'?{limit:15,windowMs:10*60*1000}:path==='/api/rutafv/quote'?{limit:60,windowMs:10*60*1000}:req.method==='POST'&&path.startsWith('/api/products/')&&path.endsWith('/reviews')?{limit:10,windowMs:15*60*1000}:null;
+  if(!rule)return next();const now=Date.now(),key=`${req.ip}:${path}`,current=requestBuckets.get(key);const bucket=!current||current.resetAt<=now?{count:0,resetAt:now+rule.windowMs}:current;bucket.count+=1;requestBuckets.delete(key);requestBuckets.set(key,bucket);
+  if(requestBuckets.size>2000){
+    for(const [storedKey,value] of requestBuckets)if(value.resetAt<=now)requestBuckets.delete(storedKey);
+    while(requestBuckets.size>2000)requestBuckets.delete(requestBuckets.keys().next().value);
+  }
   if(bucket.count>rule.limit){res.set('Retry-After',String(Math.ceil((bucket.resetAt-now)/1000)));return res.status(429).json({error:'Demasiados intentos. Espera unos minutos antes de volver a intentarlo.'})}next();
 }
 app.use((req,res,next)=>{res.set('X-Content-Type-Options','nosniff');res.set('X-Frame-Options','DENY');res.set('Referrer-Policy','strict-origin-when-cross-origin');res.set('Permissions-Policy','camera=(), microphone=(), geolocation=()');res.set('Content-Security-Policy',"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; font-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://checkout.stripe.com");if(req.secure)res.set('Strict-Transport-Security','max-age=31536000; includeSubDomains');if(req.path.startsWith('/api/'))res.set('Cache-Control','no-store');next()});
@@ -322,14 +326,7 @@ function ensureBillingData(d){
   for(const o of d.orders||[])if(paidOrderStatus(o.status))issueInvoiceForOrder(d,o);
 }
 function cleanNifNie(v=''){return String(v).toUpperCase().replace(/[\s-]/g,'')}
-function validNifNie(v=''){
-  const x=cleanNifNie(v);const letters='TRWAGMYFPDXBNJZSQVHLCKE';
-  let digits='',letter='';
-  if(/^\d{8}[A-Z]$/.test(x)){digits=x.slice(0,8);letter=x.slice(8)}
-  else if(/^[XYZ]\d{7}[A-Z]$/.test(x)){digits=({X:'0',Y:'1',Z:'2'})[x[0]]+x.slice(1,8);letter=x.slice(8)}
-  else return false;
-  return letters[Number(digits)%23]===letter;
-}
+function validNifNie(v=''){return legalIdentity.validSpanishNif(cleanNifNie(v))}
 function customerProfileComplete(u={}){
   if(STAFF_ROLE_KEYS.has(u.role))return true;
   const a=u.deliveryAddress||{};
@@ -338,7 +335,7 @@ function customerProfileComplete(u={}){
 function safeUser(u){return {...customerBenefits.benefits(u),id:u.id,name:String(u.name||[u.firstName,u.lastName].filter(Boolean).join(' ')).trim(),firstName:u.firstName||'',lastName:u.lastName||'',nifNie:u.nifNie||'',phone:u.phone||'',billingName:u.billingName||'',billingAddress:u.billingAddress||'',billingCity:u.billingCity||'',billingPostalCode:u.billingPostalCode||'',deliveryAddress:u.deliveryAddress||{},email:u.email,username:u.username||'',role:u.role,roleLabel:STAFF_ROLE_LABELS[u.role]||customerBenefits.benefits(u).customerLabel,internal:STAFF_ROLE_KEYS.has(u.role),active:u.active!==false,emailVerified:!!u.emailVerified,profileComplete:customerProfileComplete(u),discountPct:customerDiscountPct(u),discountLabel:customerDiscountPct(u)?`-${customerDiscountPct(u)}% aplicado`:'Sin descuento personalizado',createdAt:u.createdAt}}
 function verificationHash(v=''){return crypto.createHash('sha256').update(String(v)).digest('hex')}
 function newVerificationToken(){return crypto.randomBytes(32).toString('hex')}
-function baseUrl(req){return PUBLIC_URL||`${req.protocol}://${req.get('host')}`}
+function baseUrl(_req){return PUBLIC_URL||'https://fvmarket.es'}
 async function sendResendEmail({to,subject,html,text='',idempotencyKey=''}){
   if(!RESEND_API_KEY||!EMAIL_FROM)return {sent:false,reason:'email_not_configured'};
   const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:'Bearer '+RESEND_API_KEY,'Content-Type':'application/json',...(idempotencyKey?{'Idempotency-Key':idempotencyKey}:{})},signal:AbortSignal.timeout(15000),body:JSON.stringify({from:EMAIL_FROM,to:[to],subject,html,text})});
@@ -731,7 +728,7 @@ async function confirmStripePayment(req,session){
 }
 
 const assistantService=virtualAssistant.registerRoutes(app,{read,optionalAuth,publicProduct,customerOrderState});
-app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket',release:'2026-10-17-persistencia-comercial-v1',paymentProvider:'stripe',stripeConfigured:!!stripe,stripeWebhook:!!(stripe&&STRIPE_WEBHOOK_SECRET),emailConfigured:!!(RESEND_API_KEY&&EMAIL_FROM),billing:true,guestCheckout:false}));
+app.get('/api/health',(req,res)=>res.json({ok:true,app:'FVMarket'}));
 app.get('/api/products',optionalAuth,(req,res)=>{
   res.set('Cache-Control','private, no-store').vary('Authorization');
   const d=read(),q=String(req.query.q||'').toLowerCase().trim(),category=String(req.query.category||'').toLowerCase().trim(),customer=req.user?(d.users||[]).find(x=>String(x.id||'')===String(req.user.id||'')):null;
@@ -1436,10 +1433,8 @@ async function parseCatalogBuffer(buffer,name='catalogo.pdf'){
 }
 
 
-function isUnsafeUrl(raw){try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return true;const h=u.hostname.toLowerCase();return h==='localhost'||h==='127.0.0.1'||h==='::1'||/^10\./.test(h)||/^192\.168\./.test(h)||/^172\.(1[6-9]|2\d|3[01])\./.test(h)||h.endsWith('.local')}catch(e){return true}}
-
 app.post('/api/admin/import-catalog',catalogEditor,upload.single('catalog'),async(req,res)=>{try{if(!req.file)return res.status(400).json({error:'Selecciona un archivo PDF'});if(!/pdf/i.test(req.file.mimetype||'')&&!/\.pdf$/i.test(req.file.originalname||''))return res.status(400).json({error:'El archivo debe ser PDF'});const result=await parseCatalogBuffer(req.file.buffer,req.file.originalname);res.json(result)}catch(e){res.status(422).json({error:'No se pudo analizar el catálogo PDF. Si es un PDF escaneado necesitaremos procesarlo como imágenes.'})}});
-app.post('/api/admin/import-catalog-url',catalogEditor,async(req,res)=>{const url=String(req.body.url||'').trim();if(isUnsafeUrl(url))return res.status(400).json({error:'URL no permitida'});try{const r=await axios.get(url,{responseType:'arraybuffer',timeout:15000,maxContentLength:25*1024*1024,headers:{'User-Agent':'FVMarket/1.2'}});const result=await parseCatalogBuffer(Buffer.from(r.data),String(url).split('/').pop()||'catalogo.pdf');res.json(result)}catch(e){res.status(422).json({error:'No se pudo descargar o leer ese catálogo PDF'})}});
+app.post('/api/admin/import-catalog-url',catalogEditor,async(req,res)=>{const url=String(req.body.url||'').trim();try{productUrlImport.permittedUrl(url)}catch{return res.status(400).json({error:'URL no permitida'})}try{const download=await productUrlImport.readSafeResource(url,{timeoutMs:15000,maxBytes:25*1024*1024,responseType:'arraybuffer',headers:{'User-Agent':'FVMarket/1.2',Accept:'application/pdf,application/octet-stream;q=0.9,*/*;q=0.5'}});const name=decodeURIComponent(new URL(download.url).pathname.split('/').pop()||'catalogo.pdf');const result=await parseCatalogBuffer(Buffer.from(download.data),name);res.json(result)}catch(e){res.status(422).json({error:'No se pudo descargar o leer ese catálogo PDF'})}});
 app.post('/api/admin/import-catalog-products',catalogEditor,(req,res)=>{
   const items=Array.isArray(req.body.products)?req.body.products.slice(0,450):[];
   if(!items.length)return res.status(400).json({error:'No hay productos seleccionados'});
@@ -1500,7 +1495,7 @@ function isMiBricolajeUrl(raw=''){
   try{const u=new URL(String(raw));const h=u.hostname.toLowerCase().replace(/^www\./,'');return u.protocol==='https:'&&h==='mibricolaje.com'}catch{return false}
 }
 function mbHeaders(){return {'User-Agent':'FVMarket/2.0 (admin-assisted product lookup; one product at a time)','Accept':'text/html,application/xhtml+xml','Accept-Language':'es-ES,es;q=0.9','Cache-Control':'no-cache'}}
-async function mbGet(url){return axios.get(url,{timeout:15000,maxRedirects:4,maxContentLength:4*1024*1024,headers:mbHeaders()})}
+async function mbGet(url){const result=await productUrlImport.readSafeResource(url,{timeoutMs:15000,maxBytes:4*1024*1024,responseType:'text',headers:mbHeaders()});return {data:result.data,headers:result.headers,status:result.status,url:result.url}}
 function mbProductLinkFromSearch(html,ref,base=MB_BASE){
   const $=cheerio.load(html);const target=String(ref).toUpperCase();let found='';
   $('article,.product-miniature,.product-item,.product').each((_,el)=>{
@@ -1581,10 +1576,11 @@ app.post('/api/admin/mibricolaje/import',catalogEditor,(req,res)=>{
 
 // FVM_MIBRICOLAJE_IMAGES_V9
 async function mbImageDataUrl(raw=''){
-  const url=String(raw||'').trim();if(!url||isUnsafeUrl(url))throw new Error('Imagen origen no válida');
-  const r=await axios.get(url,{responseType:'arraybuffer',timeout:18000,maxRedirects:4,maxContentLength:6*1024*1024,headers:{...mbHeaders(),Accept:'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'}});
-  const ct=String(r.headers?.['content-type']||'image/jpeg').split(';')[0].trim().toLowerCase();if(!/^image\//.test(ct))throw new Error('El origen no devolvió una imagen');
-  return `data:${ct};base64,${Buffer.from(r.data).toString('base64')}`
+  const url=String(raw||'').trim();if(!url)throw new Error('Imagen origen no válida');
+  const r=await productUrlImport.readSafeResource(url,{timeoutMs:18000,maxBytes:6*1024*1024,responseType:'arraybuffer',headers:{...mbHeaders(),Accept:'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'}});
+  const ct=String(r.headers?.['content-type']||'').split(';')[0].trim().toLowerCase();if(!/^image\/(?:jpeg|jpg|png|webp|avif|gif|tiff|bmp|x-ms-bmp)$/.test(ct))throw new Error('El origen no devolvió una imagen compatible');
+  const safeImage=await sharp(Buffer.from(r.data),{failOn:'error',limitInputPixels:12000000}).rotate().jpeg({quality:88,mozjpeg:true}).toBuffer();
+  return `data:image/jpeg;base64,${safeImage.toString('base64')}`
 }
 async function mbGenerateImageVariant({title='',sourceRef='',inputImages=[],variant=0}={}){
   if(!OPENAI_API_KEY)throw new Error('OPENAI_API_KEY no configurada');
@@ -2021,4 +2017,4 @@ const purchaseAlerts=createAlertWorker({read,save,send:sendResendEmail,configure
 
 async function start(){const state=await persistence.init();if((process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.RENDER_POSTGRES_URL)&&!state.enabled)throw Error('Postgres no disponible: se cancela el arranque para proteger los datos');read();const listener=app.listen(PORT,'0.0.0.0',()=>{console.log(`FVMarket listening on ${PORT}`);purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message));console.log('FVMarket session signing: '+(process.env.JWT_SECRET?'configured':'ephemeral'));feeReconciler.sweep(20).then(results=>console.log('FVMarket Stripe accounting: '+JSON.stringify({confirmed:results.filter(x=>x.confirmed).length,pending:results.filter(x=>!x.confirmed).map(x=>x.reason)}))).catch(()=>console.error('FVMarket Stripe accounting: temporarily_unavailable'))});const timer=setInterval(()=>purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message)),5*60*1000);timer.unref();process.once('SIGTERM',()=>{clearInterval(timer);listener.close(async()=>{await persistence.flush();process.exit(0)})});return listener}
 if(require.main===module)start();
-module.exports={app,start,_test:{clearRequestBuckets:()=>requestBuckets.clear(),applyStripeRefund,publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment,issueInvoiceForOrder,buildOrderFromQuote,safeUser,extractProductFromHtml,confirmStripePayment,recordStripeAsyncPaymentFailure,read,save,publicQuote}};
+module.exports={app,start,_test:{clearRequestBuckets:()=>requestBuckets.clear(),requestBucketCount:()=>requestBuckets.size,validNifNie,baseUrl,applyStripeRefund,publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment,issueInvoiceForOrder,buildOrderFromQuote,safeUser,extractProductFromHtml,confirmStripePayment,recordStripeAsyncPaymentFailure,read,save,publicQuote}};
