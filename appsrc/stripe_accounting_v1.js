@@ -12,6 +12,7 @@ function actualFee(order, charge) {
 }
 function createReconciler({ stripe, read, save }) {
   const inflight = new Map();
+  const retryableStatuses = new Set(['awaiting_balance_transaction', 'temporarily_unavailable']);
   async function run(orderId, chargeId = '') {
     const initial = read().orders.find(x => x.id === orderId);
     if (!initial?.paidAt || !initial.paymentIntentId || !stripe?.charges) return { confirmed: false, reason: 'not_ready' };
@@ -42,8 +43,8 @@ function createReconciler({ stripe, read, save }) {
     if (inflight.has(orderId)) return inflight.get(orderId);
     const pending = run(orderId, chargeId).finally(() => inflight.delete(orderId)); inflight.set(orderId, pending); return pending;
   }
-  async function sweep(limit = 20) {
-    const ids = read().orders.filter(x => x.paidAt && x.paymentIntentId && x.stripeAccounting?.status !== 'confirmed').slice(-limit).map(x => x.id);
+  async function sweep(limit = 20, { retryTransientOnly = false } = {}) {
+    const ids = read().orders.filter(x => x.paidAt && x.paymentIntentId && x.stripeAccounting?.status !== 'confirmed' && (!retryTransientOnly || retryableStatuses.has(x.stripeAccounting?.status))).slice(-limit).map(x => x.id);
     const results = []; for (const id of ids) results.push({ orderId: id, ...await reconcile(id) }); return results;
   }
   return { reconcile, sweep };

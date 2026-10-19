@@ -2015,6 +2015,29 @@ app.use('/api',(req,res)=>res.status(404).json({error:'Ruta de API no encontrada
 app.get('*',(req,res)=>{res.set('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');res.set('Pragma','no-cache');res.set('Expires','0');res.sendFile(path.join(__dirname,'public','index.html'));});
 const purchaseAlerts=createAlertWorker({read,save,send:sendResendEmail,configuredRecipient:process.env.ADMIN_ALERT_EMAIL||'',publicUrl:PUBLIC_URL||'https://fvmarket.es'});
 
-async function start(){const state=await persistence.init();if((process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.RENDER_POSTGRES_URL)&&!state.enabled)throw Error('Postgres no disponible: se cancela el arranque para proteger los datos');read();const listener=app.listen(PORT,'0.0.0.0',()=>{console.log(`FVMarket listening on ${PORT}`);purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message));console.log('FVMarket session signing: '+(process.env.JWT_SECRET?'configured':'ephemeral'));feeReconciler.sweep(20).then(results=>console.log('FVMarket Stripe accounting: '+JSON.stringify({confirmed:results.filter(x=>x.confirmed).length,pending:results.filter(x=>!x.confirmed).map(x=>x.reason)}))).catch(()=>console.error('FVMarket Stripe accounting: temporarily_unavailable'))});const timer=setInterval(()=>purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message)),5*60*1000);timer.unref();process.once('SIGTERM',()=>{clearInterval(timer);listener.close(async()=>{await persistence.flush();process.exit(0)})});return listener}
+async function start(){
+  const state=await persistence.init();
+  if((process.env.DATABASE_URL||process.env.POSTGRES_URL||process.env.RENDER_POSTGRES_URL)&&!state.enabled)throw Error('Postgres no disponible: se cancela el arranque para proteger los datos');
+  read();
+  const listener=app.listen(PORT,'0.0.0.0',()=>{
+    console.log(`FVMarket listening on ${PORT}`);
+    purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message));
+    console.log('FVMarket session signing: '+(process.env.JWT_SECRET?'configured':'ephemeral'));
+    feeReconciler.sweep(20).then(results=>console.log('FVMarket Stripe accounting: '+JSON.stringify({confirmed:results.filter(x=>x.confirmed).length,pending:results.filter(x=>!x.confirmed).map(x=>x.reason)}))).catch(()=>console.error('FVMarket Stripe accounting: temporarily_unavailable'))
+  });
+  const alertTimer=setInterval(()=>purchaseAlerts.scan().catch(error=>console.error('FVMarket admin alert:',error.message)),5*60*1000);
+  alertTimer.unref();
+  const stripeFeeRetryTimer=stripe?setInterval(()=>feeReconciler.sweep(20,{retryTransientOnly:true}).then(results=>{
+    if(!results.length)return;
+    console.log('FVMarket Stripe accounting retry: '+JSON.stringify({checked:results.length,confirmed:results.filter(x=>x.confirmed).length,pending:results.filter(x=>!x.confirmed).length}));
+  }).catch(()=>console.error('FVMarket Stripe accounting retry: temporarily_unavailable')),15*60*1000):null;
+  stripeFeeRetryTimer?.unref();
+  process.once('SIGTERM',()=>{
+    clearInterval(alertTimer);
+    if(stripeFeeRetryTimer)clearInterval(stripeFeeRetryTimer);
+    listener.close(async()=>{await persistence.flush();process.exit(0)})
+  });
+  return listener
+}
 if(require.main===module)start();
 module.exports={app,start,_test:{clearRequestBuckets:()=>requestBuckets.clear(),requestBucketCount:()=>requestBuckets.size,validNifNie,baseUrl,applyStripeRefund,publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment,issueInvoiceForOrder,buildOrderFromQuote,safeUser,extractProductFromHtml,confirmStripePayment,recordStripeAsyncPaymentFailure,read,save,publicQuote}};

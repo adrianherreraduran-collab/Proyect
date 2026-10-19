@@ -14,6 +14,19 @@ test('una comisión aún no disponible o sin permiso no se inventa como gasto y 
  mode='permission';assert.equal((await reconciler.reconcile('o')).reason,'permission_required');assert.doesNotMatch(JSON.stringify(data),/private value/);
  mode='ready';assert.equal((await reconciler.reconcile('o')).confirmed,true);assert.equal(data.accountingEntries.filter(x=>x.type==='comision_stripe').length,1);
 });
+test('el barrido periódico reintenta estados transitorios y evita errores de configuración o importes',async()=>{
+ let data=fixture();
+ data.orders[0].stripeAccounting={status:'awaiting_balance_transaction'};
+ data.orders.push({...fixture().orders[0],id:'temporary',paymentIntentId:'pi_temporary',stripeAccounting:{status:'temporarily_unavailable'}});
+ data.orders.push({...fixture().orders[0],id:'permission',paymentIntentId:'pi_permission',stripeAccounting:{status:'permission_required'}});
+ data.orders.push({...fixture().orders[0],id:'mismatch',paymentIntentId:'pi_mismatch',stripeAccounting:{status:'balance_mismatch'}});
+ const calls=[];const reconciler=createReconciler({stripe:{charges:{list:async args=>{calls.push(args.payment_intent);return{data:[]}}}},read:()=>structuredClone(data),save:d=>{data=d}});
+ const results=await reconciler.sweep(20,{retryTransientOnly:true});
+ assert.deepEqual(calls,['pi_1','pi_temporary']);
+ assert.deepEqual(results.map(x=>x.reason),['awaiting_balance_transaction','awaiting_balance_transaction']);
+ assert.equal(data.orders.find(x=>x.id==='permission').stripeAccounting.status,'permission_required');
+ assert.equal(data.orders.find(x=>x.id==='mismatch').stripeAccounting.status,'balance_mismatch');
+});
 test('rechaza movimientos de otro pago, otra moneda o importes incompatibles',()=>{
  const order=fixture().orders[0];let c=charge();c.payment_intent='pi_other';assert.throws(()=>actualFee(order,c),/charge_mismatch/);
  c=charge();c.balance_transaction.currency='usd';assert.throws(()=>actualFee(order,c),/currency_mismatch/);
