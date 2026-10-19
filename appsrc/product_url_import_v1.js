@@ -27,18 +27,46 @@ function safeLookup(host, options, callback) {
     return options?.all ? callback(null, selected) : callback(null, selected[0].address, selected[0].family);
   });
 }
-async function readProductUrl(raw, request = axios.get) {
-  let url = permittedUrl(raw); const deadline = Date.now() + 20000;
+async function readSafeResource(raw, options = {}, request = axios.get) {
+  let url = permittedUrl(raw);
+  const timeoutMs = Math.max(1, Number(options.timeoutMs) || 20000);
+  const maxBytes = Math.max(1, Number(options.maxBytes) || 3 * 1024 * 1024);
+  const responseType = options.responseType || 'text';
+  const deadline = Date.now() + timeoutMs;
   for (let hop = 0; hop <= 5; hop++) {
-    const response = await request(url.href, { timeout: Math.max(1, deadline - Date.now()), maxRedirects: 0, maxContentLength: 3 * 1024 * 1024, proxy: false, lookup: safeLookup, responseType: 'text', validateStatus: code => code >= 200 && code < 400, headers: { 'User-Agent': 'Mozilla/5.0 FVMarket Product Import', Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'es-ES,es;q=0.9' } });
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw Error('La descarga ha superado el tiempo permitido');
+    const response = await request(url.href, {
+      timeout: remaining,
+      maxRedirects: 0,
+      maxContentLength: maxBytes,
+      proxy: false,
+      lookup: safeLookup,
+      responseType,
+      validateStatus: code => code >= 200 && code < 400,
+      headers: options.headers || { 'User-Agent': 'FVMarket resource import', Accept: '*/*' }
+    });
     if (response.status >= 300) {
-      if (!response.headers.location || hop === 5 || Date.now() >= deadline) throw Error('Demasiadas redirecciones');
-      url = permittedUrl(new URL(response.headers.location, url).href); continue;
+      if (!response.headers?.location || hop === 5) throw Error('Demasiadas redirecciones');
+      url = permittedUrl(new URL(response.headers.location, url).href);
+      continue;
     }
-    if (!/html/i.test(response.headers['content-type'] || '')) throw Error('La URL debe ser una ficha HTML de producto');
-    return { html: response.data, url: url.href };
+    const data = response.data;
+    const bytes = Buffer.isBuffer(data) ? data.length : typeof data === 'string' ? Buffer.byteLength(data) : Number(data?.byteLength || 0);
+    if (bytes > maxBytes) throw Error('El archivo supera el tamaño permitido');
+    return { data, url: url.href, status: response.status, headers: response.headers || {} };
   }
-  throw Error('No se pudo leer la ficha');
+  throw Error('No se pudo descargar el recurso');
+}
+async function readProductUrl(raw, request = axios.get) {
+  const response = await readSafeResource(raw, {
+    timeoutMs: 20000,
+    maxBytes: 3 * 1024 * 1024,
+    responseType: 'text',
+    headers: { 'User-Agent': 'Mozilla/5.0 FVMarket Product Import', Accept: 'text/html,application/xhtml+xml', 'Accept-Language': 'es-ES,es;q=0.9' }
+  }, request);
+  if (!/html/i.test(response.headers['content-type'] || '')) throw Error('La URL debe ser una ficha HTML de producto');
+  return { html: response.data, url: response.url };
 }
 function augmentProduct(product, html) {
   const $ = cheerio.load(html), text = value => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -81,4 +109,4 @@ function augmentProduct(product, html) {
   product.published = false; product.reviewStatus = 'borrador'; product.sourceCheckedAt = new Date().toISOString();
   return product;
 }
-module.exports = { publicAddress, permittedUrl, safeLookup, readProductUrl, augmentProduct };
+module.exports = { publicAddress, permittedUrl, safeLookup, readSafeResource, readProductUrl, augmentProduct };

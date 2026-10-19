@@ -34,6 +34,44 @@ let listener, origin;
 test.after(async () => { if (listener) await new Promise(resolve => listener.close(resolve)); listener = null; global.fetch = nativeFetch; });
 async function ready() { if (!listener) { listener = app.listen(0, '127.0.0.1'); await new Promise(resolve => listener.once('listening', resolve)); origin = 'http://127.0.0.1:' + listener.address().port; } }
 async function request(url, { method = 'GET', id = 'admin', role = 'admin', body, headers = {}, anonymous = false } = {}) { await ready(); const response = await nativeFetch(origin + url, { method, redirect:'manual', headers: { ...(anonymous ? {} : { Authorization: 'Bearer ' + token(id, role) }), ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined }); const text = await response.text(); let data; try { data = JSON.parse(text); } catch { data = text; } return { status: response.status, data, headers: response.headers }; }
+test('la comprobación pública de salud no revela la configuración interna de pagos o correo', async () => {
+  const result = await request('/api/health', { anonymous: true });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.data, { ok: true, app: 'FVMarket' });
+});
+test('las rutas públicas de alta limitan registros automatizados por dirección de red', async () => {
+  server.clearRequestBuckets();
+  const results = [];
+  for (let i = 0; i < 9; i++) results.push(await request('/api/auth/register', { anonymous: true, method: 'POST', body: { email: 'no-es-correo' } }));
+  assert.ok(results.slice(0, 8).every(result => result.status === 400));
+  assert.equal(results[8].status, 429);
+  server.clearRequestBuckets();
+});
+test('los enlaces de correo ignoran el host enviado por el solicitante', () => {
+  const fakeRequest = { protocol: 'https', get: () => 'cuenta-falsa.example' };
+  assert.equal(server.baseUrl(fakeRequest), 'http://localhost');
+});
+test('el registro de límites no crece sin tope cuando llegan IP distintas', async () => {
+  server.clearRequestBuckets();
+  for (let i = 0; i < 2005; i++) {
+    const ip = `198.${Math.floor(i / 65536) % 256}.${Math.floor(i / 256) % 256}.${i % 256}`;
+    await request('/api/auth/register', { anonymous: true, method: 'POST', headers: { 'X-Forwarded-For': ip }, body: { email: 'no-es-correo' } });
+  }
+  assert.ok(server.requestBucketCount() <= 2000);
+  server.clearRequestBuckets();
+});
+test('el perfil acepta NIF de empresa con control válido y rechaza un control incorrecto', async () => {
+  reset();
+  assert.equal(server.validNifNie('B 12345674'), true);
+  assert.equal(server.validNifNie('B12345675'), false);
+  const address = { ...profile.deliveryAddress, placeId: 'place-test' };
+  const invalid = await request('/api/me/profile', { method: 'PUT', id: 'customer', role: 'customer', body: { firstName: 'Ana', lastName: 'López', nifNie: 'B12345675', billingAddress: 'Calle Uno 1', deliveryAddress: address } });
+  assert.equal(invalid.status, 400);
+  const valid = await request('/api/me/profile', { method: 'PUT', id: 'customer', role: 'customer', body: { firstName: 'Ana', lastName: 'López', nifNie: 'B12345674', billingName: 'Empresa de prueba SL', billingAddress: 'Calle Uno 1', deliveryAddress: address } });
+  assert.equal(valid.status, 200);
+  assert.equal(valid.data.user.nifNie, 'B12345674');
+  assert.equal(valid.data.user.profileComplete, true);
+});
 test('el asistente usa precios actuales y no acepta identidad ni información de proveedor del navegador',async()=>{
   reset();
   const status=await request('/api/assistant/status',{anonymous:true});assert.equal(status.status,200);assert.equal(status.data.aiConfigured,false);
