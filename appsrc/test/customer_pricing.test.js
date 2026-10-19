@@ -8,6 +8,7 @@ const html = fs.readFileSync(path.join(__dirname, '../public/index.html'), 'utf8
 const storefront = fs.readFileSync(path.join(__dirname, '../public/fvmarket-storefront-v2.js'), 'utf8');
 const between = (source, start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 const pricingCode = between(html, 'let catalogRequestVersion=', 'function renderProducts(){');
+const checkoutClearCode = between(html, 'function clearCheckoutCustomer(){', 'function fillCheckoutCustomer(){');
 const loginCode = between(html, 'async function submitAuth(){', 'async function resendVerification(){');
 const sessionCode = between(html, 'function logout(){', 'function fillProfile(){');
 const openCode = between(html, 'async function openCart(){', 'function closeCart(){');
@@ -22,7 +23,7 @@ function harness(initialSession = null, api = async () => []) {
   const element = id => {
     if (!elements.has(id)) {
       const classes = new Set();
-      elements.set(id, { innerHTML: '', textContent: '', style: {}, classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x) } });
+      elements.set(id, { value: '', checked: false, innerHTML: '', textContent: '', style: { setProperty: (key, value) => { elements.get(id).style[key] = value; } }, classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x) } });
     }
     return elements.get(id);
   };
@@ -36,9 +37,29 @@ function harness(initialSession = null, api = async () => []) {
     closeCart: () => element('cartDrawer').classList.remove('show'), fillCheckoutCustomer: () => {},
     openAccount: () => {}, rutaFVBrowserRateLimited: () => false
   });
-  vm.runInContext(normalizeCode + pricingCode + sessionCode + loginCode + openCode + quoteKeyCode, context);
+  vm.runInContext(normalizeCode + pricingCode + checkoutClearCode + sessionCode + loginCode + openCode + quoteKeyCode, context);
   return { context, element, values };
 }
+
+test('cambiar de cuenta limpia los datos de entrega de la sesión anterior', async () => {
+  const h = harness({ token: 'old-token', user: { ...user(), id: 'cliente-anterior' } }, async url => {
+    if (url === '/api/auth/login') return { token: 'irina-token', user: { ...user(), id: 'irina' } };
+    return [product('p', 80)];
+  });
+  for (const id of ['orderName', 'orderEmail', 'orderPhone', 'orderAddress', 'orderCity', 'orderPostalCode']) h.element(id).value = 'dato anterior';
+  h.element('useRutaFV').checked = true;
+  h.element('addressSuggestions').innerHTML = 'sugerencia anterior';
+  h.element('addressSuggestions').classList.add('show');
+  h.context.cart = [{ id: 'p', qty: 1 }];
+  h.context.rutaFVQuote = { amount: 25 };
+  await h.context.submitAuth();
+  for (const id of ['orderName', 'orderEmail', 'orderPhone', 'orderAddress', 'orderCity', 'orderPostalCode']) assert.equal(h.element(id).value, '');
+  assert.equal(h.element('useRutaFV').checked, false);
+  assert.equal(h.element('addressSuggestions').innerHTML, '');
+  assert.equal(h.element('addressSuggestions').classList.contains('show'), false);
+  assert.equal(h.context.rutaFVQuote, null);
+  assert.equal(h.context.session.user.id, 'irina');
+});
 
 test('iniciar sesión sustituye los precios anónimos del catálogo y del carrito por los del cliente', async () => {
   const authenticated = { token: 'customer-token', user: user() };
