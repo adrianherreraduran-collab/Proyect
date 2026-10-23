@@ -660,7 +660,6 @@ function buildOrderFromQuote(d,q,user){
   return {order};
 }
 
-function stripeIntegrationIdentifier(){const alphabet='abcdefghijklmnopqrstuvwxyz';return `fvmarket_${[...crypto.randomBytes(8)].map(byte=>alphabet[byte%alphabet.length]).join('')}`}
 
 async function createStripePaymentLink(req,d,o,accessToken=''){
   if(!stripe)throw new Error('Stripe no está configurado');
@@ -685,7 +684,7 @@ async function createStripePaymentLink(req,d,o,accessToken=''){
   const line_items=sourceItems.map(item=>({quantity:Math.max(1,Math.min(99,Number(item.qty)||1)),price_data:{currency:'eur',unit_amount:Math.round(Number(item.unitPrice||0)*100),product_data:{name:String(item.title||item.ref||'Producto FVMarket').slice(0,250),metadata:{ref:String(item.ref||'')}}}}));
   const base=baseUrl(req),success=new URL(base+'/?payment=return');success.searchParams.set('order',o.id);success.searchParams.set('session_id','{CHECKOUT_SESSION_ID}');if(accessToken)success.searchParams.set('access',accessToken);
   const cancel=new URL(base+'/?payment=cancel');cancel.searchParams.set('order',o.id);
-  const checkout=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:success.toString().replace('%7BCHECKOUT_SESSION_ID%7D','{CHECKOUT_SESSION_ID}'),cancel_url:cancel.toString(),client_reference_id:o.id,customer_email:o.customer?.email||undefined,billing_address_collection:'required',phone_number_collection:{enabled:true},locale:'es',custom_text:{submit:{message:returnsPolicy.checkoutText(returnsInformation,base)}},integration_identifier:stripeIntegrationIdentifier(),metadata:{source:'FVMarket',orderId:o.id,orderNumber:o.number,quoteId:String(o.quoteId||''),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(o.delivery||0)}},{idempotencyKey:'fvm-checkout:'+o.id+':'+String(o.stripeSessionId||'initial')+':'+returnsFingerprint.slice(0,20)});
+  const checkout=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:success.toString().replace('%7BCHECKOUT_SESSION_ID%7D','{CHECKOUT_SESSION_ID}'),cancel_url:cancel.toString(),client_reference_id:o.id,customer_email:o.customer?.email||undefined,billing_address_collection:'required',phone_number_collection:{enabled:true},locale:'es',custom_text:{submit:{message:returnsPolicy.checkoutText(returnsInformation,base)}},metadata:{source:'FVMarket',orderId:o.id,orderNumber:o.number,quoteId:String(o.quoteId||''),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(o.delivery||0)}},{idempotencyKey:'fvm-checkout:'+o.id+':'+String(o.stripeSessionId||'initial')+':'+returnsFingerprint.slice(0,20)});
   o.returnsInformation=returnsInformation;o.returnsDisclosureFingerprint=returnsFingerprint;o.returnsDisclosedAt=new Date().toISOString();
   o.stripeSessionId=String(checkout.id||'');o.stripeSessionUrl=String(checkout.url||'');o.stripeSessionExpiresAt=Number(checkout.expires_at||0)*1000;o.stripePaymentStatus='pending';delete o.stripePaymentFailedAt;o.paymentMethod='stripe';o.paymentChannel='checkout';
   return {id:o.stripeSessionId,url:o.stripeSessionUrl,reused:false};
@@ -1013,7 +1012,7 @@ app.post('/api/checkout/stripe',auth,requireSellerForLivePayment,requireCustomer
     })().finally(()=>checkoutInflight.delete(fingerprint));
     checkoutInflight.set(fingerprint,pending);
   }
-  try{res.json(await pending)}catch(error){res.status(error.status||502).json({error:error.status?error.message:'No se pudo iniciar el pago mediante Stripe. Puedes volver a intentarlo sin perder el carrito.'})}
+  try{res.json(await pending)}catch(error){if(!error.status||error.status>=500){console.error('FVMarket Stripe checkout failed',JSON.stringify({type:String(error.type||'').slice(0,80),code:String(error.code||'').slice(0,80),statusCode:Number.isInteger(error.statusCode)?error.statusCode:null,requestId:String(error.requestId||'').slice(0,100)}))}res.status(error.status||502).json({error:error.status?error.message:'No se pudo iniciar el pago mediante Stripe. Puedes volver a intentarlo sin perder el carrito.'})}
 });
 
 app.get('/api/payments/stripe/status',optionalAuth,async(req,res)=>{
@@ -2041,3 +2040,4 @@ async function start(){
 }
 if(require.main===module)start();
 module.exports={app,start,_test:{clearRequestBuckets:()=>requestBuckets.clear(),requestBucketCount:()=>requestBuckets.size,validNifNie,baseUrl,applyStripeRefund,publicProduct,publicOrder,normalizeCheckoutCustomer,sameTransportDestination,transportQuoteSignature,decorateTransportQuote,validTransportQuote,buildOrder,professionalInvoiceHtml,legalPage,moneyRound,resetDatabaseState,normalizeState,publicReview,reviewEligibility,reviewSummaryForProduct,ensureReviewData,normalizeRutaFVCallbackStatus,applyRutaFVCallbackStatus,customerOrderState,profileSummary,isStoredDeliveredOrder,customerPrice,normalizeDiscountPct,rutaFVAssignment,issueInvoiceForOrder,buildOrderFromQuote,safeUser,extractProductFromHtml,confirmStripePayment,recordStripeAsyncPaymentFailure,read,save,publicQuote}};
+
