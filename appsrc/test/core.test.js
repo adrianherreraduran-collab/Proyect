@@ -323,7 +323,7 @@ test('la tienda recupera su estado y ofrece Stripe con métodos dinámicos', () 
   assert.doesNotMatch(index, /Buscar por producto o referencia/);
   assert.match(index, /Buscar productos, marcas o referencias/);
   assert.doesNotMatch(source, /payment_method_types\s*:/);
-  assert.match(source, /integration_identifier:stripeIntegrationIdentifier\(\)/);
+  assert.doesNotMatch(source, /integration_identifier\s*:/);
   assert.match(source, /checkout\.session\.async_payment_succeeded/);
   assert.doesNotMatch(index, /placeTransfer|Pendiente de transferencia/);
   assert.equal((index.match(/<\/body>/g) || []).length, 1);

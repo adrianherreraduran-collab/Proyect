@@ -23,7 +23,7 @@ function harness(initialSession = null, api = async () => []) {
   const element = id => {
     if (!elements.has(id)) {
       const classes = new Set();
-      elements.set(id, { value: '', checked: false, innerHTML: '', textContent: '', style: { setProperty: (key, value) => { elements.get(id).style[key] = value; } }, classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x) } });
+      elements.set(id, { value: '', checked: false, innerHTML: '', textContent: '', dataset: {}, style: { setProperty: (key, value) => { elements.get(id).style[key] = value; } }, classList: { add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x) } });
     }
     return elements.get(id);
   };
