@@ -25,21 +25,39 @@
     return [...rows].map(([id, qty]) => ({ id, qty }));
   }
   function clear(storage) {
+    const session = json(read(storage, 'fv_session'), null);
+    if (session?.user?.id) remove(storage, `fv_cart_user:${session.user.id}`);
     ['fv_session', 'fv_cart', 'fv_cart_owner', 'fv_checkout_pending'].forEach(key => remove(storage, key));
+  }
+  function cartForUser(storage, userId, allowLegacy = false) {
+    const id = String(userId || '');
+    if (!id) return [];
+    const key = `fv_cart_user:${id}`;
+    const saved = read(storage, key);
+    if (saved !== null) return normalizeCart(json(saved, []));
+    const owner = read(storage, 'fv_cart_owner');
+    if (owner !== id && !(allowLegacy && owner === null)) return [];
+    const legacy = normalizeCart(json(read(storage, 'fv_cart'), []));
+    write(storage, key, JSON.stringify(legacy));
+    return legacy;
+  }
+  function forgetSession(storage) {
+    remove(storage, 'fv_session');
   }
   function restore(storage, now = Date.now()) {
     const session = json(read(storage, 'fv_session'), null);
-    if (!validSession(session, now)) { clear(storage); return { session: null, cart: [] }; }
-    const owner = read(storage, 'fv_cart_owner');
-    const cart = owner && owner !== session.user.id ? [] : normalizeCart(json(read(storage, 'fv_cart'), []));
+    if (!validSession(session, now)) { forgetSession(storage); return { session: null, cart: [] }; }
+    const cart = cartForUser(storage, session.user.id, true);
     save(storage, session, cart);
     return { session, cart };
   }
   function save(storage, session, cart) {
     if (!session?.user?.id) return;
+    const normalized = normalizeCart(cart);
     write(storage, 'fv_session', JSON.stringify(session));
-    write(storage, 'fv_cart', JSON.stringify(normalizeCart(cart)));
+    write(storage, 'fv_cart', JSON.stringify(normalized));
     write(storage, 'fv_cart_owner', String(session.user.id));
+    write(storage, `fv_cart_user:${session.user.id}`, JSON.stringify(normalized));
   }
   function saveCheckout(storage, session, orderId, cart) {
     if (!session?.user?.id || !orderId) return;
@@ -57,7 +75,8 @@
     const pending = json(read(storage, 'fv_checkout_pending'), null);
     return pending?.userId === session?.user?.id ? pending : null;
   }
-  const state = { pendingCheckout, restore, save, clear, normalizeCart, validSession, saveCheckout, finishCheckout };
+  const state = { pendingCheckout, restore, save, clear, forgetSession, cartForUser, normalizeCart, validSession, saveCheckout, finishCheckout };
   root.FVMStoreState = state;
   if (typeof module !== 'undefined' && module.exports) module.exports = state;
 })(typeof window !== 'undefined' ? window : globalThis);
+
