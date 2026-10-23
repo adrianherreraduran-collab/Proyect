@@ -143,7 +143,7 @@ test('recuperar contraseña consume el enlace una vez y revoca las sesiones ante
 test('el pago conserva descuentos, cobra cero transporte y envía a Stripe el importe calculado en el servidor', async () => {
   reset(); const items = [{ id: 'p1', qty: 2, weightKg: 3 }], customer = { ...profile, ...profile.deliveryAddress }, quote = server.decorateTransportQuote({ id: 'rfq', amount: 25 }, profile.id, items, customer);
   const result = await request('/api/checkout/stripe', { method: 'POST', id: 'customer', role: 'customer', body: { items, customer, rutaFVQuote: quote, termsAccepted: true, privacyAccepted: true, total: 1, discountPct: 90 } });
-  assert.equal(result.status, 200); const data = server.read(), order = data.orders[0]; assert.equal(order.total, 160); assert.equal(order.delivery, 0); assert.equal(order.transport.amount, 25); assert.equal(checkoutCalls.at(-1).line_items.length, 1); assert.equal(checkoutCalls.at(-1).line_items[0].price_data.unit_amount, 8000); assert.equal(order.status, 'pendiente_pago');
+  assert.equal(result.status, 200); const data = server.read(), order = data.orders[0]; assert.equal(order.total, 160); assert.equal(order.delivery, 0); assert.equal(order.transport.amount, 25); assert.equal(checkoutCalls.at(-1).line_items.length, 1); assert.equal(checkoutCalls.at(-1).line_items[0].price_data.unit_amount, 8000); assert.equal(Object.hasOwn(checkoutCalls.at(-1),'integration_identifier'),false); assert.equal(order.status, 'pendiente_pago');
 });
 test('Stripe confirma el pago una sola vez y un evento duplicado conserva el reembolso', async () => {
   const data = server.read(), order = data.orders[0]; const session = { id: order.stripeSessionId, metadata: { orderId: order.id }, amount_total: 16000, currency: 'eur', payment_status: 'paid', payment_intent: 'pi_isolated' };
@@ -602,3 +602,4 @@ test('la comprobación de producción reconoce claves restringidas reales y ocul
  const order={id:'private-fields',userId:'customer',status:'pagado',total:10,items:[],stripeAccounting:{fee:1,net:9},paymentCostEstimate:{amount:1},checkoutFingerprint:'private'};
  const output=server.publicOrder(order);assert.equal(output.stripeAccounting,undefined);assert.equal(output.paymentCostEstimate,undefined);assert.equal(output.checkoutFingerprint,undefined);
 });
+
