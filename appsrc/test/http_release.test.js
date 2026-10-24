@@ -10,10 +10,10 @@ const bcrypt = require('bcryptjs');
 process.env.DATA_FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fvm-http-')), 'data.json');
 process.env.JWT_SECRET = 'http-integration-secret'; process.env.STRIPE_SECRET_KEY = 'sk_test_isolated'; process.env.STRIPE_WEBHOOK_SECRET = 'whsec_isolated'; process.env.RESEND_API_KEY = 're_isolated'; process.env.EMAIL_FROM = 'test@example.com'; process.env.PUBLIC_URL = 'http://localhost';
 const refundCalls=[];let refundStatus='succeeded';
-const checkoutCalls = [], expiredSessions = []; let expirationFailure = false; let quoteCalls = 0; let emails = 0; let counter = 0;
+const checkoutCalls = [], checkoutOptions = [], expiredSessions = []; let checkoutFailureNext = null; let expirationFailure = false; let quoteCalls = 0; let emails = 0; let counter = 0;
 const originalLoad = Module._load;
 Module._load = function (name, ...args) {
-  if (name === 'stripe') return class { constructor() { this.checkout = { sessions: { create: async payload => { checkoutCalls.push(payload); return { id: 'cs_' + (++counter), url: 'https://checkout.stripe.com/isolated', expires_at: Math.floor(Date.now() / 1000) + 1200 }; }, expire: async id => { if(expirationFailure)throw Error('isolated expiration failure'); expiredSessions.push(id); return {id,status:'expired'}; }, retrieve: async () => ({status:'open'}) } }; this.refunds={create:async(payload,options)=>{refundCalls.push({payload,options});return{id:'re_'+refundCalls.length,amount:payload.amount,currency:'eur',status:refundStatus,payment_intent:payload.payment_intent,metadata:payload.metadata}}}; this.webhooks = { constructEvent: (body, signature) => { if (signature !== 'isolated-signature') throw Error('invalid'); return JSON.parse(body); } }; } };
+  if (name === 'stripe') return class { constructor() { this.checkout = { sessions: { create: async (payload, options) => { checkoutCalls.push(payload); checkoutOptions.push(options); if(checkoutFailureNext){const error=checkoutFailureNext;checkoutFailureNext=null;throw error;} return { id: 'cs_' + (++counter), url: 'https://checkout.stripe.com/isolated', expires_at: Math.floor(Date.now() / 1000) + 1200 }; }, expire: async id => { if(expirationFailure)throw Error('isolated expiration failure'); expiredSessions.push(id); return {id,status:'expired'}; }, retrieve: async () => ({status:'open'}) } }; this.refunds={create:async(payload,options)=>{refundCalls.push({payload,options});return{id:'re_'+refundCalls.length,amount:payload.amount,currency:'eur',status:refundStatus,payment_intent:payload.payment_intent,metadata:payload.metadata}}}; this.webhooks = { constructEvent: (body, signature) => { if (signature !== 'isolated-signature') throw Error('invalid'); return JSON.parse(body); } }; } };
   return originalLoad.call(this, name, ...args);
 };
 const { app, _test: server } = require('../server'); Module._load = originalLoad;
@@ -27,7 +27,7 @@ process.env.RUTAFV_API_URL = ''; // No real transport or customer email calls ar
 const profile = { id: 'customer', role: 'customer', name: 'Ana López', firstName: 'Ana', lastName: 'López', email: 'ana@example.com', emailVerified: true, nifNie: '42350448L', phone: '600123123', billingAddress: 'Calle Uno 1', billingCity: 'Costa Calma', billingPostalCode: '35627', deliveryAddress: { address: 'Calle Uno 1', city: 'Costa Calma', postalCode: '35627', validated: true }, discountPct: 20, freeTransport: true };
 const passwordHash = bcrypt.hashSync('isolated-password-123', 4);
 const fixture = () => ({ users: [{ id: 'admin', username: 'admin-test', role: 'admin', email: 'admin@example.com', password: passwordHash, emailVerified: true }, { ...profile, password: passwordHash }, { id: 'operator', role: 'operator', password: passwordHash, emailVerified: true }], settings: { adminCredentialsInitializedV14: true, igic: 7 }, products: [{ id: 'p1', title: 'Producto prueba', ref: 'TP0001', price: 100, weightKg: 3, published: true, returnPolicy: {mode:'postal',maxCostPerUnit:null}, sourcePrice: 40, sourceProvider: 'Proveedor privado', images: [{ url: 'https://images.example.com/p1.jpg' }] }], orders: [], quotes: [], invoices: [], reviews: [], orderReviews: [] });
-function reset() { server.clearRequestBuckets();refundStatus='succeeded';fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture())); }
+function reset() { server.clearRequestBuckets();refundStatus='succeeded';checkoutFailureNext=null;fs.writeFileSync(process.env.DATA_FILE, JSON.stringify(fixture())); }
 const sellerFixture = () => ({ fiscalName: 'Ana López García', fiscalNif: '42350448L', fiscalAddress: 'Calle Prueba 1', fiscalCity: 'Tuineje', fiscalPostalCode: '35620', legalEmail: 'ana@example.com', contactPhone: '600123123', legalIdentityConfirmed: true });
 function token(id = 'admin', role = 'admin') { return jwt.sign({ id, role }, process.env.JWT_SECRET, { expiresIn: '1h' }); }
 let listener, origin;
@@ -557,6 +557,22 @@ test('vaciar pruebas conserva el catálogo y acceso, elimina operaciones y no cr
 });
 
 
+test('Stripe muestra el importe mínimo y no crea un pedido ni inicia una sesión por debajo de 0,50 €',async()=>{
+ reset();const data=server.read();data.products[0].price=0.5;server.save(data);
+ const items=[{id:'p1',qty:1,weightKg:3}],customer={...profile,...profile.deliveryAddress},quote=server.decorateTransportQuote({id:'under-minimum',amount:25},profile.id,items,customer),before=checkoutCalls.length;
+ const result=await request('/api/checkout/stripe',{id:'customer',role:'customer',method:'POST',body:{items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true}});
+ assert.equal(result.status,400);assert.match(result.data.error,/0,50/);assert.equal(server.read().orders.length,0);assert.equal(checkoutCalls.length,before);
+});
+test('un reintento tras un fallo de Stripe mantiene estable la URL y la clave de idempotencia',async()=>{
+ reset();const items=[{id:'p1',qty:1,weightKg:3}],customer={...profile,...profile.deliveryAddress},quote=server.decorateTransportQuote({id:'stripe-retry',amount:25},profile.id,items,customer),body={items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true};
+ checkoutFailureNext=Object.assign(new Error('fallo temporal aislado'),{type:'StripeAPIError',code:'api_error',statusCode:500,requestId:'req_retry_isolated'});
+ const before=checkoutCalls.length,first=await request('/api/checkout/stripe',{id:'customer',role:'customer',method:'POST',body});
+ assert.equal(first.status,502);assert.equal(server.read().orders.length,1);
+ const second=await request('/api/checkout/stripe',{id:'customer',role:'customer',method:'POST',body});
+ assert.equal(second.status,200);assert.equal(server.read().orders.length,1);
+ const firstParams=checkoutCalls[before],secondParams=checkoutCalls[before+1],firstOptions=checkoutOptions[before],secondOptions=checkoutOptions[before+1];
+ assert.equal(firstParams.success_url,secondParams.success_url);assert.equal(firstOptions.idempotencyKey,secondOptions.idempotencyKey);
+});
 test('reintentar o hacer doble clic en el pago conserva un único pedido y un único Checkout',async()=>{
  reset();const items=[{id:'p1',qty:2,weightKg:3}],customer={...profile,...profile.deliveryAddress};const quote=server.decorateTransportQuote({id:'duplicate',amount:25},profile.id,items,customer);
  const body={items,customer,rutaFVQuote:quote,termsAccepted:true,privacyAccepted:true},before=checkoutCalls.length;
