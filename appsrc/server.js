@@ -249,6 +249,7 @@ function optionalAuth(req,res,next){if(!req.headers.authorization){req.user=null
 function guestSession(req){const raw=String(req.headers['x-fvmarket-guest']||req.body?.guestSessionId||'').trim();return /^[a-zA-Z0-9_-]{16,100}$/.test(raw)?raw:''}
 function checkoutActorId(req){if(req.user?.id)return req.user.id;const guest=guestSession(req);return guest?`guest:${crypto.createHash('sha256').update(guest).digest('hex').slice(0,32)}`:''}
 function accessTokenHash(value=''){return crypto.createHash('sha256').update(String(value)).digest('hex')}
+function orderAccessToken(orderId=''){return crypto.createHmac('sha256',JWT_SECRET).update(`fvmarket-order-access:${String(orderId)}`).digest('hex')}
 function validOrderAccess(order={},value=''){const actual=String(value||'');const expected=String(order.guestAccessTokenHash||'');if(!actual||!expected)return false;const a=Buffer.from(accessTokenHash(actual)),b=Buffer.from(expected);return a.length===b.length&&crypto.timingSafeEqual(a,b)}
 function admin(req,res,next){auth(req,res,()=>req.user.role==='admin'?next():res.status(403).json({error:'Acceso de administrador requerido'}))}
 function staffWith(...roles){return (req,res,next)=>auth(req,res,()=>roles.includes(req.user.role)?next():res.status(403).json({error:'No tienes permisos para esta sección'}))}
@@ -663,6 +664,8 @@ function buildOrderFromQuote(d,q,user){
 
 async function createStripePaymentLink(req,d,o,accessToken=''){
   if(!stripe)throw new Error('Stripe no está configurado');
+  const totalCents=Number.isFinite(Number(o.total))?Math.round(Number(o.total)*100):0;
+  if(totalCents<50){const error=new Error('El importe mínimo para pagar online con Stripe es 0,50 €. Añade productos hasta alcanzar ese importe.');error.status=400;throw error;}
   if(!legalIdentity.paymentAllowed(d.settings,process.env.STRIPE_SECRET_KEY))throw new Error('Los pagos reales están temporalmente deshabilitados. Puedes contactar con FVMarket para consultar tu pedido.');
   if(!returnsPolicy.paymentAllowed(d,o.items||[],process.env.STRIPE_SECRET_KEY))throw new Error('Algún artículo del pedido ya no está disponible. Revisa el pedido antes de pagar.');
   if(paidOrderStatus(o.status))throw new Error('Este pedido ya está pagado');
@@ -677,14 +680,17 @@ async function createStripePaymentLink(req,d,o,accessToken=''){
     }
     o.stripeSessionUrl='';o.stripeSessionExpiresAt=0;save(d);
   }
-  if(!accessToken){accessToken=crypto.randomBytes(32).toString('hex');o.guestAccessTokenHash=accessTokenHash(accessToken)}
+  if(!accessToken){accessToken=orderAccessToken(o.id);o.guestAccessTokenHash=accessTokenHash(accessToken)}
   const sourceItems=[...(o.items||[])];
   if(o.delivery>0)sourceItems.push({title:'Envío a tu obra',ref:'RUTAFV',qty:1,unitPrice:o.delivery,lineTotal:o.delivery});
   if(!sourceItems.length)throw new Error('El pedido no contiene conceptos pagables');
   const line_items=sourceItems.map(item=>({quantity:Math.max(1,Math.min(99,Number(item.qty)||1)),price_data:{currency:'eur',unit_amount:Math.round(Number(item.unitPrice||0)*100),product_data:{name:String(item.title||item.ref||'Producto FVMarket').slice(0,250),metadata:{ref:String(item.ref||'')}}}}));
   const base=baseUrl(req),success=new URL(base+'/?payment=return');success.searchParams.set('order',o.id);success.searchParams.set('session_id','{CHECKOUT_SESSION_ID}');if(accessToken)success.searchParams.set('access',accessToken);
   const cancel=new URL(base+'/?payment=cancel');cancel.searchParams.set('order',o.id);
-  const checkout=await stripe.checkout.sessions.create({mode:'payment',line_items,success_url:success.toString().replace('%7BCHECKOUT_SESSION_ID%7D','{CHECKOUT_SESSION_ID}'),cancel_url:cancel.toString(),client_reference_id:o.id,customer_email:o.customer?.email||undefined,billing_address_collection:'required',phone_number_collection:{enabled:true},locale:'es',custom_text:{submit:{message:returnsPolicy.checkoutText(returnsInformation,base)}},metadata:{source:'FVMarket',orderId:o.id,orderNumber:o.number,quoteId:String(o.quoteId||''),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(o.delivery||0)}},{idempotencyKey:'fvm-checkout:'+o.id+':'+String(o.stripeSessionId||'initial')+':'+returnsFingerprint.slice(0,20)});
+  const checkoutParams={mode:'payment',line_items,success_url:success.toString().replace('%7BCHECKOUT_SESSION_ID%7D','{CHECKOUT_SESSION_ID}'),cancel_url:cancel.toString(),client_reference_id:o.id,customer_email:o.customer?.email||undefined,billing_address_collection:'required',phone_number_collection:{enabled:true},locale:'es',custom_text:{submit:{message:returnsPolicy.checkoutText(returnsInformation,base)}},metadata:{source:'FVMarket',orderId:o.id,orderNumber:o.number,quoteId:String(o.quoteId||''),fulfillment_model:'sin_stock_fisico',delivery_mode:'normal',transport_amount:String(o.delivery||0)}};
+  const paramsFingerprint=crypto.createHash('sha256').update(JSON.stringify(checkoutParams)).digest('hex').slice(0,32);
+  const attempt=String(o.stripeSessionId||'initial');
+  const checkout=await stripe.checkout.sessions.create(checkoutParams,{idempotencyKey:`fvm-checkout:${o.id}:${attempt}:${paramsFingerprint}`});
   o.returnsInformation=returnsInformation;o.returnsDisclosureFingerprint=returnsFingerprint;o.returnsDisclosedAt=new Date().toISOString();
   o.stripeSessionId=String(checkout.id||'');o.stripeSessionUrl=String(checkout.url||'');o.stripeSessionExpiresAt=Number(checkout.expires_at||0)*1000;o.stripePaymentStatus='pending';delete o.stripePaymentFailedAt;o.paymentMethod='stripe';o.paymentChannel='checkout';
   return {id:o.stripeSessionId,url:o.stripeSessionUrl,reused:false};
@@ -947,7 +953,7 @@ app.post('/api/quotes/:id/payment-link',auth,requireSellerForLivePayment,require
     let o=q.orderId?(d.orders||[]).find(x=>x.id===q.orderId):null;let created=false;
     if(!o){const built=buildOrderFromQuote(d,q,req.customer);if(built.error)return res.status(409).json({error:built.error});o=built.order;d.orders.push(o);created=true}
     const link=await createStripePaymentLink(req,d,o);q.orderId=o.id;q.returnsInformation=o.returnsInformation;q.stripeSessionId=link.id;q.stripeSessionUrl=link.url;q.paymentLinkCreatedAt=q.paymentLinkCreatedAt||new Date().toISOString();save(d);if(created)scheduleOrderEmail(req,o.id,'payment_link_created',{paymentLinkUrl:link.url});res.json({url:link.url,orderNumber:o.number,reused:!!link.reused});
-  }catch(e){console.error('Stripe quote payment link:',e.message);res.status(502).json({error:`No se pudo crear el enlace de pago: ${e.message}`})}
+  }catch(e){console.error('Stripe quote payment link:',e.message);res.status(e.status||502).json({error:e.status?e.message:`No se pudo crear el enlace de pago: ${e.message}`})}
 });
 app.delete('/api/quotes/:id',auth,(req,res)=>{
   const d=read();
@@ -992,7 +998,7 @@ app.post('/api/checkout/stripe',auth,requireSellerForLivePayment,requireCustomer
   if(normalized.error)return res.status(400).json({error:normalized.error});
   const acceptedAt=new Date().toISOString(),built=buildOrder(d,registered,items,normalized.customer,{id:id('ord'),paymentMethod:'stripe',quote,phone:normalized.customer.phone,notes:normalized.customer.notes,userId:registered.id,guest:false,termsAcceptedAt:acceptedAt,privacyAcceptedAt:acceptedAt});
   if(built.error)return res.status(built.status||400).json({error:built.error});
-  const candidate=built.order;if(!requireReturnsForLivePayment(d,candidate.items,res))return;
+  const candidate=built.order;if(Math.round(Number(candidate.total||0)*100)<50)return res.status(400).json({error:'El importe mínimo para pagar online con Stripe es 0,50 €. Añade productos hasta alcanzar ese importe.'});if(!requireReturnsForLivePayment(d,candidate.items,res))return;
   const fingerprint=crypto.createHash('sha256').update(JSON.stringify({userId:registered.id,items:candidate.items.map(x=>[x.productId,x.qty,x.unitPrice,x.weightKg]).sort((a,b)=>a[0].localeCompare(b[0])),customer:candidate.customer,total:candidate.total,delivery:candidate.delivery,termsVersion:returnsPolicy.VERSION})).digest('hex');
   let pending=checkoutInflight.get(fingerprint);
   if(!pending){
@@ -1012,7 +1018,7 @@ app.post('/api/checkout/stripe',auth,requireSellerForLivePayment,requireCustomer
     })().finally(()=>checkoutInflight.delete(fingerprint));
     checkoutInflight.set(fingerprint,pending);
   }
-  try{res.json(await pending)}catch(error){if(!error.status||error.status>=500){console.error('FVMarket Stripe checkout failed',JSON.stringify({type:String(error.type||'').slice(0,80),code:String(error.code||'').slice(0,80),statusCode:Number.isInteger(error.statusCode)?error.statusCode:null,requestId:String(error.requestId||'').slice(0,100)}))}res.status(error.status||502).json({error:error.status?error.message:'No se pudo iniciar el pago mediante Stripe. Puedes volver a intentarlo sin perder el carrito.'})}
+  try{res.json(await pending)}catch(error){if(!error.status||error.status>=500){console.error('FVMarket Stripe checkout failed',JSON.stringify({type:String(error.type||'').slice(0,80),code:String(error.code||'').slice(0,80),statusCode:Number.isInteger(error.statusCode)?error.statusCode:null,requestId:String(error.requestId||'').slice(0,100)}))}const amountTooSmall=error.code==='amount_too_small',status=error.status||(amountTooSmall?400:502);const message=error.status?error.message:amountTooSmall?'El importe total está por debajo del mínimo que Stripe acepta para euros (0,50 €). Añade productos hasta alcanzar ese mínimo.':'No se pudo iniciar el pago mediante Stripe. Puedes volver a intentarlo sin perder el carrito.';res.status(status).json({error:message})}
 });
 
 app.get('/api/payments/stripe/status',optionalAuth,async(req,res)=>{
@@ -1055,7 +1061,7 @@ app.post('/api/admin/orders/:id/payment-link',ordersManager,requireSellerForLive
   if(!stripe)return res.status(503).json({error:'Stripe no está configurado'});
   const d=read();const o=d.orders.find(x=>x.id===req.params.id);if(!o)return res.status(404).json({error:'Pedido no encontrado'});
   if(!requireReturnsForLivePayment(d,o.items||[],res))return;
-  try{const link=await createStripePaymentLink(req,d,o);save(d);if(!link.reused)scheduleOrderEmail(req,o.id,'payment_link_created',{paymentLinkUrl:link.url});res.json({url:link.url,orderNumber:o.number,reused:!!link.reused})}catch(e){console.error('Stripe order payment link:',e.message);res.status(502).json({error:`No se pudo crear el enlace de pago: ${e.message}`})}
+  try{const link=await createStripePaymentLink(req,d,o);save(d);if(!link.reused)scheduleOrderEmail(req,o.id,'payment_link_created',{paymentLinkUrl:link.url});res.json({url:link.url,orderNumber:o.number,reused:!!link.reused})}catch(e){console.error('Stripe order payment link:',e.message);res.status(e.status||502).json({error:e.status?e.message:`No se pudo crear el enlace de pago: ${e.message}`})}
 });
 const refundInflight=new Set();
 function applyStripeRefund(req,refund,actor={id:'stripe',role:'system',name:'Stripe'}){
