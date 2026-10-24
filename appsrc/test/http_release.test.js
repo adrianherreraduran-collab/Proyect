@@ -323,7 +323,7 @@ test('las tres entradas informan de devoluciones a cargo de FVMarket sin exigir 
   reset(); await request('/api/admin/settings',{method:'PUT',body:sellerFixture()});
   const previousKey = process.env.STRIPE_SECRET_KEY, count = checkoutCalls.length;
   const data = server.read(); delete data.products[0].returnPolicy;
-  data.orders.push({id:'return-order',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],stripeSessionId:'cs_return_old',stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000});
+  data.orders.push({id:'return-order',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],total:105,stripeSessionId:'cs_return_old',stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000});
   data.quotes.push({id:'return-quote',userId:'customer',status:'aceptado',items:[{productId:'p1',qty:1}],orderId:'return-order'}); server.save(data);
   const customer = {...profile,...profile.deliveryAddress}, items = [{id:'p1',qty:1,weightKg:3}];
   const quote = server.decorateTransportQuote({id:'return-transport',amount:25},profile.id,items,customer);
@@ -373,7 +373,7 @@ test('un pago informado conserva su tarifa y una modificación exige una sesión
 
 test('si Stripe no puede cerrar el enlace anterior no se crea una segunda sesión', async () => {
   reset(); const data = server.read();
-  data.orders.push({id:'renew-fails',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],stripeSessionId:'cs_old',stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000}); server.save(data);
+  data.orders.push({id:'renew-fails',userId:'customer',status:'pendiente_pago',items:[{productId:'p1',qty:1,unitPrice:80}],total:80,stripeSessionId:'cs_old',stripeSessionUrl:'https://checkout.example.com/old',stripeSessionExpiresAt:Date.now()+60000}); server.save(data);
   const before = server.read().orders, count = checkoutCalls.length; expirationFailure = true;
   try {
     const result = await request('/api/admin/orders/renew-fails/payment-link',{method:'POST'});
